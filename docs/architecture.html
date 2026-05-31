@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>backstage-assistants — Architecture (draft)</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+      :root { --fg:#1d2430; --muted:#5b6675; --line:#e2e6ec; --bg:#fff; --panel:#f7f9fc; --accent:#c2410c; }
+      * { box-sizing: border-box; }
+      body { margin:0; font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--fg); background:var(--bg); }
+      header { padding:28px 32px 18px; border-bottom:1px solid var(--line); }
+      header h1 { margin:0 0 6px; font-size:22px; }
+      header p { margin:0; color:var(--muted); max-width:74ch; }
+      .draft { display:inline-block; margin-left:10px; padding:2px 8px; border-radius:999px; background:#fff3e6; color:var(--accent); font-size:12px; font-weight:600; vertical-align:middle; }
+      main { padding:24px 32px 64px; }
+      h2 { font-size:16px; margin:32px 0 10px; }
+
+      .key { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+      @media (max-width:980px){ .key { grid-template-columns:1fr; } }
+      .fam { border:1px solid var(--line); border-left-width:6px; border-radius:8px; padding:12px 14px; background:var(--bg); }
+      .fam-title { font-weight:700; font-size:14px; margin:0 0 8px; }
+      .pkglist { list-style:none; margin:0; padding:0; }
+      .pkglist li { font-size:13px; color:var(--muted); padding:6px 0; border-top:1px solid var(--line); }
+      .pkglist li:first-child { border-top:0; padding-top:0; }
+      .pkglist .pn { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-weight:700; color:var(--fg); text-decoration:none; border-bottom:1px dashed currentColor; }
+
+      .diagram { border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--panel); overflow-x:auto; margin-top:6px; }
+      .mermaid { text-align:center; }
+      .legend { display:flex; flex-wrap:wrap; gap:14px; margin:14px 0 0; font-size:13px; color:var(--muted); }
+      .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+      @media (max-width:880px){ .grid { grid-template-columns:1fr; } }
+      .panel { border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:var(--bg); }
+      .panel h3 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+      ol { margin:0; padding-left:20px; } ol li { margin:6px 0; }
+      code { background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:13px; }
+      .note { color:var(--muted); font-size:13px; margin-top:8px; }
+      strong.k { color:var(--fg); }
+      .dxgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      @media (max-width:880px){ .dxgrid { grid-template-columns:1fr; } }
+      details.dx { border:1px solid var(--line); border-radius:8px; background:var(--bg); }
+      details.dx summary { cursor:pointer; padding:11px 14px; font-size:14px; font-weight:600; list-style:none; }
+      details.dx summary::-webkit-details-marker { display:none; }
+      details.dx summary::before { content:'▸'; color:var(--muted); margin-right:8px; }
+      details.dx[open] summary::before { content:'▾'; }
+      details.dx[open] summary { border-bottom:1px solid var(--line); }
+      details.dx .body { padding:11px 14px 13px 32px; color:var(--muted); font-size:13px; }
+      details.dx .body ol { margin:0; padding-left:18px; } details.dx .body ol li { margin:5px 0; }
+      .dot { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:8px; vertical-align:middle; border:1px solid rgba(0,0,0,.15); }
+      .nodetip { position:fixed; z-index:1000; max-width:330px; background:#1d2430; color:#fff; padding:10px 13px; border-radius:8px; font-size:13px; line-height:1.55; pointer-events:none; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; transition:opacity .12s ease; }
+      .nodetip b { display:block; margin-bottom:4px; }
+      .nodetip code { background:rgba(255,255,255,.14); border:0; color:#fff; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>backstage-assistants — architecture <span class="draft">DRAFT — for review</span></h1>
+      <p>
+        How the major packages we stitch together — <strong class="k">assistant-ui</strong>, the
+        <strong class="k">Vercel AI SDK</strong>, and <strong class="k">Backstage</strong> — compose into one chat
+        plugin, and how Backstage <em>permissions</em> and the <em>Actions registry</em> become the AI SDK's available
+        <em>tools</em>, executed as the calling user.
+      </p>
+    </header>
+
+    <main>
+      <h2>Package key</h2>
+      <div class="key">
+        <div class="fam" style="border-left-color:#7048e8">
+          <div class="fam-title" style="color:#7048e8">assistant-ui</div>
+          <ul class="pkglist">
+            <li><a class="pn" href="https://www.assistant-ui.com" target="_blank" rel="noopener">@assistant-ui/react</a> — an open-source library of prebuilt, themeable React components for AI chat.</li>
+            <li><a class="pn" href="https://www.assistant-ui.com/docs/runtimes/ai-sdk/use-chat" target="_blank" rel="noopener">@assistant-ui/react-ai-sdk</a> — connects assistant-ui to the Vercel AI SDK.</li>
+          </ul>
+        </div>
+        <div class="fam" style="border-left-color:#111827">
+          <div class="fam-title" style="color:#111827">Vercel AI SDK</div>
+          <ul class="pkglist">
+            <li><a class="pn" href="https://ai-sdk.dev" target="_blank" rel="noopener">ai</a> — the core TypeScript toolkit for building with LLMs: streaming, tool calling, provider-agnostic.</li>
+            <li><a class="pn" href="https://ai-sdk.dev/docs/ai-sdk-ui/chatbot" target="_blank" rel="noopener">@ai-sdk/react</a> — React hooks for AI chat UIs.</li>
+            <li><a class="pn" href="https://ai-sdk.dev/providers/ai-sdk-providers" target="_blank" rel="noopener">@ai-sdk/openai · anthropic · azure</a> — adapters for the model providers.</li>
+          </ul>
+        </div>
+        <div class="fam" style="border-left-color:#868e96">
+          <div class="fam-title" style="color:#868e96">Backstage</div>
+          <ul class="pkglist">
+            <li><a class="pn" href="https://backstage.io/docs/frontend-system/" target="_blank" rel="noopener">@backstage/frontend-plugin-api · core-*</a> — Backstage's frontend plugin system.</li>
+            <li><a class="pn" href="https://backstage.io/docs/backend-system/" target="_blank" rel="noopener">@backstage/backend-plugin-api · backend-openapi-utils</a> — Backstage's backend plugin system, including the Actions registry.</li>
+          </ul>
+        </div>
+        <div class="fam" style="border-left-color:#1a9e8f">
+          <div class="fam-title" style="color:#1a9e8f">backstage-assistants — this plugin</div>
+          <ul class="pkglist">
+            <li><a class="pn" href="https://github.com/drewswiredin/backstage-assistants" target="_blank" rel="noopener">backstage-assistants</a> — this plugin: stitches the packages above into an AI assistants experience for Backstage.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Diagram</h2>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+
+  subgraph FE["🖥️ Frontend plugin (browser)"]
+    UI["<b>assistant-ui</b><br/>Chat UI"]
+  end
+
+  subgraph BE["⚙️ Backend plugin"]
+    direction TB
+    Gate{"<b>Backstage</b><br/>Permission check"}
+    Loop["<b>AI SDK</b><br/>Model + tool loop"]
+    Gate -->|"allowed"| Loop
+  end
+
+  Actions["<b>Backstage</b><br/>Actions registry<br/>(org tools)"]
+  Prov["<b>AI SDK providers</b><br/>LLM"]
+  Data["<b>Backstage</b><br/>Catalog · TechDocs · Search"]
+
+  UI ==>|"chat request — as the user"| Gate
+  Actions ==>|"actions → AI SDK tools"| Loop
+  Loop -->|"run a tool — as the user"| Actions
+  Loop <-->|"reasoning + tool calls"| Prov
+  Actions -->|"as the user"| Data
+  Loop -.->|"streamed answer"| UI
+
+  classDef p_aui fill:#efe7ff,stroke:#7048e8,color:#1d2430;
+  classDef p_vercel fill:#111827,stroke:#111827,color:#ffffff;
+  classDef p_backstage fill:#f1f3f5,stroke:#868e96,color:#1d2430;
+
+  class UI p_aui;
+  class Loop,Prov p_vercel;
+  class Gate,Actions,Data p_backstage;
+
+  %% teal containers = our plugin (frontend + backend)
+  style FE fill:#eafaf6,stroke:#1a9e8f
+  style BE fill:#eafaf6,stroke:#1a9e8f
+        </pre>
+        <div class="legend">
+          <span><strong style="color:#1a9e8f">teal</strong> = this plugin · box color = its package (see key)</span>
+          <span>◇ gate · ══ request &amp; tools · ·· streamed answer</span>
+          <span>hover a box for detail</span>
+        </div>
+      </div>
+
+      <h2>How the key connections work <span class="note" style="font-weight:400">— click to expand</span></h2>
+      <div class="dxgrid">
+        <details class="dx"><summary>🧰 Backstage Actions → AI SDK tools</summary>
+          <div class="body"><ol>
+            <li>Each assistant declares an <code>actions[]</code> allowlist (action names) in app-config.</li>
+            <li>Per request, <code>actions.list({ credentials })</code> returns the actions this user may see.</li>
+            <li>The backend keeps only the assistant's allowlisted names and adapts each to an AI SDK <code>tool()</code> (schema → <code>inputSchema</code>, <code>execute</code> → <code>actions.invoke</code>).</li>
+            <li>Those tools are handed to the model loop; one source of tools — no parallel tool system (the same registry can also surface over MCP).</li>
+          </ol></div></details>
+        <details class="dx"><summary>🔒 "As the user" — credentials flow through</summary>
+          <div class="body"><ol>
+            <li>The request carries the caller's Backstage user token; the backend resolves their identity + groups.</li>
+            <li>The <em>same</em> credentials are used to both list and invoke actions.</li>
+            <li>So every tool runs with the caller's own permissions — catalog / TechDocs / search results are scoped to that user, never a service account.</li>
+            <li>Two independent gates: <em>access policy</em> (may you use this assistant?) and <em>per-tool permissions</em> (what can the tool see, as you?).</li>
+          </ol></div></details>
+      </div>
+
+      <p class="note" style="margin-top:24px">
+        Draft. Easy to add on request: the <code>/status</code> + <code>/title</code> routes, the OpenAPI validation layer,
+        local conversation persistence, or the post-MVP external-MCP path.
+      </p>
+    </main>
+
+    <script>
+      // Per-box detail — id matches the Mermaid node id; shown as a hover tooltip.
+      const BOXES = [
+        { id: 'UI', label: 'assistant-ui — Chat UI',
+          body: `The chat surface in the browser: assistant-ui's prebuilt <code>Thread</code> (composer, markdown, reasoning, tool rendering) on a multi-conversation runtime, sitting on the AI SDK's <code>useChat</code>. Conversations persist locally.` },
+        { id: 'Loop', label: 'AI SDK — Model + tool loop',
+          body: `Runs the user's chosen model with the assistant's system prompt, looping over tool calls until the answer is done, then streams it back (<code>streamText</code>, bounded by <code>maxSteps</code>).` },
+        { id: 'Prov', label: 'AI SDK — LLM providers',
+          body: `The model connection — OpenAI / Anthropic / Azure. The specific model is the user's pick from the configured pool.` },
+        { id: 'Gate', label: 'Backstage — Permission check',
+          body: `Before any model runs, the backend verifies the caller's Backstage identity (<code>httpAuth</code> / <code>userInfo</code>) and checks the assistant's access policy (allow-authenticated / specific users / groups). Deny by default.` },
+        { id: 'Actions', label: 'Backstage — Actions registry',
+          body: `Backstage's registry of org tools (catalog, search, TechDocs, and more). The backend exposes only the assistant's allowlisted actions to the model and invokes them with the caller's credentials — see the connections below.` },
+        { id: 'Data', label: 'Backstage — Catalog · TechDocs · Search',
+          body: `The data the tools read, returned scoped to what the user is allowed to see — never a service account's view.` },
+      ];
+
+      const tip = document.createElement('div');
+      tip.className = 'nodetip';
+      document.body.appendChild(tip);
+      function moveTip(x, y) {
+        tip.style.left = Math.min(x + 14, window.innerWidth - 346) + 'px';
+        tip.style.top = (y + 16) + 'px';
+      }
+      function showTip(box, x, y) { tip.innerHTML = `<b>${box.label}</b>${box.body}`; tip.style.opacity = '1'; moveTip(x, y); }
+      function hideTip() { tip.style.opacity = '0'; }
+
+      function attachTips() {
+        document.querySelectorAll('.mermaid g.node').forEach(node => {
+          const idAttr = node.id || '';
+          const box = BOXES.find(b => idAttr.includes('-' + b.id + '-')) ||
+                      BOXES.find(b => idAttr.includes(b.id));
+          if (!box) return;
+          node.addEventListener('mouseenter', e => showTip(box, e.clientX, e.clientY));
+          node.addEventListener('mousemove', e => moveTip(e.clientX, e.clientY));
+          node.addEventListener('mouseleave', hideTip);
+        });
+      }
+
+      mermaid.initialize({ startOnLoad: false, theme: 'neutral', flowchart: { htmlLabels: true, curve: 'basis' } });
+      const run = mermaid.run();
+      if (run && run.then) run.then(attachTips); else setTimeout(attachTips, 400);
+    </script>
+  </body>
+</html>

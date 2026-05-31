@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>backstage-assistants — Config flow (draft)</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+      :root { --fg:#1d2430; --muted:#5b6675; --line:#e2e6ec; --bg:#fff; --panel:#f7f9fc; --accent:#c2410c; --secret:#b42318; --safe:#0a7d52; }
+      * { box-sizing: border-box; }
+      body { margin:0; font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--fg); background:var(--bg); }
+      header { padding:28px 32px 18px; border-bottom:1px solid var(--line); }
+      header h1 { margin:0 0 6px; font-size:22px; }
+      header p { margin:0; color:var(--muted); max-width:74ch; }
+      .draft { display:inline-block; margin-left:10px; padding:2px 8px; border-radius:999px; background:#fff3e6; color:var(--accent); font-size:12px; font-weight:600; vertical-align:middle; }
+      main { padding:24px 32px 64px; }
+      .diagram { border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--panel); overflow-x:auto; }
+      .mermaid { text-align:center; }
+      h2 { font-size:16px; margin:32px 0 10px; }
+      .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+      @media (max-width:980px){ .grid { grid-template-columns:1fr; } }
+      .panel { border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:var(--bg); }
+      .panel h3 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+      pre.code { margin:0; background:#0f1729; color:#e6edf6; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:13px; line-height:1.5; }
+      pre.code .c { color:#7c89a3; }        /* comment */
+      pre.code .k { color:#9ecbff; }        /* key */
+      pre.code .s { color:#a5d6a4; }        /* string/value */
+      pre.code .secret { color:#ff8a80; font-weight:600; }
+      table { border-collapse:collapse; width:100%; font-size:13px; }
+      th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+      th { color:var(--muted); font-weight:600; }
+      code { background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:13px; }
+      .tag { font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; }
+      .tag.secret { background:#fde7e1; color:var(--secret); }
+      .tag.safe { background:#e6f6ee; color:var(--safe); }
+      .legend { display:flex; flex-wrap:wrap; gap:14px; margin:14px 0 0; font-size:13px; color:var(--muted); }
+      .note { color:var(--muted); font-size:13px; margin-top:10px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>backstage-assistants — config flow <span class="draft">DRAFT — for review</span></h1>
+      <p>
+        One declarative <code>assistants:</code> block in <code>app-config.yaml</code> defines <em>multiple assistants</em>
+        — each with its own prompt, access, tools, and UI options. This maps how that config is validated, split into
+        <strong>secret / backend-only</strong> vs <strong>browser-safe</strong>, exposed via <code>/status</code>, and applied
+        on the frontend (including the shadcn / assistant-ui UI knobs).
+      </p>
+    </header>
+
+    <main>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+
+  subgraph SRC["📄 app-config.yaml · assistants:"]
+    direction TB
+    G["global<br/>defaultModel · maxSteps · registerCoreActions"]
+    PROV["providers.{id}<br/>apiKey 🔒 · baseUrl · models[ ]"]
+    UIG["ui (global defaults)<br/>theme · composer.allowAttachments<br/>suggestions · branchPicker · …"]
+    DEFS["definitions.{id} — many<br/>title · description · prompt 🔒<br/>access 🔒 · actions[ ] · ui (overrides)"]
+  end
+
+  subgraph BE["⚙️ Backend — config.d.ts + readConfig"]
+    direction TB
+    SCHEMA["config.d.ts schema<br/>@visibility secret on apiKey"]
+    PARSE["readConfig()<br/>validate · build provider/model registry"]
+    MERGE["resolve per-assistant ui =<br/>deepMerge(global ui, definition.ui)"]
+    SPLIT{"split by visibility"}
+  end
+
+  STATUS["GET /status — browser-safe projection<br/>assistants[ id · title · description · ui ]<br/>models[ ] · defaultModel"]
+  CHAT["POST /chat — backend applies<br/>system = prompt · tools = actions allowlist"]
+
+  subgraph FE["🖥️ Frontend — usePluginStatus"]
+    direction TB
+    PICK["assistant + model selects (rail)"]
+    APPLY["selected assistant.ui → Thread/composer knobs<br/>attachments · suggestions · theme · branchPicker"]
+  end
+
+  G --> PARSE
+  PROV --> SCHEMA --> PARSE
+  UIG --> MERGE
+  DEFS --> MERGE
+  DEFS --> PARSE
+  PARSE --> SPLIT
+  MERGE --> SPLIT
+  SPLIT ==>|browser-safe| STATUS
+  SPLIT -. "backend-only: prompt · access · apiKey · provider keys" .-> CHAT
+  STATUS --> PICK --> APPLY
+  APPLY -. "sends only { agentId, modelId, messages }" .-> CHAT
+
+  classDef src fill:#eef2f9,stroke:#5b6675,color:#1d2430;
+  classDef be fill:#f3e9ff,stroke:#9c4dff,color:#1d2430;
+  classDef safe fill:#e6f6ee,stroke:#0a7d52,color:#1d2430;
+  classDef secret fill:#fde7e1,stroke:#b42318,color:#1d2430;
+  classDef fe fill:#efeaff,stroke:#6d4aff,color:#1d2430;
+  classDef gate fill:#fff6e6,stroke:#d2691e,color:#1d2430;
+
+  class G,PROV,UIG,DEFS src;
+  class SCHEMA,PARSE,MERGE be;
+  class SPLIT gate;
+  class STATUS safe;
+  class CHAT secret;
+  class PICK,APPLY fe;
+        </pre>
+        <div class="legend">
+          <span>🔒 = secret / backend-only — never crosses to the browser</span>
+          <span>══ thick = browser-safe exposure (<code>/status</code>)</span>
+          <span>·· dotted = stays server-side</span>
+        </div>
+      </div>
+
+      <h2>The config surface (one block, many assistants)</h2>
+<pre class="code"><span class="k">assistants</span>:
+  <span class="c"># ---------- global ----------</span>
+  <span class="k">defaultModel</span>: <span class="s">openai:gpt-5.5</span>
+  <span class="k">maxSteps</span>: <span class="s">8</span>
+  <span class="k">registerCoreActions</span>: <span class="s">true</span>
+  <span class="k">providers</span>:
+    <span class="k">openai</span>:
+      <span class="k">apiKey</span>: <span class="secret">${OPENAI_API_KEY}      # 🔒 @visibility secret — backend only</span>
+      <span class="k">baseUrl</span>: <span class="s">https://api.openai.com/v1</span>
+      <span class="k">models</span>: [<span class="s">gpt-5.5</span>, <span class="s">gpt-4o-mini</span>]
+  <span class="k">ui</span>:                          <span class="c"># global UI defaults — deep-merged into every assistant</span>
+    <span class="k">theme</span>: <span class="s">default</span>            <span class="c"># shadcn token set / data-aui-theme</span>
+    <span class="k">composer</span>:
+      <span class="k">allowAttachments</span>: <span class="s">false</span>
+      <span class="k">placeholder</span>: <span class="s">"Send a message…"</span>
+    <span class="k">suggestions</span>: []
+    <span class="k">branchPicker</span>: <span class="s">true</span>
+
+  <span class="c"># ---------- multiple assistant definitions ----------</span>
+  <span class="k">definitions</span>:
+    <span class="k">general</span>:
+      <span class="k">title</span>: <span class="s">General Assistant</span>
+      <span class="k">description</span>: <span class="s">Catalog + TechDocs helper.</span>
+      <span class="k">prompt</span>: <span class="secret">|                     # 🔒 backend only — never sent to browser</span>
+        <span class="s">You are a Backstage developer-portal assistant…</span>
+      <span class="k">access</span>: { <span class="k">allowAuthenticated</span>: <span class="s">true</span> }   <span class="c"># 🔒 backend only</span>
+      <span class="k">actions</span>: [<span class="s">search-catalog</span>, <span class="s">search-techdocs</span>, <span class="s">read-techdocs</span>]
+      <span class="k">ui</span>:                       <span class="c"># per-assistant overrides (win over global ui)</span>
+        <span class="k">composer</span>: { <span class="k">allowAttachments</span>: <span class="s">true</span> }
+        <span class="k">suggestions</span>:
+          - { <span class="k">title</span>: <span class="s">"Who owns…"</span>, <span class="k">prompt</span>: <span class="s">"Who owns the payments service?"</span> }
+
+    <span class="k">docs</span>:
+      <span class="k">title</span>: <span class="s">Docs Assistant</span>
+      <span class="k">prompt</span>: <span class="secret">| …</span>
+      <span class="k">access</span>: { <span class="k">groups</span>: [<span class="s">group:default/platform</span>] }  <span class="c"># 🔒</span>
+      <span class="k">actions</span>: [<span class="s">search-techdocs</span>, <span class="s">read-techdocs</span>]
+      <span class="k">ui</span>: { <span class="k">theme</span>: <span class="s">mono</span> }</pre>
+
+      <h2>Where each field goes</h2>
+      <div class="grid">
+        <div class="panel">
+          <h3>Exposure — secret/backend-only vs browser-safe</h3>
+          <table>
+            <tr><th>Field</th><th>Scope</th><th>Consumed by</th></tr>
+            <tr><td><code>providers.*.apiKey</code></td><td><span class="tag secret">secret</span></td><td>provider registry (server)</td></tr>
+            <tr><td><code>prompt</code></td><td><span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code></td></tr>
+            <tr><td><code>access</code></td><td><span class="tag secret">backend</span></td><td>access gate (<code>/status</code> filter + <code>/chat</code>)</td></tr>
+            <tr><td><code>actions[]</code></td><td><span class="tag secret">backend</span></td><td>tool allowlist at <code>/chat</code></td></tr>
+            <tr><td><code>maxSteps</code></td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code></td></tr>
+            <tr><td><code>title</code>, <code>description</code></td><td><span class="tag safe">browser</span></td><td>assistant rail / welcome</td></tr>
+            <tr><td><code>models</code>, <code>defaultModel</code></td><td><span class="tag safe">browser</span></td><td>model picker</td></tr>
+            <tr><td><code>ui</code> (resolved)</td><td><span class="tag safe">browser</span></td><td>Thread/composer knobs</td></tr>
+          </table>
+          <p class="note">The browser only ever receives the <span class="tag safe">browser</span> rows (via <code>/status</code>) and only sends back <code>{ agentId, modelId, messages }</code>. Prompt, keys, and access never leave the backend.</p>
+        </div>
+        <div class="panel">
+          <h3>UI knobs &amp; the deep-merge</h3>
+          <p style="margin-top:0">Resolved per assistant: <code>deepMerge(global ui, definition.ui)</code> → returned in <code>/status</code> → applied to the assistant-ui <code>Thread</code>.</p>
+          <table>
+            <tr><th>ui key</th><th>Effect on the chat</th></tr>
+            <tr><td><code>composer.allowAttachments</code></td><td>show the <code>+</code> attach button / dropzone</td></tr>
+            <tr><td><code>suggestions[]</code></td><td>starter prompt chips on the empty thread</td></tr>
+            <tr><td><code>composer.placeholder</code></td><td>composer input placeholder text</td></tr>
+            <tr><td><code>branchPicker</code></td><td>show/hide message branch navigation</td></tr>
+            <tr><td><code>theme</code></td><td>shadcn token set (<code>data-aui-theme</code>) + radius</td></tr>
+            <tr><td><code>actionBar</code> (copy/reload/edit)</td><td>which per-message actions render</td></tr>
+          </table>
+          <p class="note">v1 builds the full merge pipeline (global → per-assistant → <code>/status</code> → applied) but wires a <strong>subset</strong> of knobs; the rest expand later without changing the plumbing.</p>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:24px">
+        Draft + open questions: (1) block shape — <code>assistants.definitions.{id}</code> vs flattening the
+        defs to <code>assistants.{id}</code> with a reserved global key; (2) which <code>ui</code> knobs ship in v1;
+        (3) whether <code>theme</code> is a named token set vs a full token override; (4) should <code>models</code>
+        be global-only or also per-assistant restrictable. Tell me what to change.
+      </p>
+    </main>
+
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { htmlLabels: true, curve: 'basis' } });
+    </script>
+  </body>
+</html>
