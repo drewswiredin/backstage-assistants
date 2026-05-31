@@ -1,0 +1,63 @@
+{
+  "name": "@drewswiredin/backstage-plugin-assistants",
+  "version": "0.1.0",
+  "description": "Frontend plugin \u2014 AI Assistants for Backstage.",
+  "license": "Apache-2.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "backstage": {
+    "role": "frontend-plugin",
+    "pluginId": "assistants",
+    "pluginPackages": [
+      "@drewswiredin/backstage-plugin-assistants",
+      "@drewswiredin/backstage-plugin-assistants-backend",
+      "@drewswiredin/backstage-plugin-assistants-common"
+    ]
+  },
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./alpha": "./src/alpha.tsx",
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "alpha": [
+        "src/alpha.tsx"
+      ],
+      "package.json": [
+        "package.json"
+      ]
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "lint": "backstage-cli package lint",
+    "clean": "backstage-cli package clean",
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack"
+  },
+  "dependencies": {
+    "@backstage/core-components": "^0.18.0",
+    "@backstage/core-plugin-api": "^1.12.0",
+    "@backstage/frontend-plugin-api": "^0.17.0",
+    "@drewswiredin/backstage-plugin-assistants-common": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
+    "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@backstage/cli": "0.36.2",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}

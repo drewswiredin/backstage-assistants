@@ -1,0 +1,31 @@
+{
+  "name": "backstage-assistants",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AI Assistants for Backstage.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drewswiredin/backstage-assistants.git"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "backstage-cli repo build --all",
+    "tsc": "tsc",
+    "lint": "backstage-cli repo lint",
+    "clean": "backstage-cli repo clean"
+  },
+  "devDependencies": {
+    "@backstage/cli": "0.36.2",
+    "@backstage/cli-defaults": "0.1.2",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.0.0",
+    "@types/react": "^18.0.0",
+    "typescript": "~5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

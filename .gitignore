@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-types/
+*.tsbuildinfo
+.lore/MEMORY.md
+.lore/.session-nonce
+.lore/.last-generated
+.lore/.sessions/
+.lore/
