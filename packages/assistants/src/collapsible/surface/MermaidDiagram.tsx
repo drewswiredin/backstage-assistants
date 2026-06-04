@@ -7,28 +7,38 @@ import {
   Tooltip,
   Typography,
 } from '@material-ui/core';
-import { makeStyles } from '@material-ui/core/styles';
+import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
 
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'base',
-  themeVariables: {
-    background: '#ffffff',
-    mainBkg: '#ffffff',
-    primaryColor: '#f8fafc',
-    primaryTextColor: '#111827',
-    primaryBorderColor: '#334155',
-    lineColor: '#475569',
-    secondaryColor: '#eef2ff',
-    tertiaryColor: '#f8fafc',
-    clusterBkg: '#f8fafc',
-    clusterBorder: '#cbd5e1',
-    edgeLabelBackground: '#ffffff',
-    fontFamily: 'Inter, Roboto, Arial, sans-serif',
-  },
-  suppressErrorRendering: true,
-});
+/**
+ * Mermaid config derived from the active Backstage theme so diagrams follow
+ * light/dark mode. The diagram background is transparent so it blends with the
+ * conversation surface (no mismatched light box on a dark thread); nodes, text,
+ * borders, and lines come from the palette.
+ */
+function mermaidConfig(theme: Theme) {
+  const p = theme.palette;
+  return {
+    startOnLoad: false,
+    theme: 'base' as const,
+    suppressErrorRendering: true,
+    themeVariables: {
+      background: 'transparent',
+      mainBkg: p.background.paper,
+      primaryColor: p.background.paper,
+      primaryTextColor: p.text.primary,
+      primaryBorderColor: p.divider,
+      lineColor: p.text.secondary,
+      secondaryColor: p.background.default,
+      tertiaryColor: p.background.default,
+      clusterBkg: p.background.default,
+      clusterBorder: p.divider,
+      edgeLabelBackground: p.background.default,
+      textColor: p.text.primary,
+      fontFamily: 'Inter, Roboto, Arial, sans-serif',
+    },
+  };
+}
 
 let idCounter = 0;
 const DEBOUNCE_MS = 600;
@@ -47,8 +57,8 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(1),
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius,
-    backgroundColor: '#ffffff',
-    color: '#111827',
+    backgroundColor: 'transparent',
+    color: theme.palette.text.primary,
     cursor: 'zoom-in',
     overflow: 'auto',
     transition: 'filter 0.3s ease, opacity 0.3s ease',
@@ -112,8 +122,8 @@ const useStyles = makeStyles(theme => ({
     minWidth: '100%',
     padding: theme.spacing(2),
     borderRadius: theme.shape.borderRadius,
-    backgroundColor: '#ffffff',
-    color: '#111827',
+    backgroundColor: 'transparent',
+    color: theme.palette.text.primary,
     '& svg': {
       width: 'auto',
       height: 'auto',
@@ -147,6 +157,7 @@ const useStyles = makeStyles(theme => ({
  */
 export function MermaidDiagram({ code }: { code: string }) {
   const classes = useStyles();
+  const theme = useTheme();
   const [svg, setSvg] = useState<string>('');
   const [rendering, setRendering] = useState(true);
   const [error, setError] = useState<string>('');
@@ -157,6 +168,9 @@ export function MermaidDiagram({ code }: { code: string }) {
   const lastRenderedCode = useRef<string>('');
 
   useEffect(() => {
+    // Cleared by the effect cleanup so an in-flight render can't setState after
+    // unmount / re-run.
+    let active = true;
     const trimmed = code.trim();
 
     // If this is the first render (no svg yet), render immediately
@@ -170,23 +184,26 @@ export function MermaidDiagram({ code }: { code: string }) {
 
     clearTimeout(timerRef.current);
     clearTimeout(errorTimerRef.current);
+    // Re-render when either the code or the theme (light/dark) changes.
+    const renderKey = `${theme.palette.type}\n${trimmed}`;
     timerRef.current = setTimeout(() => {
-      // Skip if code hasn't changed since last successful render
-      if (trimmed === lastRenderedCode.current) {
+      // Skip if nothing relevant changed since the last successful render.
+      if (renderKey === lastRenderedCode.current) {
         setRendering(false);
         return;
       }
 
-      let active = true;
       const id = `mermaid-${++idCounter}`;
 
+      // Apply the current Backstage theme before rendering.
+      mermaid.initialize(mermaidConfig(theme));
       mermaid
         .render(id, trimmed)
         .then(({ svg: rendered }) => {
           if (active) {
             setSvg(rendered);
             setError('');
-            lastRenderedCode.current = trimmed;
+            lastRenderedCode.current = renderKey;
             setRendering(false);
           }
         })
@@ -205,18 +222,15 @@ export function MermaidDiagram({ code }: { code: string }) {
             }
           }
         });
-
-      return () => {
-        active = false;
-      };
     }, delay);
 
     return () => {
+      active = false;
       clearTimeout(timerRef.current);
       clearTimeout(errorTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
+  }, [code, theme.palette.type]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
