@@ -241,20 +241,37 @@ under `assistants.mcp.servers` and opt an assistant in via its `mcpServers`
 allowlist. Their tools appear in the assistant's tool set (and the detail modal),
 namespaced `<serverId>__<tool>`.
 
+Transports (the full `@modelcontextprotocol/sdk` client set):
+
+- **`http`** (Streamable HTTP, default) / **`sse`** / **`websocket`** — remote,
+  use `url` (`http`/`sse` also accept `headers`).
+- **`stdio`** — spawn a local MCP server process: `command` (+ `args`, `env`,
+  `cwd`).
+
 ```yaml
 assistants:
   mcp:
     servers:
+      # remote (Streamable HTTP) with a static auth header
       github:
+        transport: http # http | sse | websocket | stdio
         url: https://api.githubcopilot.com/mcp/
-        transport: http # http (Streamable HTTP) | sse
         headers:
           Authorization: Bearer ${GITHUB_MCP_TOKEN} # @visibility secret
+      # local process over stdio
+      filesystem:
+        transport: stdio
+        command: npx
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/data']
+        env:
+          SOME_TOKEN: ${SOME_TOKEN} # @visibility secret
+        # cwd: /optional/working/dir
   profiles:
     devops:
       # ...title / access / models
       mcpServers:
         - github
+        - filesystem
 ```
 
 > **Auth is a single static credential** (the configured `headers`) — i.e. one

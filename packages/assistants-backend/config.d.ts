@@ -47,20 +47,34 @@ export interface Config {
     mcp?: {
       servers?: {
         [serverId: string]: {
-          /** Server endpoint URL. */
-          url: string;
           /**
-           * Transport. `http` = Streamable HTTP, `sse` = Server-Sent Events.
-           * Defaults to `http`.
+           * Transport. `http` = Streamable HTTP, `sse` = Server-Sent Events,
+           * `websocket` = WebSocket (all remote, use `url`); `stdio` spawns a
+           * local process (use `command`). Defaults to `http`.
            */
-          transport?: 'http' | 'sse';
+          transport?: 'http' | 'sse' | 'websocket' | 'stdio';
+          /** Endpoint URL for remote transports (http/sse/websocket). */
+          url?: string;
           /**
-           * Headers sent on every request to the server (e.g. an
-           * `Authorization` bearer). Treat as secret.
+           * Headers sent on every request (http/sse), e.g. an `Authorization`
+           * bearer. Treat as secret.
            *
            * @visibility secret
            */
           headers?: { [name: string]: string };
+          /** stdio: executable to spawn (e.g. `npx`, `node`, `docker`). */
+          command?: string;
+          /** stdio: arguments for the command. */
+          args?: string[];
+          /**
+           * stdio: extra environment for the child process, merged over a safe
+           * default env. Treat as secret.
+           *
+           * @visibility secret
+           */
+          env?: { [name: string]: string };
+          /** stdio: working directory for the child process. */
+          cwd?: string;
         };
       };
     };

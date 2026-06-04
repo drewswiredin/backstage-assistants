@@ -80,15 +80,29 @@ export interface AssistantDefinition {
   hasModelAllowlist: boolean;
 }
 
+/** Supported MCP client transports (the full @modelcontextprotocol/sdk set). */
+export type McpTransport = 'http' | 'sse' | 'websocket' | 'stdio';
+
 /**
- * A configured external MCP server. Connected with the static `headers`
- * credential (shared identity — not yet run-as-user).
+ * A configured external MCP server. Remote transports (`http`/`sse`/`websocket`)
+ * use `url` (+ `headers` for http/sse); `stdio` spawns a local `command`.
+ * Connected with a static credential (shared identity — not yet run-as-user).
  */
 export interface McpServerConfig {
   id: string;
-  url: string;
-  transport: 'http' | 'sse';
-  headers: Record<string, string>;
+  transport: McpTransport;
+  /** Endpoint URL for remote transports (http/sse/websocket). */
+  url?: string;
+  /** Request headers for http/sse (e.g. an Authorization bearer). */
+  headers?: Record<string, string>;
+  /** stdio: executable to spawn. */
+  command?: string;
+  /** stdio: command arguments. */
+  args?: string[];
+  /** stdio: extra environment for the child process (merged over safe defaults). */
+  env?: Record<string, string>;
+  /** stdio: working directory for the child process. */
+  cwd?: string;
 }
 
 /**
@@ -309,24 +323,53 @@ export function readConfig(config: Config): AssistantsConfig {
     for (const serverId of serversConfig.keys()) {
       const sc = serversConfig.getConfig(serverId);
       const transport = sc.getOptionalString('transport') ?? 'http';
-      if (transport !== 'http' && transport !== 'sse') {
+      if (!['http', 'sse', 'websocket', 'stdio'].includes(transport)) {
         throw new InputError(
-          `assistants.mcp.servers.${serverId}.transport must be 'http' or 'sse'`,
+          `assistants.mcp.servers.${serverId}.transport must be one of ` +
+            `'http', 'sse', 'websocket', 'stdio'`,
         );
       }
-      const headers: Record<string, string> = {};
-      const headersConfig = sc.getOptionalConfig('headers');
-      if (headersConfig) {
-        for (const name of headersConfig.keys()) {
-          headers[name] = headersConfig.getString(name);
+      const readStringMap = (key: string): Record<string, string> => {
+        const out: Record<string, string> = {};
+        const mapConfig = sc.getOptionalConfig(key);
+        if (mapConfig) {
+          for (const name of mapConfig.keys()) {
+            out[name] = mapConfig.getString(name);
+          }
         }
+        return out;
+      };
+
+      if (transport === 'stdio') {
+        const command = sc.getOptionalString('command');
+        if (!command) {
+          throw new InputError(
+            `assistants.mcp.servers.${serverId}: stdio transport requires 'command'`,
+          );
+        }
+        const env = readStringMap('env');
+        mcpServers.set(serverId, {
+          id: serverId,
+          transport: 'stdio',
+          command,
+          args: sc.getOptionalStringArray('args'),
+          env: Object.keys(env).length > 0 ? env : undefined,
+          cwd: sc.getOptionalString('cwd'),
+        });
+      } else {
+        const url = sc.getOptionalString('url');
+        if (!url) {
+          throw new InputError(
+            `assistants.mcp.servers.${serverId}: '${transport}' transport requires 'url'`,
+          );
+        }
+        mcpServers.set(serverId, {
+          id: serverId,
+          transport: transport as McpTransport,
+          url,
+          headers: readStringMap('headers'),
+        });
       }
-      mcpServers.set(serverId, {
-        id: serverId,
-        url: sc.getString('url'),
-        transport,
-        headers,
-      });
     }
   }
 

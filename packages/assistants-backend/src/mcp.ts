@@ -1,6 +1,11 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js';
+import {
+  StdioClientTransport,
+  getDefaultEnvironment,
+} from '@modelcontextprotocol/sdk/client/stdio.js';
 import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { ToolSummary } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -28,9 +33,26 @@ export function mcpToolName(serverId: string, toolName: string): string {
 }
 
 function createTransport(server: McpServerConfig) {
-  const url = new URL(server.url);
+  // Local process transport.
+  if (server.transport === 'stdio') {
+    return new StdioClientTransport({
+      command: server.command as string,
+      args: server.args,
+      // Merge configured env over the SDK's safe default env (PATH, etc.).
+      env: server.env
+        ? { ...getDefaultEnvironment(), ...server.env }
+        : undefined,
+      cwd: server.cwd,
+    });
+  }
+
+  // Remote transports.
+  const url = new URL(server.url as string);
+  if (server.transport === 'websocket') {
+    return new WebSocketClientTransport(url);
+  }
   const requestInit =
-    Object.keys(server.headers).length > 0
+    server.headers && Object.keys(server.headers).length > 0
       ? { headers: server.headers }
       : undefined;
   return server.transport === 'sse'
