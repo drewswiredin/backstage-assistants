@@ -123,8 +123,14 @@ DO NOT try to filter on kinds in the query string, always use the "kinds" parame
           Authorization: `Bearer ${token}`,
         },
       });
+      const body = await response.text();
+      if (!response.ok) {
+        throw new Error(
+          `Catalog search failed (${response.status} ${response.statusText}): ${body}`,
+        );
+      }
 
-      return { output: { response: await response.text() } };
+      return { output: { response: body } };
     },
   });
 }
@@ -191,6 +197,13 @@ function registerSearchTechDocsAction({
           Authorization: `Bearer ${token}`,
         },
       });
+      // Surface the real upstream error (e.g. "Missing index for techdocs")
+      // instead of blindly reading `.results` and throwing a generic TypeError.
+      if (!response.ok) {
+        throw new Error(
+          `TechDocs search failed (${response.status} ${response.statusText}): ${await response.text()}`,
+        );
+      }
       const payload = (await response.json()) as SearchResultSet;
 
       return {
@@ -259,6 +272,11 @@ The response will be formatted as Markdown.`,
           },
         },
       );
+      if (!response.ok) {
+        throw new Error(
+          `Failed to read TechDocs page (${response.status} ${response.statusText}): ${await response.text()}`,
+        );
+      }
       const html = await response.text();
 
       const root = parse(html);
