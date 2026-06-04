@@ -65,5 +65,22 @@
     "@backstage/cli": "0.36.2",
     "@types/express": "^4.17.23",
     "@types/turndown": "^5.0.6"
-  }
+  },
+  "keywords": [
+    "backstage",
+    "backstage-plugin",
+    "backend-plugin",
+    "ai",
+    "assistant",
+    "chatbot",
+    "llm"
+  ],
+  "author": "drewswiredin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drewswiredin/backstage-assistants.git",
+    "directory": "packages/assistants-backend"
+  },
+  "homepage": "https://github.com/drewswiredin/backstage-assistants#readme",
+  "bugs": "https://github.com/drewswiredin/backstage-assistants/issues"
 }

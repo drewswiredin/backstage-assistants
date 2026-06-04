@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
 import { useApi } from '@backstage/core-plugin-api';
 import { Content, Progress, ResponseErrorPanel } from '@backstage/core-components';
-import { makeStyles, useTheme } from '@material-ui/core/styles';
+import { makeStyles } from '@material-ui/core/styles';
 import {
   Badge,
   FormControl,
@@ -39,10 +39,7 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef } from '../api';
 import { ConversationSurface } from './surface';
-import {
-  AssistantAvatar,
-  resolveAssistantColor,
-} from './surface/AssistantAvatar';
+import { AssistantAvatar } from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
 import {
@@ -82,10 +79,13 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     overflow: 'hidden',
     backgroundColor: theme.palette.background.default,
-    // Symmetric margin so the chat card is enclosed on all four sides (no left
-    // gutter since it abuts the sidebar). Composer breathing room lives on the
-    // Thread's own footer (see ConversationSurface) — same bg, no seam.
-    padding: theme.spacing(1),
+    // No top gutter so the card tucks flush under the page header (reclaims the
+    // gap there); 8px right/bottom keep it enclosed on those sides, 0 left since
+    // it abuts the sidebar. Composer breathing room lives on the Thread's own
+    // footer (see ConversationSurface) — same bg, no seam.
+    paddingTop: 0,
+    paddingRight: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
     paddingLeft: 0,
     gap: theme.spacing(1),
   },
@@ -169,15 +169,16 @@ const useStyles = makeStyles(theme => ({
     boxShadow: theme.shadows[1],
     overflow: 'hidden',
   },
+  // Slim, solid header.
   threadHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing(2),
-    minHeight: 44,
+    minHeight: 36,
     padding: theme.spacing(0, 2),
-    borderBottom: `1px solid ${theme.palette.divider}`,
     backgroundColor: theme.palette.background.paper,
+    borderBottom: `1px solid ${theme.palette.divider}`,
   },
   threadIdentity: {
     display: 'flex',
@@ -363,8 +364,6 @@ function ChatThread({
   onRunningChange,
 }: ChatThreadProps) {
   const classes = useStyles();
-  const theme = useTheme();
-  const accentColor = resolveAssistantColor(assistantColor, theme.palette.type);
 
   // Keep the assistant/model selection current without remounting the runtime:
   // the transport reads them from a ref via the function-form `body`.
@@ -405,7 +404,6 @@ function ChatThread({
         className={
           hidden ? `${classes.threadPane} ${classes.threadPaneHidden}` : classes.threadPane
         }
-        style={hidden ? undefined : { borderTop: `3px solid ${accentColor}` }}
         aria-label="AI chat thread"
         aria-hidden={hidden}
       >

@@ -46,6 +46,18 @@ export interface UiOptions {
 }
 
 /**
+ * A tool (Backstage action) exposed to the browser for an assistant.
+ *
+ * @public
+ */
+export interface ToolSummary {
+  /** The Backstage action name, e.g. `"search-catalog"`. */
+  name: string;
+  /** Human-readable description of what the tool does (for tooltips/detail). */
+  description?: string;
+}
+
+/**
  * Browser-safe projection of an assistant the caller may access.
  *
  * Prompts and access policies are deliberately excluded — they never leave the
@@ -74,11 +86,11 @@ export interface AssistantSummary {
   /** This assistant's default `provider:model` selection. */
   defaultModel?: ModelId;
   /**
-   * Names of the tools (Backstage actions) available to the caller for this
-   * assistant — its allowlist intersected with the actions this user may see
-   * (resolved wildcard included). Names only; no schemas/descriptions.
+   * The tools (Backstage actions) available to the caller for this assistant —
+   * its allowlist intersected with the actions this user may see (resolved
+   * wildcard included). Name + description; no schemas.
    */
-  tools?: string[];
+  tools?: ToolSummary[];
   /** Resolved UI options (deep-merge of global + per-profile `ui`). */
   ui?: UiOptions;
 }

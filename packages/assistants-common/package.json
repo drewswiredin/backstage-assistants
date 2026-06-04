@@ -33,5 +33,23 @@
     "clean": "backstage-cli package clean",
     "prepack": "backstage-cli package prepack",
     "postpack": "backstage-cli package postpack"
+  },
+  "keywords": [
+    "backstage",
+    "backstage-plugin",
+    "ai",
+    "assistant",
+    "types"
+  ],
+  "author": "drewswiredin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drewswiredin/backstage-assistants.git",
+    "directory": "packages/assistants-common"
+  },
+  "homepage": "https://github.com/drewswiredin/backstage-assistants#readme",
+  "bugs": "https://github.com/drewswiredin/backstage-assistants/issues",
+  "devDependencies": {
+    "@backstage/cli": "^0.36.2"
   }
 }

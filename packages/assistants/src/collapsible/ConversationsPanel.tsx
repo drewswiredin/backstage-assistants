@@ -37,6 +37,25 @@ const useStyles = makeStyles(theme => ({
       backgroundColor: theme.palette.action.hover,
     },
   },
+  // Reveal the row's ⋮ only on hover so the title gets the full width otherwise.
+  // Must live on the container <li> (ContainerProps): the secondary action is a
+  // sibling of the ListItem root, so a :hover on the row can't reach it.
+  container: {
+    '&:hover $action': {
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
+  },
+  action: {
+    opacity: 0,
+    pointerEvents: 'none',
+    transition: theme.transitions.create('opacity'),
+  },
+  // Keep the ⋮ visible while its menu is open (even if the row isn't hovered).
+  actionVisible: {
+    opacity: 1,
+    pointerEvents: 'auto',
+  },
   pinnedIcon: {
     color: theme.palette.warning.main,
     fontSize: '0.875rem',
@@ -133,6 +152,7 @@ export function ConversationsPanel({
               className={
                 conv.id === activeId ? classes.activeItem : classes.listItem
               }
+              ContainerProps={{ className: classes.container }}
               onClick={() => onSelect(conv.id)}
             >
               <ListItemIcon style={{ minWidth: 32 }}>
@@ -178,7 +198,11 @@ export function ConversationsPanel({
                   />
                 </Tooltip>
               )}
-              <ListItemSecondaryAction>
+              <ListItemSecondaryAction
+                className={`${classes.action}${
+                  menuAnchor?.id === conv.id ? ` ${classes.actionVisible}` : ''
+                }`}
+              >
                 <IconButton
                   edge="end"
                   size="small"

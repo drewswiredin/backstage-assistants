@@ -235,9 +235,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       assistants,
       assistant => isAssistantAccessible(assistant, user),
       assistant =>
-        selectAssistantActions(available, assistant.actions, logger).map(
-          a => a.name,
-        ),
+        selectAssistantActions(available, assistant.actions, logger).map(a => ({
+          name: a.name,
+          description: a.description,
+        })),
     );
 
     res.json(status);

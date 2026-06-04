@@ -13,6 +13,7 @@ import {
   ModelOption,
   ModelId,
   StatusResponse,
+  ToolSummary,
   UiOptions,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 
@@ -362,7 +363,7 @@ export function readConfig(config: Config): AssistantsConfig {
  */
 export function toAssistantSummary(
   assistant: AssistantDefinition,
-  tools?: string[],
+  tools?: ToolSummary[],
 ): AssistantSummary {
   return {
     id: assistant.id,
@@ -384,7 +385,7 @@ export function toAssistantSummary(
 export function buildStatus(
   assistantsConfig: AssistantsConfig,
   isAccessible: (assistant: AssistantDefinition) => boolean,
-  resolveTools?: (assistant: AssistantDefinition) => string[],
+  resolveTools?: (assistant: AssistantDefinition) => ToolSummary[],
 ): StatusResponse {
   const assistants = Array.from(assistantsConfig.assistants.values())
     .filter(isAccessible)

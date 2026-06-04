@@ -30,9 +30,14 @@ const useStyles = makeStyles(theme => ({
   },
   item: {
     borderRadius: theme.shape.borderRadius,
-    paddingRight: theme.spacing(5),
+  },
+  // The hover rule lives on the container <li> (ListItem's ContainerProps), which
+  // wraps BOTH the row and the secondary action. The action is a *sibling* of the
+  // ListItem root, so a :hover rule on the row itself can't reach it.
+  container: {
     '&:hover $infoAction': {
-      visibility: 'visible',
+      opacity: 1,
+      pointerEvents: 'auto',
     },
   },
   icon: {
@@ -40,8 +45,13 @@ const useStyles = makeStyles(theme => ({
     display: 'inline-flex',
     alignItems: 'center',
   },
+  // Hidden until row hover (opacity + pointer-events so it's not clickable while
+  // hidden); no reserved gutter so the title uses full width and truncates later.
   infoAction: {
-    visibility: 'hidden',
+    opacity: 0,
+    pointerEvents: 'none',
+    color: theme.palette.text.secondary,
+    transition: theme.transitions.create('opacity'),
   },
 }));
 
@@ -80,6 +90,7 @@ export const AssistantsList: FC<{
             button
             selected={a.id === activeId}
             className={classes.item}
+            ContainerProps={{ className: classes.container }}
             onClick={() => onSelect(a.id)}
           >
             <ListItemIcon className={classes.icon}>

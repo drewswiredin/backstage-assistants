@@ -4685,6 +4685,8 @@ __metadata:
 "@drewswiredin/backstage-plugin-assistants-common@npm:0.1.0, @drewswiredin/backstage-plugin-assistants-common@workspace:^, @drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common":
   version: 0.0.0-use.local
   resolution: "@drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common"
+  dependencies:
+    "@backstage/cli": "npm:^0.36.2"
   languageName: unknown
   linkType: soft
 
@@ -4717,6 +4719,7 @@ __metadata:
   peerDependencies:
     react: ^17.0.0 || ^18.0.0 || ^19.0.0
     react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
+    react-router-dom: ^6.0.0 || ^7.0.0
   languageName: unknown
   linkType: soft
 
