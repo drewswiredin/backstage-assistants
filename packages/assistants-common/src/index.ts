@@ -51,10 +51,16 @@ export interface UiOptions {
  * @public
  */
 export interface ToolSummary {
-  /** The Backstage action name, e.g. `"search-catalog"`. */
+  /** The tool's id as the model sees it (MCP tools are namespaced `<src>__<tool>`). */
   name: string;
   /** Human-readable description of what the tool does (for tooltips/detail). */
   description?: string;
+  /**
+   * Where the tool comes from: `"backstage"` for built-in Backstage actions
+   * (run as the calling user), or the configured MCP server id for MCP tools.
+   * Used to group tools by source in the UI.
+   */
+  source?: string;
 }
 
 /**

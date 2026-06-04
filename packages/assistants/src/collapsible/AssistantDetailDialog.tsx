@@ -128,7 +128,53 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.secondary,
     fontStyle: 'italic',
   },
+  // A tool group (one per source: Backstage actions, or each MCP server).
+  toolGroup: {
+    marginTop: theme.spacing(1.25),
+  },
+  groupHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    padding: theme.spacing(0, 0.75),
+    marginBottom: theme.spacing(0.25),
+  },
+  groupName: {
+    fontFamily: MONO,
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: theme.palette.text.secondary,
+  },
+  groupTag: {
+    fontSize: '0.6rem',
+    letterSpacing: 0.3,
+    color: theme.palette.text.hint,
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 4,
+    padding: '1px 5px',
+  },
+  groupCount: {
+    marginLeft: 'auto',
+    color: theme.palette.text.hint,
+    fontSize: '0.7rem',
+  },
 }));
+
+const BACKSTAGE_SOURCE = 'backstage';
+
+/** The tool's source for grouping: explicit `source`, else the MCP namespace
+ * prefix in the name, else Backstage. */
+const toolSource = (t: { name: string; source?: string }): string =>
+  t.source ??
+  (t.name.includes('__')
+    ? t.name.slice(0, t.name.indexOf('__'))
+    : BACKSTAGE_SOURCE);
+
+/** Display name within a group: drop the `<source>__` namespace prefix. */
+const toolDisplayName = (name: string): string => {
+  const i = name.indexOf('__');
+  return i === -1 ? name : name.slice(i + 2);
+};
 
 /** Compact model name: drop the `provider:` and `vendor/` prefixes. */
 const modelName = (id: string) => id.split(/[:/]/).pop() || id;
@@ -155,6 +201,22 @@ export const AssistantDetailDialog: FC<{
   const tools = assistant.tools ?? [];
   const models = assistant.models;
   const color = resolveAssistantColor(assistant.color, theme.palette.type);
+
+  // Group tools by source — Backstage actions first, then each MCP server.
+  const toolGroups = (() => {
+    const map = new Map<string, typeof tools>();
+    for (const t of tools) {
+      const key = toolSource(t);
+      const arr = map.get(key);
+      if (arr) arr.push(t);
+      else map.set(key, [t]);
+    }
+    return [...map.entries()].sort(([a], [b]) => {
+      if (a === BACKSTAGE_SOURCE) return -1;
+      if (b === BACKSTAGE_SOURCE) return 1;
+      return a.localeCompare(b);
+    });
+  })();
 
   return (
     <Dialog
@@ -201,18 +263,38 @@ export const AssistantDetailDialog: FC<{
               No tools available
             </Typography>
           ) : (
-            <ul className={classes.list}>
-              {tools.map(t => (
-                <li key={t.name} className={classes.row}>
-                  <span className={classes.itemName}>{t.name}</span>
-                  {t.description && (
-                    <Tooltip title={t.description} placement="top-end">
-                      <InfoOutlinedIcon className={classes.infoIcon} />
-                    </Tooltip>
-                  )}
-                </li>
-              ))}
-            </ul>
+            toolGroups.map(([source, groupTools]) => {
+              const isBackstage = source === BACKSTAGE_SOURCE;
+              return (
+                <div key={source} className={classes.toolGroup}>
+                  <div className={classes.groupHead}>
+                    <span className={classes.groupName}>
+                      {isBackstage ? 'Backstage' : source}
+                    </span>
+                    <span className={classes.groupTag}>
+                      {isBackstage ? 'runs as user' : 'MCP'}
+                    </span>
+                    <span className={classes.groupCount}>
+                      {groupTools.length}
+                    </span>
+                  </div>
+                  <ul className={classes.list}>
+                    {groupTools.map(t => (
+                      <li key={t.name} className={classes.row}>
+                        <span className={classes.itemName}>
+                          {toolDisplayName(t.name)}
+                        </span>
+                        {t.description && (
+                          <Tooltip title={t.description} placement="top-end">
+                            <InfoOutlinedIcon className={classes.infoIcon} />
+                          </Tooltip>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
           )}
         </div>
 

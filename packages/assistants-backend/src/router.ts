@@ -260,7 +260,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       assistant => isAssistantAccessible(assistant, user),
       assistant => [
         ...selectAssistantActions(available, assistant.actions, logger).map(
-          a => ({ name: a.name, description: a.description }),
+          a => ({
+            name: a.name,
+            description: a.description,
+            source: 'backstage',
+          }),
         ),
         ...assistant.mcpServers.flatMap(id => mcpToolsByServer.get(id) ?? []),
       ],

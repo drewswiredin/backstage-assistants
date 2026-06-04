@@ -99,6 +99,7 @@ export async function listMcpTools(
       const summaries: ToolSummary[] = tools.map(t => ({
         name: mcpToolName(server.id, t.name),
         description: t.description,
+        source: server.id,
       }));
       listCache.set(server.id, { fetchedAt: Date.now(), tools: summaries });
       return summaries;
