@@ -113,7 +113,6 @@ const useStyles = makeStyles(theme => ({
   },
   userMessageBody: {
     display: 'flex',
-    maxWidth: '80%',
     alignItems: 'flex-start',
     justifyContent: 'flex-end',
     gap: theme.spacing(1),
@@ -122,17 +121,8 @@ const useStyles = makeStyles(theme => ({
     },
   },
   userAvatar: {
-    // Backstage's <Avatar> merges this class with its own `.avatar` default
-    // (width/height: 4rem = 64px) via classNames(), so the two land on the
-    // element at EQUAL specificity and the winner is decided by CSS injection
-    // order — which differs per host app (64px avatar on a client, 40px locally).
-    // Double the selector (`&&` → `.userAvatar.userAvatar`) so our size always
-    // wins regardless of order. The bug only looked picture-specific because a
-    // 64px photo is far more obvious than 64px initials.
-    '&&': {
-      width: theme.spacing(5),
-      height: theme.spacing(5),
-    },
+    width: theme.spacing(5),
+    height: theme.spacing(5),
     marginTop: theme.spacing(0.25),
     flexShrink: 0,
   },
