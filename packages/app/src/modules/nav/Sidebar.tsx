@@ -13,7 +13,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
-import { AssistantsNavItem } from './AssistantsNav';
+import { RiRobot2Line } from '@remixicon/react';
 
 export const SidebarContent = NavContentBlueprint.make({
   params: {
@@ -38,7 +38,11 @@ export const SidebarContent = NavContentBlueprint.make({
           <SidebarGroup label="Menu" icon={<MenuIcon />}>
             {nav.take('page:catalog')}
             {nav.take('page:scaffolder')}
-            <AssistantsNavItem to="/assistants" text="Assistants" />
+            <SidebarItem
+              icon={() => <RiRobot2Line />}
+              to="/assistants"
+              text="Assistants"
+            />
             <SidebarDivider />
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}

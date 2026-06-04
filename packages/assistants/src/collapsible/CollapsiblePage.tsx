@@ -34,6 +34,7 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef } from '../api';
 import { ConversationSurface } from './surface';
+import { AssistantAvatar } from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
 import { useConversations } from './useConversations';
@@ -81,9 +82,32 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: theme.spacing(0.5, 0),
+    paddingBottom: theme.spacing(0.5),
     borderRight: `1px solid ${theme.palette.divider}`,
     overflow: 'hidden',
+  },
+  sidePaneRailHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    minHeight: 44,
+    flexShrink: 0,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  sidePaneRailAssistants: {
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    paddingTop: theme.spacing(0.75),
+  },
+  sidePaneRailDivider: {
+    flexShrink: 0,
+    width: 24,
+    borderTop: `1px solid ${theme.palette.divider}`,
+    margin: theme.spacing(0.75, 0),
   },
   sidePaneRailControls: {
     flexShrink: 0,
@@ -183,6 +207,8 @@ interface ChatThreadProps {
   composerPlaceholder?: string;
   /** Starter prompts from the assistant's `ui`. */
   suggestions?: Array<{ title: string; prompt: string }>;
+  /** The assistant's avatar color (tints the assistant message + welcome). */
+  assistantColor?: string;
   /** Thread header content rendered to the right of the title. */
   headerRight?: React.ReactNode;
 }
@@ -203,6 +229,7 @@ function ChatThread({
   onFinish,
   composerPlaceholder,
   suggestions,
+  assistantColor,
   headerRight,
 }: ChatThreadProps) {
   const classes = useStyles();
@@ -256,6 +283,7 @@ function ChatThread({
           <ConversationSurface
             composerPlaceholder={composerPlaceholder}
             suggestions={suggestions}
+            assistantColor={assistantColor}
           />
         </div>
       </main>
@@ -277,6 +305,19 @@ interface CollapsibleChatProps {
 function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
   const classes = useStyles();
   const api = useApi(assistantsApiRef);
+
+  // Switching assistant drives `?assistant=<id>`; the page re-resolves and
+  // remounts this component (keyed by assistant.id) onto that assistant's
+  // siloed conversation set.
+  const [, setSearchParams] = useSearchParams();
+  const handleSelectAssistant = useCallback(
+    (id: string) => {
+      if (id !== assistant.id) {
+        setSearchParams({ assistant: id });
+      }
+    },
+    [assistant.id, setSearchParams],
+  );
 
   const baseUrl = useAsync(() => api.getBaseUrl(), [api]);
 
@@ -382,7 +423,7 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
           className={classes.sidePaneRail}
           aria-label="AI chat sidebar collapsed"
         >
-          <div className={classes.sidePaneRailControls}>
+          <div className={classes.sidePaneRailHeader}>
             <Tooltip title="Expand" placement="right">
               <IconButton
                 size="small"
@@ -393,6 +434,30 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
                 <ChevronRightIcon fontSize="small" />
               </IconButton>
             </Tooltip>
+          </div>
+          <nav
+            className={classes.sidePaneRailAssistants}
+            aria-label="Assistants"
+          >
+            {status.assistants.map(a => (
+              <Tooltip key={a.id} title={a.title} placement="right">
+                <IconButton
+                  size="small"
+                  className={`${classes.sidePaneRailButton} ${
+                    a.id === assistant.id
+                      ? classes.sidePaneRailButtonActive
+                      : ''
+                  }`}
+                  aria-label={a.title}
+                  onClick={() => handleSelectAssistant(a.id)}
+                >
+                  <AssistantAvatar color={a.color} size={24} />
+                </IconButton>
+              </Tooltip>
+            ))}
+          </nav>
+          <div className={classes.sidePaneRailDivider} />
+          <div className={classes.sidePaneRailControls}>
             <Tooltip title="New Chat" placement="right">
               <IconButton
                 size="small"
@@ -433,6 +498,10 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
       ) : (
         <aside className={classes.sidePane} aria-label="AI chat sidepane">
           <SidePane
+            assistants={status.assistants}
+            activeAssistantId={assistant.id}
+            onSelectAssistant={handleSelectAssistant}
+            tools={assistant.tools ?? []}
             conversations={convState.conversations}
             activeId={convState.activeId}
             onNew={handleNew}
@@ -456,6 +525,7 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
           onFinish={handleFinish}
           composerPlaceholder={assistant.ui?.composer?.placeholder}
           suggestions={assistant.ui?.suggestions}
+          assistantColor={assistant.color}
           headerRight={modelPicker}
         />
       )}

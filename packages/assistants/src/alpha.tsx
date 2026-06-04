@@ -5,6 +5,7 @@ import {
   fetchApiRef,
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
+import { RiRobot2Line } from '@remixicon/react';
 import { rootRouteRef } from './routes';
 import { assistantsApiRef, AssistantsClient } from './api';
 
@@ -39,6 +40,8 @@ const assistantsPage = PageBlueprint.make({
  */
 export default createFrontendPlugin({
   pluginId: 'assistants',
+  title: 'Assistants',
+  icon: <RiRobot2Line />,
   extensions: [assistantsApi, assistantsPage],
   routes: {
     root: rootRouteRef,

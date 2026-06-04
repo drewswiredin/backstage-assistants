@@ -3,13 +3,14 @@
 // imported here: react-ui's `sideEffects: false` lets bundlers tree-shake a
 // bare CSS import from inside a lazily-loaded component, which left the Thread
 // unstyled.
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { ProfileInfo } from '@backstage/core-plugin-api';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { Avatar as BackstageAvatar } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { Button, Typography } from '@material-ui/core';
-import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
+import { BackstageLogo } from './BackstageLogo';
+import { DEFAULT_AVATAR_COLOR } from './AssistantAvatar';
 import { ThreadPrimitive } from '@assistant-ui/react';
 import {
   AssistantActionBar,
@@ -24,6 +25,11 @@ import { ReasoningPart, ThinkingMessage, ToolFallback } from './parts';
 
 const DEFAULT_WELCOME_SUBTITLE =
   'Ask me about services, APIs, teams, TechDocs, or anything in the catalog.';
+
+// The active assistant's avatar color. ConversationSurface provides it; the
+// message components (passed to <Thread> by reference, so they can't take props)
+// read it from context. Falls back to DEFAULT_AVATAR_COLOR.
+const AvatarColorContext = createContext<string | undefined>(undefined);
 
 const useStyles = makeStyles(theme => ({
   threadHost: {
@@ -67,11 +73,12 @@ const useStyles = makeStyles(theme => ({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? theme.palette.grey[900]
-        : theme.palette.grey[100],
-    color: theme.palette.text.secondary,
+    // Transparent so the tinted logo floats (overrides react-ui's aui-avatar-root).
+    backgroundColor: 'transparent',
+  },
+  botLogo: {
+    width: 16,
+    height: 'auto',
   },
   userMessageWithAvatar: {
     display: 'flex',
@@ -113,15 +120,10 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     width: 56,
     height: 56,
-    borderRadius: '50%',
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? theme.palette.grey[800]
-        : theme.palette.grey[100],
-    color: theme.palette.text.secondary,
   },
   welcomeLogoIcon: {
-    fontSize: 32,
+    width: 30,
+    height: 'auto',
   },
   welcomeGreeting: {
     fontWeight: 500,
@@ -146,14 +148,16 @@ const useStyles = makeStyles(theme => ({
 /** A circular MUI-styled bot avatar (no host asset dependency). */
 function AssistantBotAvatar() {
   const classes = useStyles();
+  const color = useContext(AvatarColorContext) ?? DEFAULT_AVATAR_COLOR;
 
   return (
     <span
       className={`aui-avatar-root ${classes.botAvatar}`}
+      style={{ color, backgroundColor: 'transparent' }}
       aria-label="Backstage assistant"
       role="img"
     >
-      <ChatBubbleOutlineIcon fontSize="small" />
+      <BackstageLogo className={classes.botLogo} />
     </span>
   );
 }
@@ -230,6 +234,8 @@ export interface ConversationSurfaceProps {
   suggestions?: Array<{ title: string; prompt: string }>;
   /** Overrides for the default empty-thread greeting. */
   welcome?: { title?: string; subtitle?: string };
+  /** The active assistant's avatar tint (hex); defaults to Backstage teal. */
+  assistantColor?: string;
   /** Host layout escape hatch (applied alongside the themed thread host). */
   className?: string;
 }
@@ -247,7 +253,8 @@ export interface ConversationSurfaceProps {
  * @public
  */
 export function ConversationSurface(props: ConversationSurfaceProps) {
-  const { composerPlaceholder, suggestions, welcome, className } = props;
+  const { composerPlaceholder, suggestions, welcome, assistantColor, className } =
+    props;
   const classes = useStyles();
 
   function EmptyThreadWelcome() {
@@ -261,8 +268,12 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
       <ThreadWelcome.Root>
         <ThreadWelcome.Center>
           <div className={classes.welcomeRoot}>
-            <span className={classes.welcomeLogo} aria-hidden="true">
-              <ChatBubbleOutlineIcon className={classes.welcomeLogoIcon} />
+            <span
+              className={classes.welcomeLogo}
+              style={{ color: assistantColor ?? DEFAULT_AVATAR_COLOR }}
+              aria-hidden="true"
+            >
+              <BackstageLogo className={classes.welcomeLogoIcon} />
             </span>
             <Typography variant="h5" className={classes.welcomeGreeting}>
               {title}
@@ -297,9 +308,10 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   }
 
   return (
-    <div className={`${classes.threadHost} ${className ?? ''}`}>
-      <Thread
-        strings={
+    <AvatarColorContext.Provider value={assistantColor}>
+      <div className={`${classes.threadHost} ${className ?? ''}`}>
+        <Thread
+          strings={
           composerPlaceholder
             ? { composer: { input: { placeholder: composerPlaceholder } } }
             : undefined
@@ -309,14 +321,15 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
           ThreadWelcome: EmptyThreadWelcome,
           UserMessage: UserMessageWithAvatar,
         }}
-        assistantMessage={{
-          components: {
-            Text: MarkdownText,
-            Empty: ThinkingMessage,
-            ToolFallback,
-          },
-        }}
-      />
-    </div>
+          assistantMessage={{
+            components: {
+              Text: MarkdownText,
+              Empty: ThinkingMessage,
+              ToolFallback,
+            },
+          }}
+        />
+      </div>
+    </AvatarColorContext.Provider>
   );
 }

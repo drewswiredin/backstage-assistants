@@ -4705,6 +4705,7 @@ __metadata:
     "@drewswiredin/backstage-plugin-assistants-common": "npm:0.1.0"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
+    "@remixicon/react": "npm:^4.5.0"
     "@types/react": "npm:^18.0.0"
     ai: "npm:^6.0.192"
     mermaid: "npm:^11.0.0"
@@ -9687,7 +9688,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@remixicon/react@npm:^4.6.0":
+"@remixicon/react@npm:^4.5.0, @remixicon/react@npm:^4.6.0":
   version: 4.9.0
   resolution: "@remixicon/react@npm:4.9.0"
   peerDependencies:
@@ -14019,6 +14020,7 @@ __metadata:
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@playwright/test": "npm:^1.32.3"
+    "@remixicon/react": "npm:^4.5.0"
     "@testing-library/dom": "npm:^9.0.0"
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^14.0.0"

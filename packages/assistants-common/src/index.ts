@@ -73,6 +73,12 @@ export interface AssistantSummary {
   models?: ModelId[];
   /** This assistant's default `provider:model` selection. */
   defaultModel?: ModelId;
+  /**
+   * Names of the tools (Backstage actions) available to the caller for this
+   * assistant — its allowlist intersected with the actions this user may see
+   * (resolved wildcard included). Names only; no schemas/descriptions.
+   */
+  tools?: string[];
   /** Resolved UI options (deep-merge of global + per-profile `ui`). */
   ui?: UiOptions;
 }

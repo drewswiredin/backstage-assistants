@@ -362,6 +362,7 @@ export function readConfig(config: Config): AssistantsConfig {
  */
 export function toAssistantSummary(
   assistant: AssistantDefinition,
+  tools?: string[],
 ): AssistantSummary {
   return {
     id: assistant.id,
@@ -370,6 +371,7 @@ export function toAssistantSummary(
     color: assistant.color,
     models: assistant.hasModelAllowlist ? assistant.models : undefined,
     defaultModel: assistant.defaultModel,
+    tools,
     ui: assistant.ui,
   };
 }
@@ -382,10 +384,11 @@ export function toAssistantSummary(
 export function buildStatus(
   assistantsConfig: AssistantsConfig,
   isAccessible: (assistant: AssistantDefinition) => boolean,
+  resolveTools?: (assistant: AssistantDefinition) => string[],
 ): StatusResponse {
   const assistants = Array.from(assistantsConfig.assistants.values())
     .filter(isAccessible)
-    .map(toAssistantSummary);
+    .map(a => toAssistantSummary(a, resolveTools?.(a)));
 
   return {
     assistants,

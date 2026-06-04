@@ -224,10 +224,20 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     const user = await userInfo.getUserInfo(credentials);
 
+    // The actions this caller may see (gate 2, coarse). Used to project each
+    // assistant's effective tool names = its allowlist ∩ this set (wildcard
+    // resolved), matching what `/chat` would actually offer the model.
+    const { actions: available } = await actions.list({ credentials });
+
     // Filter assistants by the caller's access policy, then project to the
     // browser-safe summary shape. Prompt and access never leave the backend.
-    const status: StatusResponse = buildStatus(assistants, assistant =>
-      isAssistantAccessible(assistant, user),
+    const status: StatusResponse = buildStatus(
+      assistants,
+      assistant => isAssistantAccessible(assistant, user),
+      assistant =>
+        selectAssistantActions(available, assistant.actions, logger).map(
+          a => a.name,
+        ),
     );
 
     res.json(status);

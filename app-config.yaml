@@ -169,10 +169,11 @@ assistants:
       placeholder: 'Send a message…'
     suggestions: []
   profiles:
+    # General-purpose assistant. Open to every signed-in user, read-only tools,
+    # restricted to the cheaper/faster model. Default color.
     general:
       title: General Assistant
       description: Catalog + TechDocs helper for your developer portal.
-      color: '#1f6feb'
       prompt: |
         You are a Backstage developer-portal assistant for this organization.
         Help users find information about systems, services, teams, APIs, and
@@ -185,22 +186,52 @@ assistants:
         - search-catalog
         - search-techdocs
         - read-techdocs
+      # Subset of the pool. Excludes the global defaultModel, so a per-profile
+      # defaultModel is required.
+      models:
+        - openrouter:google/gemini-2.5-flash
+      defaultModel: openrouter:google/gemini-2.5-flash
       ui:
         suggestions:
           - title: 'Who owns a service?'
             prompt: 'Who owns the payments service?'
           - title: 'Find documentation'
             prompt: 'Where are the TechDocs for the catalog?'
-    docs:
-      title: Docs Assistant
-      description: A focused TechDocs documentation assistant.
-      color: '#8957e5'
+
+    # Privileged assistant. Restricted to group:default/guests (a non-member is
+    # filtered from /status and rejected at /chat), has write/edit tools, and is
+    # allowed the higher-capability models. Amber/warning color.
+    devops:
+      title: DevOps Engineer
+      description: Catalog + scaffolding operations, with edit tools.
+      color: '#e3a008'
       prompt: |
-        You are a documentation assistant for this Backstage portal. Answer
-        questions using TechDocs content available through your tools. If the
-        answer is not in the docs, say so.
+        You are a DevOps engineering assistant for this Backstage portal. In
+        addition to answering catalog and documentation questions, you can make
+        changes on the user's behalf — registering/unregistering catalog
+        entities and executing software templates. Confirm intent before any
+        destructive or write action, and report exactly what you changed.
       access:
-        allowAuthenticated: true
+        groups:
+          - group:default/guests
+        users:
+          - user:development/guest
       actions:
+        - search-catalog
         - search-techdocs
         - read-techdocs
+        - query-catalog-entities
+        - get-catalog-entity
+        - register-entity
+        - unregister-entity
+        - execute-template
+      models:
+        - openrouter:deepseek/deepseek-v4-pro
+        - openrouter:anthropic/claude-3.5-sonnet
+      defaultModel: openrouter:deepseek/deepseek-v4-pro
+      ui:
+        suggestions:
+          - title: 'Register a component'
+            prompt: 'Register a new component in the catalog from a catalog-info.yaml URL.'
+          - title: 'Available templates'
+            prompt: 'What software templates are available to scaffold?'
