@@ -12,8 +12,11 @@ import { useApi } from '@backstage/core-plugin-api';
 import { Content, Progress, ResponseErrorPanel } from '@backstage/core-components';
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {
+  Badge,
   FormControl,
   IconButton,
+  ListItemIcon,
+  ListSubheader,
   MenuItem,
   Select,
   Tooltip,
@@ -21,8 +24,10 @@ import {
 } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
+import CheckIcon from '@material-ui/icons/Check';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
-import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import StarIcon from '@material-ui/icons/Star';
+import { AssistantRuntimeProvider, useThread } from '@assistant-ui/react';
 import { useChatRuntime } from '@assistant-ui/react-ai-sdk';
 import { DefaultChatTransport } from 'ai';
 import type { UIMessage } from 'ai';
@@ -40,7 +45,17 @@ import {
 } from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
-import { useConversations } from './useConversations';
+import {
+  persistConversationMessages,
+  useConversations,
+} from './useConversations';
+import {
+  clearUnread,
+  hasUnread,
+  isConversationUnread,
+  markUnread,
+  useUnreadVersion,
+} from './unreadStore';
 
 const SIDEPANE_COLLAPSED_KEY = 'ai-chat-sidepane-collapsed';
 
@@ -187,10 +202,55 @@ const useStyles = makeStyles(theme => ({
   modelSelect: {
     fontSize: theme.typography.caption.fontSize,
     color: theme.palette.text.secondary,
+    borderRadius: 999,
+    transition: theme.transitions.create('background-color'),
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
     '& .MuiSelect-select': {
+      display: 'flex',
+      alignItems: 'center',
+      borderRadius: 999,
       paddingTop: theme.spacing(0.5),
       paddingBottom: theme.spacing(0.5),
+      paddingLeft: theme.spacing(1.25),
+      paddingRight: theme.spacing(3),
+      '&:focus': {
+        backgroundColor: 'transparent',
+        borderRadius: 999,
+      },
     },
+    '& .MuiSelect-icon': {
+      color: theme.palette.text.secondary,
+      right: theme.spacing(0.5),
+    },
+  },
+  // Trigger label: vendor in muted text, model name emphasized.
+  modelTriggerVendor: {
+    color: theme.palette.text.hint,
+    marginRight: theme.spacing(0.5),
+  },
+  modelGroupLabel: {
+    lineHeight: 2,
+    fontSize: theme.typography.caption.fontSize,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: theme.palette.text.secondary,
+    backgroundColor: theme.palette.background.paper,
+  },
+  modelItem: {
+    paddingTop: theme.spacing(0.75),
+    paddingBottom: theme.spacing(0.75),
+  },
+  modelItemCheck: {
+    minWidth: theme.spacing(3.5),
+    color: theme.palette.primary.main,
+  },
+  modelDefaultStar: {
+    fontSize: '1rem',
+    color: theme.palette.warning.main,
+    marginLeft: theme.spacing(1),
   },
   threadBody: {
     flex: 1,
@@ -202,14 +262,50 @@ const useStyles = makeStyles(theme => ({
     // two-tone seam. Composer breathing room lives on .aui-thread-viewport-footer
     // (same bg) in ConversationSurface.
   },
+  // Background thread: kept mounted (stream alive) but out of view/layout.
+  threadPaneHidden: {
+    display: 'none',
+  },
 }));
 
 /**
- * Resolve the label for a model id from the global model pool, falling back to
- * the raw id when it isn't listed.
+ * Bridges the active thread runtime's running state up to the live-thread
+ * manager. Rendered inside {@link ChatThread}'s `AssistantRuntimeProvider`.
  */
+function RunningReporter({
+  onRunningChange,
+}: {
+  onRunningChange?: (running: boolean) => void;
+}) {
+  const isRunning = useThread(t => t.isRunning);
+  useEffect(() => {
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
+  return null;
+}
+
+/**
+ * Split a model id into a display vendor + name. Our models route through one
+ * provider (e.g. `openrouter`) but the meaningful family is the vendor prefix in
+ * the model name (`google/gemini-2.5-flash` -> {vendor: "google", name:
+ * "gemini-2.5-flash"}). Falls back to the provider / raw id when there's no `/`.
+ */
+function splitModel(
+  id: ModelId,
+  pool: ModelOption[],
+): { vendor: string; name: string } {
+  const opt = pool.find(m => m.id === id);
+  const raw = opt?.model ?? id;
+  const slash = raw.indexOf('/');
+  if (slash !== -1) {
+    return { vendor: raw.slice(0, slash), name: raw.slice(slash + 1) };
+  }
+  return { vendor: opt?.provider ?? 'models', name: raw };
+}
+
+/** The short model name (after the vendor prefix), for the selector trigger. */
 function modelLabel(id: ModelId, pool: ModelOption[]): string {
-  return pool.find(m => m.id === id)?.model ?? id;
+  return splitModel(id, pool).name;
 }
 
 interface ChatThreadProps {
@@ -235,6 +331,13 @@ interface ChatThreadProps {
   assistantColor?: string;
   /** Thread header content rendered to the right of the title. */
   headerRight?: React.ReactNode;
+  /**
+   * Render but visually hide the thread (kept mounted so a background stream
+   * keeps running). The live-thread manager shows exactly one thread at a time.
+   */
+  hidden?: boolean;
+  /** Notified when this thread starts/stops streaming (drives keep-alive). */
+  onRunningChange?: (running: boolean) => void;
 }
 
 /**
@@ -256,6 +359,8 @@ function ChatThread({
   suggestions,
   assistantColor,
   headerRight,
+  hidden,
+  onRunningChange,
 }: ChatThreadProps) {
   const classes = useStyles();
   const theme = useTheme();
@@ -295,12 +400,14 @@ function ChatThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <RunningReporter onRunningChange={onRunningChange} />
       <main
-        className={classes.threadPane}
-        style={{
-          borderTop: `3px solid ${accentColor}`,
-        }}
+        className={
+          hidden ? `${classes.threadPane} ${classes.threadPaneHidden}` : classes.threadPane
+        }
+        style={hidden ? undefined : { borderTop: `3px solid ${accentColor}` }}
         aria-label="AI chat thread"
+        aria-hidden={hidden}
       >
         <div className={classes.threadHeader}>
           <div className={classes.threadIdentity}>
@@ -332,20 +439,116 @@ function ChatThread({
   );
 }
 
+/**
+ * Everything the live-thread manager needs to mount a {@link ChatThread}
+ * independently of which assistant is currently on screen. Captured (snapshot)
+ * when a conversation first becomes active, so a thread can keep streaming in the
+ * background after the user switches conversation or assistant.
+ */
+interface ThreadDescriptor {
+  convId: string;
+  agentId: string;
+  assistantTitle: string;
+  assistantColor?: string;
+  modelId: ModelId;
+  initialMessages?: UIMessage[];
+  composerPlaceholder?: string;
+  suggestions?: Array<{ title: string; prompt: string }>;
+}
+
+/**
+ * Keeps a {@link ChatThread} mounted while it is the active conversation OR still
+ * streaming, so navigating away doesn't abort an in-flight reply. Returns the set
+ * of descriptors to render (active + any still-running background threads) and a
+ * callback to report each thread's running state.
+ *
+ * Reconciliation runs in an effect (not during render) so the discarded render
+ * that React performs when `useConversations` re-seeds on an assistant switch
+ * can't capture a half-updated descriptor.
+ */
+function useLiveThreads(active: ThreadDescriptor | null) {
+  const [mounted, setMounted] = useState<ThreadDescriptor[]>([]);
+  const [running, setRunning] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  useEffect(() => {
+    const a = activeRef.current;
+    setMounted(prev => {
+      const byId = new Map(prev.map(d => [d.convId, d] as const));
+      // Snapshot the active descriptor the first time it mounts; never overwrite
+      // an already-mounted (live) thread.
+      if (a && !byId.has(a.convId)) {
+        byId.set(a.convId, a);
+      }
+      const keep = new Set<string>(running);
+      if (a) {
+        keep.add(a.convId);
+      }
+      const next: ThreadDescriptor[] = [];
+      for (const d of prev) {
+        if (keep.has(d.convId)) {
+          next.push(byId.get(d.convId) ?? d);
+          keep.delete(d.convId);
+        }
+      }
+      for (const id of keep) {
+        const d = byId.get(id);
+        if (d) {
+          next.push(d);
+        }
+      }
+      const unchanged =
+        next.length === prev.length &&
+        next.every((d, i) => d.convId === prev[i].convId);
+      return unchanged ? prev : next;
+    });
+  }, [active?.convId, running]);
+
+  const setThreadRunning = useCallback((convId: string, isRunning: boolean) => {
+    setRunning(prev => {
+      const has = prev.has(convId);
+      if (isRunning === has) {
+        return prev;
+      }
+      const next = new Set(prev);
+      if (isRunning) {
+        next.add(convId);
+      } else {
+        next.delete(convId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Always render the active thread immediately, even before the effect folds it
+  // into `mounted` (avoids a one-frame empty pane on open / switch).
+  const threads =
+    active && !mounted.some(d => d.convId === active.convId)
+      ? [...mounted, active]
+      : mounted;
+
+  return { threads, setThreadRunning };
+}
+
 interface CollapsibleChatProps {
   status: StatusResponse;
   assistant: AssistantSummary;
 }
 
 /**
- * The conversation experience for a single resolved assistant: the collapsible
- * left rail, the per-assistant conversation set, the model picker, and the
- * active thread. Remounted (via `key={assistant.id}`) when the assistant
- * changes so conversation state is re-seeded from that assistant's namespace.
+ * The conversation experience for the resolved assistant: the collapsible left
+ * rail, the per-assistant conversation set, the model picker, and the live
+ * threads. NOT remounted on assistant switch — `useConversations` re-seeds from
+ * the new namespace, and the {@link useLiveThreads} manager keeps background
+ * threads streaming across the switch.
  */
 function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
   const classes = useStyles();
   const api = useApi(assistantsApiRef);
+  useUnreadVersion(); // re-render the rail's unread dots on change
 
   // Switching assistant drives `?assistant=<id>`; the page re-resolves and
   // remounts this component (keyed by assistant.id) onto that assistant's
@@ -368,8 +571,51 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
     () => assistant.models ?? status.models.map(m => m.id),
     [assistant.models, status.models],
   );
-  const [modelId, setModelId] = useState<ModelId>(
-    () => assistant.defaultModel ?? status.defaultModel,
+  // The model marked with a default star in the menu.
+  const defaultModel = assistant.defaultModel ?? status.defaultModel;
+  // Group allowed models by vendor (the prefix in the model name) for the menu.
+  const modelGroups = useMemo<Array<[string, ModelId[]]>>(() => {
+    const byVendor = new Map<string, ModelId[]>();
+    for (const id of allowedModels) {
+      const { vendor } = splitModel(id, status.models);
+      const list = byVendor.get(vendor);
+      if (list) {
+        list.push(id);
+      } else {
+        byVendor.set(vendor, [id]);
+      }
+    }
+    return [...byVendor.entries()];
+  }, [allowedModels, status.models]);
+  const convState = useConversations(assistant.id);
+
+  // Per-conversation model memory. Seed from the active conversation's saved
+  // model, validated against this assistant's allowlist; fall back to the
+  // assistant default when absent or no longer available.
+  const resolveModel = useCallback(
+    (stored: ModelId | undefined) =>
+      stored && allowedModels.includes(stored) ? stored : defaultModel,
+    [allowedModels, defaultModel],
+  );
+  const [modelId, setModelId] = useState<ModelId>(() =>
+    resolveModel(convState.activeConversation?.model),
+  );
+  // Adopt the active conversation's saved model when switching conversations.
+  // Keyed on activeId only (not the conversation object, whose identity changes
+  // on every streamed message) so an in-flight chat can't clobber the pick.
+  useEffect(() => {
+    setModelId(resolveModel(convState.activeConversation?.model));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convState.activeId]);
+  // Persist the user's pick onto the active conversation.
+  const handleModelChange = useCallback(
+    (next: ModelId) => {
+      setModelId(next);
+      if (convState.activeId) {
+        convState.setConversationModel(convState.activeId, next);
+      }
+    },
+    [convState],
   );
 
   const [sidePaneCollapsed, setSidePaneCollapsed] = useState(
@@ -383,38 +629,63 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
     }
   }, [sidePaneCollapsed]);
 
-  const convState = useConversations(assistant.id);
-
   const handleNew = useCallback(() => {
     convState.createConversation();
   }, [convState]);
 
-  const handleFinish = useCallback(
-    (messages: UIMessage[]) => {
-      const activeId = convState.activeId;
-      const shouldGenerateTitle =
-        convState.activeConversation?.title === 'New Chat' &&
-        messages.some(m => m.role === 'user') &&
-        messages.some(m => m.role === 'assistant');
+  // A turn finished — possibly in a background thread (different conversation or
+  // even a different assistant than the one on screen).
+  const handleThreadFinish = useCallback(
+    (descriptor: ThreadDescriptor, messages: UIMessage[]) => {
+      const sameAgent = descriptor.agentId === assistant.id;
+      const viewing = sameAgent && descriptor.convId === convState.activeId;
 
-      if (activeId) {
-        convState.updateMessages(activeId, messages);
+      // Persist: reactively for the on-screen assistant, directly to storage for
+      // any other assistant (whose conversation state isn't mounted here).
+      if (sameAgent) {
+        convState.updateMessages(descriptor.convId, messages);
+      } else {
+        persistConversationMessages(
+          descriptor.agentId,
+          descriptor.convId,
+          messages,
+        );
       }
 
-      if (activeId && shouldGenerateTitle) {
-        api
-          .getTitle({ assistantId: assistant.id, modelId, messages })
-          .then(generated => {
-            if (generated && generated !== 'New Chat') {
-              convState.renameConversation(activeId, generated);
-            }
-          })
-          .catch(() => {
-            // Title generation is best-effort only.
-          });
+      // Unread dot if the reply landed somewhere the user isn't looking.
+      if (!viewing) {
+        markUnread(descriptor.agentId, descriptor.convId);
+      }
+
+      // Best-effort title for brand-new chats of the on-screen assistant (its
+      // conversation state is mounted, so the rename is reactive).
+      if (sameAgent) {
+        const conv = convState.conversations.find(
+          c => c.id === descriptor.convId,
+        );
+        const shouldTitle =
+          conv?.title === 'New Chat' &&
+          messages.some(m => m.role === 'user') &&
+          messages.some(m => m.role === 'assistant');
+        if (shouldTitle) {
+          api
+            .getTitle({
+              assistantId: descriptor.agentId,
+              modelId: descriptor.modelId,
+              messages,
+            })
+            .then(generated => {
+              if (generated && generated !== 'New Chat') {
+                convState.renameConversation(descriptor.convId, generated);
+              }
+            })
+            .catch(() => {
+              // Title generation is best-effort only.
+            });
+        }
       }
     },
-    [api, assistant.id, modelId, convState],
+    [api, assistant.id, convState],
   );
 
   // Auto-create a conversation on first load if none active.
@@ -426,20 +697,73 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Viewing a conversation clears its unread dot (and does so on assistant
+  // switch, since the active conversation changes with it).
+  useEffect(() => {
+    if (convState.activeId) {
+      clearUnread(assistant.id, convState.activeId);
+    }
+  }, [assistant.id, convState.activeId]);
+
+  // The active conversation, as a descriptor, plus any background threads still
+  // streaming. The manager keeps them mounted across conversation/assistant
+  // switches so their replies finish and persist.
+  const activeDescriptor: ThreadDescriptor | null = convState.activeId
+    ? {
+        convId: convState.activeId,
+        agentId: assistant.id,
+        assistantTitle: assistant.title,
+        assistantColor: assistant.color,
+        modelId,
+        initialMessages: convState.activeConversation?.messages,
+        composerPlaceholder: assistant.ui?.composer?.placeholder,
+        suggestions: assistant.ui?.suggestions,
+      }
+    : null;
+  const { threads, setThreadRunning } = useLiveThreads(activeDescriptor);
+
   const modelPicker = (
     <FormControl>
       <Select
         value={modelId}
-        onChange={e => setModelId(e.target.value as ModelId)}
+        onChange={e => handleModelChange(e.target.value as ModelId)}
         disableUnderline
         className={classes.modelSelect}
         inputProps={{ 'aria-label': 'Model' }}
+        renderValue={value => modelLabel(value as ModelId, status.models)}
+        MenuProps={{
+          anchorOrigin: { vertical: 'bottom', horizontal: 'right' },
+          transformOrigin: { vertical: 'top', horizontal: 'right' },
+          getContentAnchorEl: null,
+        }}
       >
-        {allowedModels.map(id => (
-          <MenuItem key={id} value={id}>
-            {modelLabel(id, status.models)}
-          </MenuItem>
-        ))}
+        {modelGroups.flatMap(([vendor, ids]) => [
+          <ListSubheader
+            key={`group-${vendor}`}
+            disableSticky
+            className={classes.modelGroupLabel}
+          >
+            {vendor}
+          </ListSubheader>,
+          ...ids.map(id => (
+            <MenuItem key={id} value={id} className={classes.modelItem}>
+              <ListItemIcon className={classes.modelItemCheck}>
+                {id === modelId ? <CheckIcon fontSize="small" /> : null}
+              </ListItemIcon>
+              <span style={{ flexGrow: 1 }}>
+                {modelLabel(id, status.models)}
+              </span>
+              {id === defaultModel && (
+                <Tooltip title="Assistant default">
+                  <StarIcon
+                    className={classes.modelDefaultStar}
+                    aria-label="Assistant default"
+                  />
+                </Tooltip>
+              )}
+            </MenuItem>
+          )),
+        ])}
       </Select>
     </FormControl>
   );
@@ -492,7 +816,14 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
                   aria-label={a.title}
                   onClick={() => handleSelectAssistant(a.id)}
                 >
-                  <AssistantAvatar color={a.color} size={24} />
+                  <Badge
+                    color="error"
+                    variant="dot"
+                    overlap="circular"
+                    invisible={!hasUnread(a.id)}
+                  >
+                    <AssistantAvatar color={a.color} size={24} />
+                  </Badge>
                 </IconButton>
               </Tooltip>
             ))}
@@ -530,7 +861,17 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
                   aria-label={conversation.title}
                   onClick={() => convState.selectConversation(conversation.id)}
                 >
-                  <ChatBubbleOutlineIcon fontSize="small" />
+                  <Badge
+                    color="error"
+                    variant="dot"
+                    overlap="circular"
+                    invisible={
+                      conversation.id === convState.activeId ||
+                      !isConversationUnread(assistant.id, conversation.id)
+                    }
+                  >
+                    <ChatBubbleOutlineIcon fontSize="small" />
+                  </Badge>
                 </IconButton>
               </Tooltip>
             ))}
@@ -553,23 +894,29 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
           />
         </aside>
       )}
-      {convState.activeId && (
-        <ChatThread
-          key={convState.activeId}
-          baseUrl={baseUrl.value}
-          authFetch={api.fetch}
-          assistantId={assistant.id}
-          modelId={modelId}
-          title={convState.activeConversation?.title ?? ''}
-          assistantName={assistant.title}
-          initialMessages={convState.activeConversation?.messages}
-          onFinish={handleFinish}
-          composerPlaceholder={assistant.ui?.composer?.placeholder}
-          suggestions={assistant.ui?.suggestions}
-          assistantColor={assistant.color}
-          headerRight={modelPicker}
-        />
-      )}
+      {threads.map(d => {
+        const isActive =
+          d.agentId === assistant.id && d.convId === convState.activeId;
+        return (
+          <ChatThread
+            key={d.convId}
+            hidden={!isActive}
+            baseUrl={baseUrl.value}
+            authFetch={api.fetch}
+            assistantId={d.agentId}
+            modelId={isActive ? modelId : d.modelId}
+            title={isActive ? convState.activeConversation?.title ?? '' : ''}
+            assistantName={isActive ? assistant.title : d.assistantTitle}
+            initialMessages={d.initialMessages}
+            onFinish={messages => handleThreadFinish(d, messages)}
+            onRunningChange={running => setThreadRunning(d.convId, running)}
+            composerPlaceholder={d.composerPlaceholder}
+            suggestions={d.suggestions}
+            assistantColor={isActive ? assistant.color : d.assistantColor}
+            headerRight={isActive ? modelPicker : undefined}
+          />
+        );
+      })}
         </div>
       </Content>
     </FullHeightRegion>
@@ -617,11 +964,8 @@ export function CollapsiblePage() {
   }
   const assistant =
     assistants.find(a => a.id === requestedAssistant) ?? assistants[0];
-  return (
-    <CollapsibleChat
-      key={assistant.id}
-      status={status.value}
-      assistant={assistant}
-    />
-  );
+  // Intentionally NOT keyed by assistant.id: the page persists across assistant
+  // switches so background chat threads keep streaming. useConversations
+  // re-seeds itself from the new assistant's namespace.
+  return <CollapsibleChat status={status.value} assistant={assistant} />;
 }

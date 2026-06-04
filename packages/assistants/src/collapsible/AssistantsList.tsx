@@ -6,12 +6,14 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
 import IconButton from '@material-ui/core/IconButton';
+import Badge from '@material-ui/core/Badge';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { AssistantDetailDialog } from './AssistantDetailDialog';
+import { hasUnread, useUnreadVersion } from './unreadStore';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -58,6 +60,7 @@ export const AssistantsList: FC<{
   onSelect: (id: string) => void;
 }> = ({ assistants, activeId, onSelect }) => {
   const classes = useStyles();
+  useUnreadVersion(); // re-render when unread state changes
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const openDetail = (e: MouseEvent<HTMLElement>, id: string) => {
@@ -80,7 +83,14 @@ export const AssistantsList: FC<{
             onClick={() => onSelect(a.id)}
           >
             <ListItemIcon className={classes.icon}>
-              <AssistantAvatar color={a.color} size={22} />
+              <Badge
+                color="error"
+                variant="dot"
+                overlap="circular"
+                invisible={!hasUnread(a.id)}
+              >
+                <AssistantAvatar color={a.color} size={22} />
+              </Badge>
             </ListItemIcon>
             <ListItemText
               primary={a.title}

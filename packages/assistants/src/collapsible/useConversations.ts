@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { UIMessage } from 'ai';
+import type { ModelId } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /**
  * A single locally-persisted chat conversation.
@@ -13,6 +14,13 @@ export interface Conversation {
   updatedAt: string;
   pinned: boolean;
   messages: UIMessage[];
+  /**
+   * The model last selected for this conversation. Restored when the chat is
+   * reopened; absent means "use the assistant's default". The caller validates
+   * it against the assistant's current allowlist and falls back to the default
+   * when it's no longer available.
+   */
+  model?: ModelId;
 }
 
 /**
@@ -83,10 +91,51 @@ function saveActiveId(activeKey: string, activeId: string | null) {
   }
 }
 
-function loadInitialState(assistantId: string) {
+/**
+ * Persist a conversation's messages directly to an assistant's namespaced
+ * storage, without going through the React hook. Used by the live-thread manager
+ * to save a reply that finished in the background for an assistant other than
+ * the one currently on screen (whose `useConversations` state isn't mounted).
+ * No-op if the conversation no longer exists.
+ *
+ * @public
+ */
+export function persistConversationMessages(
+  assistantId: string,
+  conversationId: string,
+  messages: UIMessage[],
+) {
+  const { list } = storageKeys(assistantId);
+  const conversations = load(list);
+  if (!conversations.some(c => c.id === conversationId)) {
+    return;
+  }
+  save(
+    list,
+    conversations.map(c =>
+      c.id === conversationId
+        ? { ...c, messages, updatedAt: new Date().toISOString() }
+        : c,
+    ),
+  );
+}
+
+interface InternalState {
+  /** The assistant these conversations belong to (kept in state so saves never
+   * cross namespaces during an assistant switch). */
+  assistantId: string;
+  conversations: Conversation[];
+  activeId: string | null;
+}
+
+function loadInitialState(assistantId: string): InternalState {
   const { list, activeId } = storageKeys(assistantId);
   const conversations = load(list);
-  return { conversations, activeId: loadActiveId(activeId, conversations) };
+  return {
+    assistantId,
+    conversations,
+    activeId: loadActiveId(activeId, conversations),
+  };
 }
 
 /**
@@ -105,38 +154,44 @@ export interface ConversationsState {
   renameConversation: (id: string, title: string) => void;
   pinConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
+  /** Persist the model selected for a conversation (does not reorder the list). */
+  setConversationModel: (id: string, model: ModelId) => void;
 }
 
 /**
  * Pattern-A localStorage conversation state (ported from Implementation 1):
  * create / select / rename / pin / delete, persisted on every change.
  *
- * Storage is namespaced by `assistantId` so switching assistants surfaces a
- * separate conversation set. Callers should also remount this hook (e.g. via a
- * React `key` on the owning component) when the assistant changes so the
- * initial state is re-seeded from the new namespace.
+ * Storage is namespaced by `assistantId`. The hook re-seeds itself when
+ * `assistantId` changes (the assistant id is held in state alongside the data),
+ * so the owning component no longer needs to remount on assistant switch — which
+ * lets background chat threads outlive an assistant change.
  *
  * @public
  */
 export function useConversations(assistantId: string): ConversationsState {
-  const { list: listKey, activeId: activeKey } = storageKeys(assistantId);
+  const [state, setState] = useState<InternalState>(() =>
+    loadInitialState(assistantId),
+  );
 
-  const [initialState] = useState(() => loadInitialState(assistantId));
-  const [conversations, setConversations] = useState<Conversation[]>(
-    initialState.conversations,
-  );
-  const [activeId, setActiveId] = useState<string | null>(
-    initialState.activeId,
-  );
+  // Re-seed synchronously when the assistant changes. Holding assistantId in the
+  // same state object keeps the persistence effects below from writing one
+  // assistant's conversations under another's key during the switch render.
+  if (state.assistantId !== assistantId) {
+    setState(loadInitialState(assistantId));
+  }
+
+  const { conversations, activeId } = state;
+  const keys = storageKeys(state.assistantId);
 
   // Persist on every change.
   useEffect(() => {
-    save(listKey, conversations);
-  }, [listKey, conversations]);
+    save(keys.list, conversations);
+  }, [keys.list, conversations]);
 
   useEffect(() => {
-    saveActiveId(activeKey, activeId);
-  }, [activeKey, activeId]);
+    saveActiveId(keys.activeId, activeId);
+  }, [keys.activeId, activeId]);
 
   const activeConversation = conversations.find(c => c.id === activeId) ?? null;
 
@@ -151,53 +206,68 @@ export function useConversations(assistantId: string): ConversationsState {
       pinned: false,
       messages: [],
     };
-    setConversations(prev => [conv, ...prev]);
-    setActiveId(id);
+    setState(prev => ({
+      ...prev,
+      conversations: [conv, ...prev.conversations],
+      activeId: id,
+    }));
     return id;
   }, []);
 
   const updateMessages = useCallback((id: string, messages: UIMessage[]) => {
-    setConversations(prev =>
-      prev.map(c => {
-        if (c.id !== id) return c;
-        return { ...c, messages, updatedAt: new Date().toISOString() };
-      }),
-    );
+    setState(prev => ({
+      ...prev,
+      conversations: prev.conversations.map(c =>
+        c.id === id ? { ...c, messages, updatedAt: new Date().toISOString() } : c,
+      ),
+    }));
   }, []);
 
   const renameConversation = useCallback((id: string, title: string) => {
-    setConversations(prev =>
-      prev.map(c =>
+    setState(prev => ({
+      ...prev,
+      conversations: prev.conversations.map(c =>
         c.id === id ? { ...c, title, updatedAt: new Date().toISOString() } : c,
       ),
-    );
+    }));
   }, []);
 
   const pinConversation = useCallback((id: string) => {
-    setConversations(prev =>
-      prev.map(c =>
+    setState(prev => ({
+      ...prev,
+      conversations: prev.conversations.map(c =>
         c.id === id
           ? { ...c, pinned: !c.pinned, updatedAt: new Date().toISOString() }
           : c,
       ),
-    );
+    }));
   }, []);
 
-  const deleteConversation = useCallback(
-    (id: string) => {
-      setConversations(prev => {
-        const next = prev.filter(c => c.id !== id);
-        if (activeId === id) {
-          setActiveId(getLastConversationId(next));
-        }
-        return next;
-      });
-    },
-    [activeId],
-  );
+  const deleteConversation = useCallback((id: string) => {
+    setState(prev => {
+      const next = prev.conversations.filter(c => c.id !== id);
+      return {
+        ...prev,
+        conversations: next,
+        activeId:
+          prev.activeId === id ? getLastConversationId(next) : prev.activeId,
+      };
+    });
+  }, []);
 
   const selectConversation = useCallback((id: string | null) => {
-    setActiveId(id);
+    setState(prev => ({ ...prev, activeId: id }));
+  }, []);
+
+  // Model changes don't bump updatedAt: switching model shouldn't reorder the
+  // conversation list.
+  const setConversationModel = useCallback((id: string, model: ModelId) => {
+    setState(prev => ({
+      ...prev,
+      conversations: prev.conversations.map(c =>
+        c.id === id ? { ...c, model } : c,
+      ),
+    }));
   }, []);
 
   // Sort: pinned first, then by updatedAt desc.
@@ -216,5 +286,6 @@ export function useConversations(assistantId: string): ConversationsState {
     renameConversation,
     pinConversation,
     deleteConversation,
+    setConversationModel,
   };
 }

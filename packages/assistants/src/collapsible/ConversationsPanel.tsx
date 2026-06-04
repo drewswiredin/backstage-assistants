@@ -1,6 +1,7 @@
 import { MouseEvent, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import {
+  Badge,
   IconButton,
   List,
   ListItem,
@@ -17,6 +18,7 @@ import BookmarkIcon from '@material-ui/icons/Bookmark';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import type { Conversation } from './useConversations';
+import { isConversationUnread, useUnreadVersion } from './unreadStore';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -58,6 +60,8 @@ const useStyles = makeStyles(theme => ({
  * @public
  */
 export interface ConversationsPanelProps {
+  /** The assistant these conversations belong to (for unread lookups). */
+  assistantId: string;
   conversations: Conversation[];
   activeId: string | null;
   onSelect: (id: string | null) => void;
@@ -75,6 +79,7 @@ export interface ConversationsPanelProps {
  * @public
  */
 export function ConversationsPanel({
+  assistantId,
   conversations,
   activeId,
   onSelect,
@@ -83,6 +88,7 @@ export function ConversationsPanel({
   onDelete,
 }: ConversationsPanelProps) {
   const classes = useStyles();
+  useUnreadVersion(); // re-render when unread state changes
   const [menuAnchor, setMenuAnchor] = useState<{
     el: HTMLElement;
     id: string;
@@ -130,7 +136,17 @@ export function ConversationsPanel({
               onClick={() => onSelect(conv.id)}
             >
               <ListItemIcon style={{ minWidth: 32 }}>
-                <ChatBubbleOutlineIcon fontSize="small" />
+                <Badge
+                  color="error"
+                  variant="dot"
+                  overlap="circular"
+                  invisible={
+                    conv.id === activeId ||
+                    !isConversationUnread(assistantId, conv.id)
+                  }
+                >
+                  <ChatBubbleOutlineIcon fontSize="small" />
+                </Badge>
               </ListItemIcon>
               {renamingId === conv.id ? (
                 <TextField

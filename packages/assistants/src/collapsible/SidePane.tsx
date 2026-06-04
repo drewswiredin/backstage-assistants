@@ -113,6 +113,7 @@ export function SidePane(props: SidePaneProps) {
         </Tooltip>
       </div>
       <ConversationsPanel
+        assistantId={activeAssistantId}
         conversations={conversations}
         activeId={activeId}
         onSelect={onSelect}
