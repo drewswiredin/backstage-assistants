@@ -101,6 +101,16 @@ Set the key in your environment (never commit it):
 export OPENROUTER_API_KEY=sk-or-...
 ```
 
+Also add `assistants` to the backend actions service so the tools are exposed
+(otherwise a profile's tools resolve to empty):
+
+```yaml
+backend:
+  actions:
+    pluginSources:
+      - assistants # plus catalog / scaffolder etc. for their actions
+```
+
 See the
 [backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
 for the full configuration reference (providers, per-assistant access policies,

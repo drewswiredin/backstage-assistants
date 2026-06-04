@@ -202,11 +202,11 @@ assistants:
     # filtered from /status and rejected at /chat), has write/edit tools, and is
     # allowed the higher-capability models. Amber/warning color.
     devops:
-      title: DevOps Engineer
+      title: DevOps Assistant
       description: Catalog + scaffolding operations, with edit tools.
       color: '#e3a008'
       prompt: |
-        You are a DevOps engineering assistant for this Backstage portal. In
+        You are a DevOps assistant for this Backstage portal. In
         addition to answering catalog and documentation questions, you can make
         changes on the user's behalf — registering/unregistering catalog
         entities and executing software templates. Confirm intent before any

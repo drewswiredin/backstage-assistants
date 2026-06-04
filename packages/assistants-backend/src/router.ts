@@ -18,14 +18,19 @@ import {
   type ModelMessage,
   type UIMessage,
 } from 'ai';
-import type { StatusResponse } from '@drewswiredin/backstage-plugin-assistants-common';
+import type {
+  StatusResponse,
+  ToolSummary,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import {
   AssistantAccessPolicy,
   AssistantDefinition,
   AssistantsConfig,
   buildStatus,
+  McpServerConfig,
 } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
+import { buildMcpTools, listMcpTools } from './mcp';
 import { createOpenApiRouter } from './schema/openapi';
 
 /**
@@ -229,16 +234,36 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // resolved), matching what `/chat` would actually offer the model.
     const { actions: available } = await actions.list({ credentials });
 
+    // Pre-fetch (cached) MCP tool summaries for every server referenced by an
+    // assistant this caller can access, so the synchronous tool projection below
+    // can include them. A server that's down yields an empty list, not an error.
+    const neededServers = new Set<string>();
+    for (const assistant of assistants.assistants.values()) {
+      if (isAssistantAccessible(assistant, user)) {
+        assistant.mcpServers.forEach(id => neededServers.add(id));
+      }
+    }
+    const mcpToolsByServer = new Map<string, ToolSummary[]>();
+    await Promise.all(
+      [...neededServers].map(async id => {
+        const server = assistants.mcpServers.get(id);
+        if (server) {
+          mcpToolsByServer.set(id, await listMcpTools(server, logger));
+        }
+      }),
+    );
+
     // Filter assistants by the caller's access policy, then project to the
     // browser-safe summary shape. Prompt and access never leave the backend.
     const status: StatusResponse = buildStatus(
       assistants,
       assistant => isAssistantAccessible(assistant, user),
-      assistant =>
-        selectAssistantActions(available, assistant.actions, logger).map(a => ({
-          name: a.name,
-          description: a.description,
-        })),
+      assistant => [
+        ...selectAssistantActions(available, assistant.actions, logger).map(
+          a => ({ name: a.name, description: a.description }),
+        ),
+        ...assistant.mcpServers.flatMap(id => mcpToolsByServer.get(id) ?? []),
+      ],
     );
 
     res.json(status);
@@ -293,7 +318,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //    (runs as the user; fine-grained perms enforced at invoke — ADR 0003).
     const { actions: available } = await actions.list({ credentials });
     const selected = selectAssistantActions(available, assistant.actions, logger);
-    const tools = actionsToTools(selected, actions, credentials);
+
+    // 6b. Add tools from the assistant's allowlisted external MCP servers
+    //     (static/shared credential — not run-as-user). Connections are held for
+    //     the turn and closed when the stream finishes/errors. A server that's
+    //     down is skipped, not fatal.
+    const mcpServerConfigs = assistant.mcpServers
+      .map(id => assistants.mcpServers.get(id))
+      .filter((s): s is McpServerConfig => Boolean(s));
+    const mcp = await buildMcpTools(mcpServerConfigs, logger);
+    const tools = {
+      ...actionsToTools(selected, actions, credentials),
+      ...mcp.tools,
+    };
 
     // 7. Convert UI messages → model messages.
     let modelMessages = await convertToModelMessages(
@@ -317,6 +354,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       tools,
       stopWhen: stepCountIs(assistants.maxSteps),
       onFinish: ({ finishReason, usage, steps }) => {
+        // Release MCP connections now the turn (incl. tool calls) is done.
+        void mcp.close();
         // Non-blocking completion log.
         logger.info('chat turn finished', {
           requestId,
@@ -326,6 +365,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           steps: steps.length,
           inputTokens: usage.inputTokens ?? 0,
           outputTokens: usage.outputTokens ?? 0,
+        });
+      },
+      onError: ({ error }) => {
+        void mcp.close();
+        logger.error('chat turn errored', {
+          requestId,
+          assistantId,
+          modelId,
+          error: error instanceof Error ? error.message : String(error),
         });
       },
     });

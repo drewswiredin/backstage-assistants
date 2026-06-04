@@ -39,6 +39,33 @@ export interface Config {
     registerCoreActions?: boolean;
 
     /**
+     * External MCP (Model Context Protocol) servers whose tools are exposed to
+     * assistants. Each server is connected with a static credential (the
+     * configured `headers`) — i.e. one shared identity for all users (not yet
+     * run-as-user). Assistants opt in per profile via `mcpServers`.
+     */
+    mcp?: {
+      servers?: {
+        [serverId: string]: {
+          /** Server endpoint URL. */
+          url: string;
+          /**
+           * Transport. `http` = Streamable HTTP, `sse` = Server-Sent Events.
+           * Defaults to `http`.
+           */
+          transport?: 'http' | 'sse';
+          /**
+           * Headers sent on every request to the server (e.g. an
+           * `Authorization` bearer). Treat as secret.
+           *
+           * @visibility secret
+           */
+          headers?: { [name: string]: string };
+        };
+      };
+    };
+
+    /**
      * LLM providers available to the plugin. One connection per provider id; the
      * union of all `models` forms the global model pool.
      */
@@ -131,6 +158,13 @@ export interface Config {
          * Resolved per request from the actions registry, scoped to the caller.
          */
         actions?: string[];
+
+        /**
+         * Ids of configured `assistants.mcp.servers` whose tools this profile
+         * exposes. The server's tools are added to this assistant's tool set
+         * (namespaced `<serverId>__<tool>`).
+         */
+        mcpServers?: string[];
 
         /**
          * Allowlist of `provider:model` ids this profile may use — a subset of

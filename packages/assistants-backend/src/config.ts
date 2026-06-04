@@ -62,6 +62,8 @@ export interface AssistantDefinition {
   access: AssistantAccessPolicy;
   /** Backstage action names allowed as tools for this assistant. */
   actions: string[];
+  /** Ids of configured MCP servers whose tools this assistant exposes. */
+  mcpServers: string[];
   /**
    * The `provider:model` ids this assistant may use. Always populated: either
    * the per-profile allowlist or the full pool when none was declared.
@@ -79,6 +81,17 @@ export interface AssistantDefinition {
 }
 
 /**
+ * A configured external MCP server. Connected with the static `headers`
+ * credential (shared identity — not yet run-as-user).
+ */
+export interface McpServerConfig {
+  id: string;
+  url: string;
+  transport: 'http' | 'sse';
+  headers: Record<string, string>;
+}
+
+/**
  * The result of reading and validating the `assistants` config block.
  */
 export interface AssistantsConfig {
@@ -89,6 +102,8 @@ export interface AssistantsConfig {
   registerCoreActions: boolean;
   /** Parsed assistants keyed by id. */
   assistants: Map<string, AssistantDefinition>;
+  /** Configured external MCP servers keyed by id. */
+  mcpServers: Map<string, McpServerConfig>;
   /** Flat, browser-safe list of every `provider:model` option (the pool). */
   models: ModelOption[];
   /** Global initial model selection (`provider:model`). */
@@ -285,6 +300,36 @@ export function readConfig(config: Config): AssistantsConfig {
   // --- Global UI defaults -------------------------------------------------
   const globalUi = readUi(root.getOptionalConfig('ui'));
 
+  // --- External MCP servers ----------------------------------------------
+  const mcpServers = new Map<string, McpServerConfig>();
+  const serversConfig = root
+    .getOptionalConfig('mcp')
+    ?.getOptionalConfig('servers');
+  if (serversConfig) {
+    for (const serverId of serversConfig.keys()) {
+      const sc = serversConfig.getConfig(serverId);
+      const transport = sc.getOptionalString('transport') ?? 'http';
+      if (transport !== 'http' && transport !== 'sse') {
+        throw new InputError(
+          `assistants.mcp.servers.${serverId}.transport must be 'http' or 'sse'`,
+        );
+      }
+      const headers: Record<string, string> = {};
+      const headersConfig = sc.getOptionalConfig('headers');
+      if (headersConfig) {
+        for (const name of headersConfig.keys()) {
+          headers[name] = headersConfig.getString(name);
+        }
+      }
+      mcpServers.set(serverId, {
+        id: serverId,
+        url: sc.getString('url'),
+        transport,
+        headers,
+      });
+    }
+  }
+
   // --- Profiles (assistants) ----------------------------------------------
   const profilesConfig = root.getConfig('profiles');
   const profileIds = profilesConfig.keys();
@@ -325,6 +370,18 @@ export function readConfig(config: Config): AssistantsConfig {
       );
     }
 
+    // Per-profile MCP server allowlist; each id must be a configured server.
+    const profileMcpServers =
+      profileConfig.getOptionalStringArray('mcpServers') ?? [];
+    for (const serverId of profileMcpServers) {
+      if (!mcpServers.has(serverId)) {
+        throw new InputError(
+          `assistants.profiles.${profileId}.mcpServers references unknown ` +
+            `MCP server '${serverId}'`,
+        );
+      }
+    }
+
     assistants.set(profileId, {
       id: profileId,
       title: profileConfig.getString('title'),
@@ -333,6 +390,7 @@ export function readConfig(config: Config): AssistantsConfig {
       prompt: profileConfig.getString('prompt'),
       access: parseAccess(profileId, profileConfig),
       actions: profileConfig.getOptionalStringArray('actions') ?? [],
+      mcpServers: profileMcpServers,
       models: profileModels,
       defaultModel: profileDefault,
       ui: mergeUi(globalUi, readUi(profileConfig.getOptionalConfig('ui'))),
@@ -347,6 +405,7 @@ export function readConfig(config: Config): AssistantsConfig {
   return {
     registerCoreActions,
     assistants,
+    mcpServers,
     models,
     defaultModel,
     maxSteps,
