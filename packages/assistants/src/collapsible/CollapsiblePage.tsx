@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
 import { useApi } from '@backstage/core-plugin-api';
 import { Content, Progress, ResponseErrorPanel } from '@backstage/core-components';
-import { makeStyles } from '@material-ui/core/styles';
+import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {
   FormControl,
   IconButton,
@@ -34,7 +34,10 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef } from '../api';
 import { ConversationSurface } from './surface';
-import { AssistantAvatar } from './surface/AssistantAvatar';
+import {
+  AssistantAvatar,
+  resolveAssistantColor,
+} from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
 import { useConversations } from './useConversations';
@@ -64,6 +67,9 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     overflow: 'hidden',
     backgroundColor: theme.palette.background.default,
+    // Symmetric margin so the chat card is enclosed on all four sides (no left
+    // gutter since it abuts the sidebar). Composer breathing room lives on the
+    // Thread's own footer (see ConversationSurface) — same bg, no seam.
     padding: theme.spacing(1),
     paddingLeft: 0,
     gap: theme.spacing(1),
@@ -158,13 +164,25 @@ const useStyles = makeStyles(theme => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
     backgroundColor: theme.palette.background.paper,
   },
+  threadIdentity: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    minWidth: 0,
+    flex: 1,
+  },
+  assistantName: {
+    fontWeight: 600,
+    color: theme.palette.text.primary,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
   threadTitle: {
-    maxWidth: '100%',
+    minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: theme.palette.text.secondary,
-    fontWeight: 500,
   },
   modelSelect: {
     fontSize: theme.typography.caption.fontSize,
@@ -179,6 +197,10 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
+    // NOTE: no paddingBottom here — the Thread fills this box with its own
+    // --aui-background; padding would expose the card's paper bg and create a
+    // two-tone seam. Composer breathing room lives on .aui-thread-viewport-footer
+    // (same bg) in ConversationSurface.
   },
 }));
 
@@ -201,6 +223,8 @@ interface ChatThreadProps {
   modelId: ModelId;
   /** Header title (the active conversation's title). */
   title: string;
+  /** The active assistant's display name (shown in the header identity). */
+  assistantName: string;
   initialMessages?: UIMessage[];
   onFinish?: (messages: UIMessage[]) => void;
   /** Composer placeholder from the assistant's `ui`. */
@@ -225,6 +249,7 @@ function ChatThread({
   assistantId,
   modelId,
   title,
+  assistantName,
   initialMessages,
   onFinish,
   composerPlaceholder,
@@ -233,6 +258,8 @@ function ChatThread({
   headerRight,
 }: ChatThreadProps) {
   const classes = useStyles();
+  const theme = useTheme();
+  const accentColor = resolveAssistantColor(assistantColor, theme.palette.type);
 
   // Keep the assistant/model selection current without remounting the runtime:
   // the transport reads them from a ref via the function-form `body`.
@@ -268,15 +295,29 @@ function ChatThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <main className={classes.threadPane} aria-label="AI chat thread">
+      <main
+        className={classes.threadPane}
+        style={{
+          borderTop: `3px solid ${accentColor}`,
+        }}
+        aria-label="AI chat thread"
+      >
         <div className={classes.threadHeader}>
-          <Typography
-            variant="subtitle2"
-            className={classes.threadTitle}
-            title={title}
-          >
-            {title}
-          </Typography>
+          <div className={classes.threadIdentity}>
+            <AssistantAvatar color={assistantColor} size={22} />
+            <Typography variant="subtitle2" className={classes.assistantName}>
+              {assistantName}
+            </Typography>
+            {title && (
+              <Typography
+                variant="body2"
+                className={classes.threadTitle}
+                title={title}
+              >
+                · {title}
+              </Typography>
+            )}
+          </div>
           {headerRight}
         </div>
         <div className={classes.threadBody}>
@@ -501,7 +542,6 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
             assistants={status.assistants}
             activeAssistantId={assistant.id}
             onSelectAssistant={handleSelectAssistant}
-            tools={assistant.tools ?? []}
             conversations={convState.conversations}
             activeId={convState.activeId}
             onNew={handleNew}
@@ -520,7 +560,8 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
           authFetch={api.fetch}
           assistantId={assistant.id}
           modelId={modelId}
-          title={convState.activeConversation?.title ?? assistant.title}
+          title={convState.activeConversation?.title ?? ''}
+          assistantName={assistant.title}
           initialMessages={convState.activeConversation?.messages}
           onFinish={handleFinish}
           composerPlaceholder={assistant.ui?.composer?.placeholder}

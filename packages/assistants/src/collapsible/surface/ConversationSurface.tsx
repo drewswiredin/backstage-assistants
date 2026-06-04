@@ -3,14 +3,20 @@
 // imported here: react-ui's `sideEffects: false` lets bundlers tree-shake a
 // bare CSS import from inside a lazily-loaded component, which left the Thread
 // unstyled.
-import { createContext, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from 'react';
 import type { ProfileInfo } from '@backstage/core-plugin-api';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { Avatar as BackstageAvatar } from '@backstage/core-components';
-import { makeStyles } from '@material-ui/core/styles';
+import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Button, Typography } from '@material-ui/core';
 import { BackstageLogo } from './BackstageLogo';
-import { DEFAULT_AVATAR_COLOR } from './AssistantAvatar';
+import { DEFAULT_AVATAR_COLOR, resolveAssistantColor } from './AssistantAvatar';
 import { ThreadPrimitive } from '@assistant-ui/react';
 import {
   AssistantActionBar,
@@ -36,7 +42,9 @@ const useStyles = makeStyles(theme => ({
     flex: 1,
     minHeight: 0,
     '& .aui-thread-root': {
-      '--aui-thread-max-width': '80%',
+      // Wide conversation pane to maximize room for diagrams / visual artifacts.
+      // (The composer is narrowed independently via the footer max-width below.)
+      '--aui-thread-max-width': '90%',
       '--aui-background':
         theme.palette.type === 'dark' ? '0 0% 18%' : '0 0% 100%',
       '--aui-foreground':
@@ -60,13 +68,25 @@ const useStyles = makeStyles(theme => ({
       '--aui-primary-foreground':
         theme.palette.type === 'dark' ? '240 5.9% 10%' : '0 0% 98%',
     },
+    // Active composer border tinted to the agent color (set as --aui-composer-focus
+    // on the host below); falls back to the theme primary if unset.
     '& .aui-composer-root:focus-within': {
-      borderColor: theme.palette.primary.main,
-      boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
+      borderColor: 'var(--aui-composer-focus)',
+      boxShadow: '0 0 0 1px var(--aui-composer-focus)',
     },
     '& .aui-assistant-message-content': {
       maxWidth: '100%',
       width: '100%',
+    },
+    // The composer is narrower than the conversation: cap the footer (which holds
+    // the composer and is centered in the viewport) below the 90% thread width.
+    // Breathing room below the composer lives here too — the footer is sticky
+    // bottom:0 and inherits the Thread's --aui-background, so padding lifts the
+    // composer off the bottom WITHOUT exposing the card's paper bg (a two-tone
+    // seam). Padding the card/threadBody instead would re-create that seam.
+    '& .aui-thread-viewport-footer': {
+      maxWidth: '48rem',
+      paddingBottom: '2.5rem',
     },
   },
   botAvatar: {
@@ -75,10 +95,14 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     // Transparent so the tinted logo floats (overrides react-ui's aui-avatar-root).
     backgroundColor: 'transparent',
+    // Bumped to ~match the user avatar (which has an encircling disc); the
+    // floating logo looked small by comparison.
+    width: 32,
+    height: 32,
   },
   botLogo: {
-    width: 16,
-    height: 'auto',
+    height: '100%',
+    width: 'auto',
   },
   userMessageWithAvatar: {
     display: 'flex',
@@ -256,6 +280,10 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   const { composerPlaceholder, suggestions, welcome, assistantColor, className } =
     props;
   const classes = useStyles();
+  const theme = useTheme();
+  // One mode-appropriate shade for every place the agent color appears here
+  // (chat bot avatar via context, welcome logo, composer focus border).
+  const resolvedColor = resolveAssistantColor(assistantColor, theme.palette.type);
 
   function EmptyThreadWelcome() {
     const profile = useProfile();
@@ -270,7 +298,7 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
           <div className={classes.welcomeRoot}>
             <span
               className={classes.welcomeLogo}
-              style={{ color: assistantColor ?? DEFAULT_AVATAR_COLOR }}
+              style={{ color: resolvedColor }}
               aria-hidden="true"
             >
               <BackstageLogo className={classes.welcomeLogoIcon} />
@@ -308,8 +336,15 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   }
 
   return (
-    <AvatarColorContext.Provider value={assistantColor}>
-      <div className={`${classes.threadHost} ${className ?? ''}`}>
+    <AvatarColorContext.Provider value={resolvedColor}>
+      <div
+        className={`${classes.threadHost} ${className ?? ''}`}
+        style={
+          {
+            '--aui-composer-focus': resolvedColor,
+          } as CSSProperties
+        }
+      >
         <Thread
           strings={
           composerPlaceholder

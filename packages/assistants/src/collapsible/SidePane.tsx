@@ -1,10 +1,10 @@
 import { makeStyles } from '@material-ui/core/styles';
 import { IconButton, Tooltip, Typography } from '@material-ui/core';
+import AddIcon from '@material-ui/icons/Add';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantsList } from './AssistantsList';
 import { ConversationsPanel } from './ConversationsPanel';
-import { ToolsList } from './ToolsList';
 import type { Conversation } from './useConversations';
 
 const useStyles = makeStyles(theme => ({
@@ -16,13 +16,17 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(0, 1),
     borderBottom: `1px solid ${theme.palette.divider}`,
   },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing(1.5, 0.5, 0, 2),
+  },
   sectionLabel: {
     color: theme.palette.text.secondary,
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    display: 'block',
-    padding: theme.spacing(1.5, 2, 0),
   },
   divider: {
     margin: theme.spacing(1, 1.5, 0),
@@ -42,8 +46,6 @@ export interface SidePaneProps {
   activeAssistantId: string;
   /** Switch assistant (drives `?assistant=<id>`). */
   onSelectAssistant: (id: string) => void;
-  /** Tool names available to the active assistant (bottom tier). */
-  tools: string[];
   conversations: Conversation[];
   activeId: string | null;
   onNew: () => void;
@@ -55,10 +57,10 @@ export interface SidePaneProps {
 }
 
 /**
- * The expanded (320px) left sidebar, two-tier: a collapse header, the
- * {@link AssistantsList} switcher on top, then the {@link ConversationsPanel}
- * (New Chat + the active assistant's conversation list) below. Adapted from
- * Implementation 1's side pane (no Connections tab).
+ * The expanded (320px) left sidebar: a collapse header, the
+ * {@link AssistantsList} switcher on top, then the conversation list (with a
+ * "new chat" + next to the section label). Adapted from Implementation 1's side
+ * pane (the tools list moved into the assistant detail dialog).
  *
  * @public
  */
@@ -67,7 +69,6 @@ export function SidePane(props: SidePaneProps) {
     assistants,
     activeAssistantId,
     onSelectAssistant,
-    tools,
     conversations,
     activeId,
     onNew,
@@ -101,22 +102,24 @@ export function SidePane(props: SidePaneProps) {
 
       <div className={classes.divider} />
 
-      <Typography variant="caption" className={classes.sectionLabel}>
-        Conversations
-      </Typography>
+      <div className={classes.sectionHeader}>
+        <Typography variant="caption" className={classes.sectionLabel}>
+          Conversations
+        </Typography>
+        <Tooltip title="New chat" placement="bottom">
+          <IconButton size="small" aria-label="New chat" onClick={onNew}>
+            <AddIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </div>
       <ConversationsPanel
         conversations={conversations}
         activeId={activeId}
-        onNew={onNew}
         onSelect={onSelect}
         onRename={onRename}
         onPin={onPin}
         onDelete={onDelete}
       />
-
-      <div className={classes.divider} />
-
-      <ToolsList tools={tools} />
     </div>
   );
 }

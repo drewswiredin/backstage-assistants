@@ -1,7 +1,6 @@
 import { MouseEvent, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import {
-  ButtonBase,
   IconButton,
   List,
   ListItem,
@@ -14,7 +13,6 @@ import {
   Tooltip,
   Typography,
 } from '@material-ui/core';
-import AddIcon from '@material-ui/icons/Add';
 import BookmarkIcon from '@material-ui/icons/Bookmark';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -24,21 +22,8 @@ const useStyles = makeStyles(theme => ({
   root: {
     display: 'flex',
     flexDirection: 'column',
-    padding: theme.spacing(2, 1.5),
+    padding: theme.spacing(0.5, 1.5, 1),
     gap: theme.spacing(1),
-  },
-  newChatButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1, 1.5),
-    borderRadius: theme.shape.borderRadius,
-    color: theme.palette.primary.main,
-    fontWeight: 600,
-    fontSize: '0.875rem',
-    '&:hover': {
-      backgroundColor: theme.palette.action.hover,
-    },
   },
   activeItem: {
     borderRadius: theme.shape.borderRadius,
@@ -75,7 +60,6 @@ const useStyles = makeStyles(theme => ({
 export interface ConversationsPanelProps {
   conversations: Conversation[];
   activeId: string | null;
-  onNew: () => void;
   onSelect: (id: string | null) => void;
   onRename: (id: string, title: string) => void;
   onPin: (id: string) => void;
@@ -93,7 +77,6 @@ export interface ConversationsPanelProps {
 export function ConversationsPanel({
   conversations,
   activeId,
-  onNew,
   onSelect,
   onRename,
   onPin,
@@ -129,13 +112,6 @@ export function ConversationsPanel({
 
   return (
     <div className={classes.root}>
-      <ButtonBase className={classes.newChatButton} onClick={onNew}>
-        <AddIcon fontSize="small" />
-        <Typography variant="body2" color="primary" style={{ fontWeight: 600 }}>
-          New Chat
-        </Typography>
-      </ButtonBase>
-
       {conversations.length === 0 ? (
         <div className={classes.emptyState}>
           <Typography variant="caption" color="textSecondary">
