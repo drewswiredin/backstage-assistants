@@ -5,96 +5,22 @@
  * app-config validation and visibility/secret enforcement at startup, and is
  * referenced from `package.json` via `"configSchema": "config.d.ts"`.
  *
+ * Backstage's config-schema loader requires this file to export ONLY the
+ * `Config` interface, so every supporting shape is inlined below rather than
+ * declared as a separate exported interface.
+ *
  * Visibility: every field here is backend-only by default (never bundled to the
  * frontend). The browser receives only the projection the plugin serves over
  * `GET /status` — assistant titles/descriptions, the model pool + defaults, and
  * the resolved `ui`. `apiKey` is additionally `@visibility secret` so it is
  * redacted everywhere (logs, frontend, etc.).
  *
+ * Theme is intentionally NOT configurable: the chat uses one built-in palette
+ * that follows Backstage's light/dark mode automatically.
+ *
  * Note: `backend.actions.pluginSources` is owned by Backstage core (the actions
  * service config), not this schema, so it is intentionally not declared here.
  */
-
-/**
- * UI options for the chat surface. Set globally under `assistants.ui` and/or per
- * profile under `assistants.profiles.<id>.ui`; the effective value is a
- * deep-merge of the two — objects merge, arrays (e.g. `suggestions`) replace, so
- * a profile can clear inherited values. The resolved value is browser-safe and
- * returned via `/status`.
- *
- * Theme is intentionally NOT here: the chat uses one built-in palette that
- * follows Backstage's light/dark mode automatically.
- */
-export interface AssistantsUiOptions {
-  composer?: {
-    /** Placeholder text shown in the empty message input. */
-    placeholder?: string;
-  };
-  /** Starter prompts offered on an empty conversation. */
-  suggestions?: Array<{
-    /** Short label shown on the suggestion chip. */
-    title: string;
-    /** Optional secondary line under the title. */
-    label?: string;
-    /** The text submitted when the chip is clicked. */
-    prompt: string;
-  }>;
-}
-
-/**
- * Access policy controlling which users may use an assistant profile. Evaluated
- * per request against the caller's resolved identity. Deny by default — none of
- * the three granting nobody.
- */
-export interface AssistantsAccessPolicy {
-  /** Any signed-in user may access this assistant. */
-  allowAuthenticated?: boolean;
-  /** Entity refs of users granted access (e.g. `user:default/jdoe`). */
-  users?: string[];
-  /** Entity refs of groups granted access (e.g. `group:default/platform`). */
-  groups?: string[];
-}
-
-/** A single configured assistant profile. */
-export interface AssistantProfileConfig {
-  /** Display title (shown in the assistant picker and welcome). */
-  title: string;
-
-  /** Short description shown in the assistant list / welcome. */
-  description?: string;
-
-  /**
-   * System prompt for this assistant. Backend-only; never sent to the browser.
-   */
-  prompt: string;
-
-  /** Access policy controlling who may use this profile. */
-  access: AssistantsAccessPolicy;
-
-  /**
-   * Allowlist of Backstage action names exposed as tools for this profile.
-   * Resolved per request from the actions registry, scoped to the caller.
-   */
-  actions?: string[];
-
-  /**
-   * Allowlist of `provider:model` ids this profile may use — a subset of the
-   * global pool (`providers.*.models`). Omit to allow the full pool. Lets a
-   * profile be restricted to specific (e.g. cheaper) models.
-   */
-  models?: string[];
-
-  /**
-   * This profile's default model (`provider:model`). Must be within this
-   * profile's `models` allowlist. Required when the allowlist excludes the
-   * global `assistants.defaultModel`.
-   */
-  defaultModel?: string;
-
-  /** Per-profile UI overrides, deep-merged over the global `assistants.ui`. */
-  ui?: AssistantsUiOptions;
-}
-
 export interface Config {
   assistants?: {
     /**
@@ -119,6 +45,13 @@ export interface Config {
     providers: {
       [providerId: string]: {
         /**
+         * The AI-SDK factory to instantiate for this provider. Selects the
+         * `@ai-sdk/*` package used to build the connection; model ids are
+         * `<providerId>:<model>`. See ADR 0004.
+         */
+        type: 'openai' | 'anthropic' | 'azure' | 'openai-compatible';
+
+        /**
          * Provider API key.
          *
          * @visibility secret
@@ -128,6 +61,14 @@ export interface Config {
         /** Optional override for the provider base URL. */
         baseUrl?: string;
 
+        /**
+         * Untyped passthrough connection options, spread verbatim into the
+         * selected AI-SDK factory. Exposes each provider's full native
+         * connection surface without schema maintenance (ADR 0004). Not
+         * field-validated by Backstage's config schema.
+         */
+        options?: { [key: string]: unknown };
+
         /** Models exposed by this provider, e.g. `["gpt-5.5", "gpt-4o-mini"]`. */
         models: string[];
       };
@@ -136,13 +77,86 @@ export interface Config {
     /**
      * Global UI defaults, deep-merged into every profile's `ui`. Browser-safe.
      */
-    ui?: AssistantsUiOptions;
+    ui?: {
+      composer?: {
+        /** Placeholder text shown in the empty message input. */
+        placeholder?: string;
+      };
+      /** Starter prompts offered on an empty conversation. */
+      suggestions?: Array<{
+        /** Short label shown on the suggestion chip. */
+        title: string;
+        /** Optional secondary line under the title. */
+        label?: string;
+        /** The text submitted when the chip is clicked. */
+        prompt: string;
+      }>;
+    };
 
     /**
      * Configured assistant profiles, keyed by id. At least one must be defined.
      */
     profiles: {
-      [profileId: string]: AssistantProfileConfig;
+      [profileId: string]: {
+        /** Display title (shown in the assistant picker and welcome). */
+        title: string;
+
+        /** Short description shown in the assistant list / welcome. */
+        description?: string;
+
+        /**
+         * Optional brand hex color (e.g. `"#c2410c"`) used to tint the
+         * assistant's avatar in the nav. Purely cosmetic; browser-safe.
+         */
+        color?: string;
+
+        /**
+         * System prompt for this assistant. Backend-only; never sent to the
+         * browser.
+         */
+        prompt: string;
+
+        /** Access policy controlling who may use this profile. */
+        access: {
+          /** Any signed-in user may access this assistant. */
+          allowAuthenticated?: boolean;
+          /** Entity refs of users granted access (e.g. `user:default/jdoe`). */
+          users?: string[];
+          /** Entity refs of groups granted access (e.g. `group:default/platform`). */
+          groups?: string[];
+        };
+
+        /**
+         * Allowlist of Backstage action names exposed as tools for this profile.
+         * Resolved per request from the actions registry, scoped to the caller.
+         */
+        actions?: string[];
+
+        /**
+         * Allowlist of `provider:model` ids this profile may use — a subset of
+         * the global pool. Omit to allow the full pool.
+         */
+        models?: string[];
+
+        /**
+         * This profile's default model (`provider:model`). Must be within this
+         * profile's `models` allowlist. Required when the allowlist excludes the
+         * global `assistants.defaultModel`.
+         */
+        defaultModel?: string;
+
+        /** Per-profile UI overrides, deep-merged over the global `assistants.ui`. */
+        ui?: {
+          composer?: {
+            placeholder?: string;
+          };
+          suggestions?: Array<{
+            title: string;
+            label?: string;
+            prompt: string;
+          }>;
+        };
+      };
     };
   };
 }

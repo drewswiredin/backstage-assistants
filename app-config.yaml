@@ -1,0 +1,206 @@
+app:
+  title: Scaffolded Backstage App
+  baseUrl: http://localhost:3000
+
+  # Enable all packages by default, this will discover packages from packages/app/package.json
+  packages: all
+
+  extensions:
+    # Configure the catalog index page to be the root page, this is normally mounted on /catalog
+    - page:catalog:
+        config:
+          path: /
+
+organization:
+  name: My Company
+
+backend:
+  # Used for enabling authentication, secret is shared by all backend plugins
+  # See https://backstage.io/docs/auth/service-to-service-auth for
+  # information on the format
+  # auth:
+  #   keys:
+  #     - secret: ${BACKEND_SECRET}
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+    # Uncomment the following host directive to bind to specific interfaces
+    # host: 127.0.0.1
+  csp:
+    connect-src: ["'self'", 'http:', 'https:']
+    # Content-Security-Policy directives follow the Helmet format: https://helmetjs.github.io/#reference
+    # Default Helmet Content-Security-Policy values can be removed by setting the key to false
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  # This is for local development only, it is not recommended to use this in production
+  # The production database configuration is stored in app-config.production.yaml
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  # see https://backstage.io/docs/ai/mcp-actions#actions-configuration for more details
+  actions:
+    pluginSources:
+      - auth
+      - catalog
+      - scaffolder
+      - assistants
+  # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
+
+integrations:
+  github:
+    - host: github.com
+      # This is a Personal Access Token or PAT from GitHub. You can find out how to generate this token, and more information
+      # about setting up the GitHub integration here: https://backstage.io/docs/integrations/github/locations#configuration
+      token: ${GITHUB_TOKEN}
+    ### Example for how to add your GitHub Enterprise instance using the API:
+    # - host: ghe.example.net
+    #   apiBaseUrl: https://ghe.example.net/api/v3
+    #   token: ${GHE_TOKEN}
+
+proxy:
+  ### Example for how to add a proxy endpoint for the frontend.
+  ### A typical reason to do this is to handle HTTPS and CORS for internal services.
+  # endpoints:
+  #   '/test':
+  #     target: 'https://example.com'
+  #     changeOrigin: true
+
+# Reference documentation http://backstage.io/docs/features/techdocs/configuration
+# Note: After experimenting with basic setup, use CI/CD to generate docs
+# and an external cloud storage when deploying TechDocs for production use-case.
+# https://backstage.io/docs/features/techdocs/how-to-guides#how-to-migrate-from-techdocs-basic-to-recommended-deployment-approach
+techdocs:
+  builder: 'local' # Alternatives - 'external'
+  generator:
+    runIn: 'docker' # Alternatives - 'local'
+  publisher:
+    type: 'local' # Alternatives - 'googleGcs' or 'awsS3'. Read documentation for using alternatives.
+
+auth:
+  # see https://backstage.io/docs/auth/ to learn about auth providers
+  providers:
+    # See https://backstage.io/docs/auth/guest/provider
+    guest: {}
+  # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
+  # to learn more about client id metadata documents
+  experimentalClientIdMetadataDocuments:
+    enabled: false
+    # Optional: restrict which `client_id` URLs are allowed (defaults to ['*'])
+    # allowedClientIdPatterns:
+    #   - 'https://example.com/*'
+    #   - 'https://*.trusted-domain.com/*'
+    # Optional: restrict which redirect URIs are allowed (defaults to ['*'])
+    # allowedRedirectUriPatterns:
+    #   - 'http://localhost:*'
+    #   - 'https://*.example.com/*'
+
+scaffolder:
+  # see https://backstage.io/docs/features/software-templates/configuration for software template options
+
+catalog:
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location]
+  locations:
+    # Local example data, file locations are relative to the backend process, typically `packages/backend`
+    - type: file
+      target: ../../examples/entities.yaml
+
+    # Local example template
+    - type: file
+      target: ../../examples/template/template.yaml
+      rules:
+        - allow: [Template]
+
+    # Local example organizational data
+    - type: file
+      target: ../../examples/org.yaml
+      rules:
+        - allow: [User, Group]
+
+    ## Uncomment these lines to add more example data
+    # - type: url
+    #   target: https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/all.yaml
+
+    ## Uncomment these lines to add an example org
+    # - type: url
+    #   target: https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/acme-corp.yaml
+    #   rules:
+    #     - allow: [User, Group]
+
+kubernetes:
+  # see https://backstage.io/docs/features/kubernetes/configuration for kubernetes configuration options
+
+# see https://backstage.io/docs/permissions/getting-started for more on the permission framework
+permission:
+  # setting this to `false` will disable permissions
+  enabled: true
+
+# see https://backstage.io/docs/ai/mcp-actions for more details
+mcpActions:
+  name: 'My Company Backstage' # defaults to "backstage"
+  description: 'Tools for managing your software catalog, creating new services from templates, and exploring your developer portal' # optional
+
+# -----------------------------------------------------------------------------
+# AI Assistants
+# -----------------------------------------------------------------------------
+assistants:
+  defaultModel: openrouter:deepseek/deepseek-v4-pro
+  maxSteps: 8
+  registerCoreActions: true
+  providers:
+    # OpenRouter — an OpenAI-compatible gateway. Key lives in the gitignored
+    # .env (OPENROUTER_API_KEY); never commit it. Model ids are
+    # `openrouter:<openrouter-model-slug>`.
+    openrouter:
+      type: openai-compatible
+      apiKey: ${OPENROUTER_API_KEY}
+      baseUrl: https://openrouter.ai/api/v1
+      models:
+        - deepseek/deepseek-v4-pro
+        - google/gemini-2.5-flash
+        - anthropic/claude-3.5-sonnet
+  ui:
+    composer:
+      placeholder: 'Send a message…'
+    suggestions: []
+  profiles:
+    general:
+      title: General Assistant
+      description: Catalog + TechDocs helper for your developer portal.
+      color: '#1f6feb'
+      prompt: |
+        You are a Backstage developer-portal assistant for this organization.
+        Help users find information about systems, services, teams, APIs, and
+        documentation in the software catalog and TechDocs. Use your tools to
+        gather information before answering, and do not speculate beyond what
+        the tools return.
+      access:
+        allowAuthenticated: true
+      actions:
+        - search-catalog
+        - search-techdocs
+        - read-techdocs
+      ui:
+        suggestions:
+          - title: 'Who owns a service?'
+            prompt: 'Who owns the payments service?'
+          - title: 'Find documentation'
+            prompt: 'Where are the TechDocs for the catalog?'
+    docs:
+      title: Docs Assistant
+      description: A focused TechDocs documentation assistant.
+      color: '#8957e5'
+      prompt: |
+        You are a documentation assistant for this Backstage portal. Answer
+        questions using TechDocs content available through your tools. If the
+        answer is not in the docs, say so.
+      access:
+        allowAuthenticated: true
+      actions:
+        - search-techdocs
+        - read-techdocs

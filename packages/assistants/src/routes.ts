@@ -1,7 +1,7 @@
 import { createRouteRef } from '@backstage/core-plugin-api';
 
 /**
- * Root route for the Assistants page.
+ * Root route for the Assistants page (Page A — collapsible-sidebar chrome).
  *
  * @public
  */
