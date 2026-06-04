@@ -18,19 +18,20 @@ import {
   type ModelMessage,
   type UIMessage,
 } from 'ai';
-import type {
-  StatusResponse,
-  ToolSummary,
-} from '@drewswiredin/backstage-plugin-assistants-common';
+import type { StatusResponse } from '@drewswiredin/backstage-plugin-assistants-common';
 import {
   AssistantAccessPolicy,
   AssistantDefinition,
   AssistantsConfig,
   buildStatus,
-  McpServerConfig,
 } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
-import { buildMcpTools, listMcpTools } from './mcp';
+import {
+  buildMcpTools,
+  listServerToolsRaw,
+  summarizeMcpTools,
+  type ResolvedMcpSelection,
+} from './mcp';
 import { createOpenApiRouter } from './schema/openapi';
 
 /**
@@ -240,15 +241,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const neededServers = new Set<string>();
     for (const assistant of assistants.assistants.values()) {
       if (isAssistantAccessible(assistant, user)) {
-        assistant.mcpServers.forEach(id => neededServers.add(id));
+        assistant.mcpServers.forEach(sel => neededServers.add(sel.server));
       }
     }
-    const mcpToolsByServer = new Map<string, ToolSummary[]>();
+    // Full (unfiltered) raw tool list per server, cached; the per-assistant
+    // tool allowlist is applied below via summarizeMcpTools.
+    const rawByServer = new Map<string, Awaited<
+      ReturnType<typeof listServerToolsRaw>
+    >>();
     await Promise.all(
       [...neededServers].map(async id => {
         const server = assistants.mcpServers.get(id);
         if (server) {
-          mcpToolsByServer.set(id, await listMcpTools(server, logger));
+          rawByServer.set(id, await listServerToolsRaw(server, logger));
         }
       }),
     );
@@ -266,7 +271,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             source: 'backstage',
           }),
         ),
-        ...assistant.mcpServers.flatMap(id => mcpToolsByServer.get(id) ?? []),
+        ...assistant.mcpServers.flatMap(sel =>
+          summarizeMcpTools(sel.server, rawByServer.get(sel.server) ?? [], sel.tools),
+        ),
       ],
     );
 
@@ -327,10 +334,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     (static/shared credential — not run-as-user). Connections are held for
     //     the turn and closed when the stream finishes/errors. A server that's
     //     down is skipped, not fatal.
-    const mcpServerConfigs = assistant.mcpServers
-      .map(id => assistants.mcpServers.get(id))
-      .filter((s): s is McpServerConfig => Boolean(s));
-    const mcp = await buildMcpTools(mcpServerConfigs, logger);
+    const mcpSelections = assistant.mcpServers
+      .map((sel): ResolvedMcpSelection | undefined => {
+        const server = assistants.mcpServers.get(sel.server);
+        return server ? { server, tools: sel.tools } : undefined;
+      })
+      .filter((s): s is ResolvedMcpSelection => Boolean(s));
+    const mcp = await buildMcpTools(mcpSelections, logger);
     const tools = {
       ...actionsToTools(selected, actions, credentials),
       ...mcp.tools,

@@ -174,11 +174,22 @@ export interface Config {
         actions?: string[];
 
         /**
-         * Ids of configured `assistants.mcp.servers` whose tools this profile
-         * exposes. The server's tools are added to this assistant's tool set
-         * (namespaced `<serverId>__<tool>`).
+         * MCP servers (from `assistants.mcp.servers`) this assistant exposes.
+         * Each entry is a server id string (all of that server's tools) or an
+         * object selecting a subset. Tools are namespaced `<serverId>__<tool>`.
+         *
+         * `tools`: omitted or `['*']` = all tools; `[]` = none; otherwise exactly
+         * the named (un-namespaced) tools.
          */
-        mcpServers?: string[];
+        mcpServers?: Array<
+          | string
+          | {
+              /** A configured `assistants.mcp.servers` id. */
+              server: string;
+              /** Allowlist of un-namespaced tool names (see above). */
+              tools?: string[];
+            }
+        >;
 
         /**
          * Allowlist of `provider:model` ids this profile may use — a subset of

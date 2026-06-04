@@ -16,12 +16,26 @@ import type { McpServerConfig } from './config';
  * adapted into AI SDK tools so assistants can call them — the same wrapping we
  * do for Backstage actions in {@link actionsToTools}.
  *
- * Auth is a single static credential per server (the configured `headers`) —
- * one shared identity for all users, NOT run-as-user. Access is gated by the
- * assistant's `access` policy and per-profile `mcpServers` allowlist.
+ * Auth is a single static credential per server (the configured headers / stdio
+ * env) — one shared identity for all users, NOT run-as-user. Access is gated by
+ * the assistant's `access` policy, its per-profile `mcpServers` allowlist, and an
+ * optional per-server tool allowlist.
  */
 
 const NAME_SEPARATOR = '__';
+
+/** A server's raw (un-namespaced) tool, as returned by the MCP server. */
+interface RawMcpTool {
+  name: string;
+  description?: string;
+}
+
+/** A resolved server connection + this assistant's optional per-tool allowlist. */
+export interface ResolvedMcpSelection {
+  server: McpServerConfig;
+  /** undefined or `['*']` = all tools; `[]` = none; else exactly these. */
+  tools?: string[];
+}
 
 /**
  * Namespace a server's tool name so tools from different servers (and Backstage
@@ -30,6 +44,16 @@ const NAME_SEPARATOR = '__';
  */
 export function mcpToolName(serverId: string, toolName: string): string {
   return `${serverId.replace(/[^a-zA-Z0-9_-]/g, '_')}${NAME_SEPARATOR}${toolName}`;
+}
+
+/**
+ * Per-tool allowlist semantics: `undefined` or `['*']` allow everything; `[]`
+ * allows nothing; otherwise only the named (un-namespaced) tools.
+ */
+function isToolAllowed(allowlist: string[] | undefined, name: string): boolean {
+  if (allowlist === undefined) return true;
+  if (allowlist.includes('*')) return true;
+  return allowlist.includes(name);
 }
 
 function createTransport(server: McpServerConfig) {
@@ -69,26 +93,26 @@ async function connect(server: McpServerConfig): Promise<Client> {
   return client;
 }
 
-// --- /status: cached tool listings -----------------------------------------
-// Connecting to every MCP server on every /status call would be slow, so the
-// browser-safe tool listing is cached per server with a short TTL.
-interface CacheEntry {
+// --- /status: cached RAW tool listings -------------------------------------
+// Connecting to every MCP server on every /status call would be slow, so each
+// server's full (unfiltered) tool list is cached briefly; the per-assistant
+// allowlist is applied on top via summarizeMcpTools (allowlist-independent cache).
+interface RawCacheEntry {
   fetchedAt: number;
-  tools: ToolSummary[];
+  tools: RawMcpTool[];
 }
-const listCache = new Map<string, CacheEntry>();
+const rawCache = new Map<string, RawCacheEntry>();
 const LIST_TTL_MS = 5 * 60 * 1000;
 
 /**
- * Browser-safe tool summaries (namespaced name + description) for one MCP
- * server, cached. On failure, returns the last cached value (or empty) so
- * `/status` never breaks because a server is down.
+ * A server's full raw tool list, cached. On failure returns the last cached
+ * value (or empty) so `/status` never breaks because a server is down.
  */
-export async function listMcpTools(
+export async function listServerToolsRaw(
   server: McpServerConfig,
   logger: LoggerService,
-): Promise<ToolSummary[]> {
-  const cached = listCache.get(server.id);
+): Promise<RawMcpTool[]> {
+  const cached = rawCache.get(server.id);
   if (cached && Date.now() - cached.fetchedAt < LIST_TTL_MS) {
     return cached.tools;
   }
@@ -96,13 +120,12 @@ export async function listMcpTools(
     const client = await connect(server);
     try {
       const { tools } = await client.listTools();
-      const summaries: ToolSummary[] = tools.map(t => ({
-        name: mcpToolName(server.id, t.name),
+      const raw: RawMcpTool[] = tools.map(t => ({
+        name: t.name,
         description: t.description,
-        source: server.id,
       }));
-      listCache.set(server.id, { fetchedAt: Date.now(), tools: summaries });
-      return summaries;
+      rawCache.set(server.id, { fetchedAt: Date.now(), tools: raw });
+      return raw;
     } finally {
       await client.close();
     }
@@ -114,6 +137,24 @@ export async function listMcpTools(
     );
     return cached?.tools ?? [];
   }
+}
+
+/**
+ * Browser-safe tool summaries (namespaced name + description + source) for a
+ * server's raw tools, filtered by the assistant's per-tool allowlist.
+ */
+export function summarizeMcpTools(
+  serverId: string,
+  raw: RawMcpTool[],
+  allowlist: string[] | undefined,
+): ToolSummary[] {
+  return raw
+    .filter(t => isToolAllowed(allowlist, t.name))
+    .map(t => ({
+      name: mcpToolName(serverId, t.name),
+      description: t.description,
+      source: serverId,
+    }));
 }
 
 // --- /chat: live tools ------------------------------------------------------
@@ -130,23 +171,26 @@ export interface LiveMcpTools {
 }
 
 /**
- * Connect to the given MCP servers and adapt their tools to AI SDK tools. A
- * server that fails to connect/list is logged and skipped (its tools are simply
- * absent) so one bad server can't break the turn.
+ * Connect to the given server selections and adapt their (allowlisted) tools to
+ * AI SDK tools. A server that fails to connect/list is logged and skipped so one
+ * bad server can't break the turn.
  */
 export async function buildMcpTools(
-  servers: McpServerConfig[],
+  selections: ResolvedMcpSelection[],
   logger: LoggerService,
 ): Promise<LiveMcpTools> {
   const clients: Client[] = [];
   const tools: Record<string, Tool> = {};
 
-  for (const server of servers) {
+  for (const { server, tools: allowlist } of selections) {
     try {
       const client = await connect(server);
       clients.push(client);
       const { tools: mcpTools } = await client.listTools();
       for (const t of mcpTools) {
+        if (!isToolAllowed(allowlist, t.name)) {
+          continue;
+        }
         tools[mcpToolName(server.id, t.name)] = tool({
           description: t.description,
           inputSchema: jsonSchema(
@@ -158,11 +202,8 @@ export async function buildMcpTools(
                 name: t.name,
                 arguments: (input ?? {}) as Record<string, unknown>,
               });
-              // Prefer structured output; fall back to the content blocks.
               return result.structuredContent ?? result.content;
             } catch (error) {
-              // Structured error, not a throw — the model can react and the
-              // multi-step loop continues (matches actionsToTools).
               return {
                 error: true,
                 message:

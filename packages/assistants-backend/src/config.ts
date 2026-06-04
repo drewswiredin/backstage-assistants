@@ -62,8 +62,12 @@ export interface AssistantDefinition {
   access: AssistantAccessPolicy;
   /** Backstage action names allowed as tools for this assistant. */
   actions: string[];
-  /** Ids of configured MCP servers whose tools this assistant exposes. */
-  mcpServers: string[];
+  /**
+   * MCP servers this assistant exposes, each with an optional per-tool
+   * allowlist. `tools` undefined or containing `'*'` = all tools; `[]` = none;
+   * otherwise exactly the named (un-namespaced) tools.
+   */
+  mcpServers: McpServerSelection[];
   /**
    * The `provider:model` ids this assistant may use. Always populated: either
    * the per-profile allowlist or the full pool when none was declared.
@@ -103,6 +107,16 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** stdio: working directory for the child process. */
   cwd?: string;
+}
+
+/**
+ * An assistant's selection of one MCP server + an optional per-tool allowlist.
+ * `tools` undefined or `['*']` = all; `[]` = none; otherwise exactly the named
+ * (un-namespaced) tools.
+ */
+export interface McpServerSelection {
+  server: string;
+  tools?: string[];
 }
 
 /**
@@ -413,15 +427,54 @@ export function readConfig(config: Config): AssistantsConfig {
       );
     }
 
-    // Per-profile MCP server allowlist; each id must be a configured server.
-    const profileMcpServers =
-      profileConfig.getOptionalStringArray('mcpServers') ?? [];
-    for (const serverId of profileMcpServers) {
-      if (!mcpServers.has(serverId)) {
+    // Per-profile MCP server selections: a server-id string (all tools) or
+    // `{ server, tools }` to curate. Each server must be configured.
+    const rawMcp = profileConfig.getOptional('mcpServers');
+    const profileMcpServers: McpServerSelection[] = [];
+    if (rawMcp !== undefined) {
+      if (!Array.isArray(rawMcp)) {
         throw new InputError(
-          `assistants.profiles.${profileId}.mcpServers references unknown ` +
-            `MCP server '${serverId}'`,
+          `assistants.profiles.${profileId}.mcpServers must be an array`,
         );
+      }
+      for (const entry of rawMcp) {
+        let selection: McpServerSelection;
+        if (typeof entry === 'string') {
+          selection = { server: entry };
+        } else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+          const e = entry as { server?: unknown; tools?: unknown };
+          if (typeof e.server !== 'string') {
+            throw new InputError(
+              `assistants.profiles.${profileId}.mcpServers entry must have a string 'server'`,
+            );
+          }
+          let tools: string[] | undefined;
+          if (e.tools !== undefined) {
+            if (
+              !Array.isArray(e.tools) ||
+              !e.tools.every(t => typeof t === 'string')
+            ) {
+              throw new InputError(
+                `assistants.profiles.${profileId}.mcpServers '${e.server}'.tools ` +
+                  `must be an array of strings`,
+              );
+            }
+            tools = e.tools as string[];
+          }
+          selection = { server: e.server, tools };
+        } else {
+          throw new InputError(
+            `assistants.profiles.${profileId}.mcpServers entries must be a ` +
+              `server id string or { server, tools? }`,
+          );
+        }
+        if (!mcpServers.has(selection.server)) {
+          throw new InputError(
+            `assistants.profiles.${profileId}.mcpServers references unknown ` +
+              `MCP server '${selection.server}'`,
+          );
+        }
+        profileMcpServers.push(selection);
       }
     }
 

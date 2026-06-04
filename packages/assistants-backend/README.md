@@ -270,9 +270,24 @@ assistants:
     devops:
       # ...title / access / models
       mcpServers:
-        - github
-        - filesystem
+        - github # string form = all of github's tools
+        - server: filesystem # object form = curate which tools
+          tools: [read_file, list_directory]
 ```
+
+**Per-tool allowlist** (`mcpServers[].tools`) — important when a server exposes
+dozens/hundreds of tools (don't hand them all to the model):
+
+| `tools` value | Result |
+| --- | --- |
+| omitted (or the string form `- github`) | all of that server's tools |
+| `['*']` | all (explicit) |
+| `[]` | none |
+| `['a','b']` | exactly those (un-namespaced tool names) |
+
+The allowlist is **per assistant** — each profile curates its own subset of a
+shared server connection. Applied to both `/chat` and the `/status` tool listing
+(so the detail modal shows only the allowed tools).
 
 > **Auth is a single static credential** (the configured `headers`) — i.e. one
 > shared identity for all users, **not run-as-user**. Gate access with the
