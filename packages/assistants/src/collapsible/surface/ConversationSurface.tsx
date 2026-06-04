@@ -80,13 +80,10 @@ const useStyles = makeStyles(theme => ({
     },
     // The composer is narrower than the conversation: cap the footer (which holds
     // the composer and is centered in the viewport) below the 90% thread width.
-    // Breathing room below the composer lives here too — the footer is sticky
-    // bottom:0 and inherits the Thread's --aui-background, so padding lifts the
-    // composer off the bottom WITHOUT exposing the card's paper bg (a two-tone
-    // seam). Padding the card/threadBody instead would re-create that seam.
+    // Bottom padding is left at the react-ui stock value (1rem) — overriding it
+    // larger left a too-tall solid footer band beneath the composer.
     '& .aui-thread-viewport-footer': {
       maxWidth: '48rem',
-      paddingBottom: '2.5rem',
     },
   },
   botAvatar: {
