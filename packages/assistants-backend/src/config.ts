@@ -138,6 +138,8 @@ export interface AssistantsConfig {
   defaultModel: ModelId;
   /** Maximum number of tool-call steps per turn. */
   maxSteps: number;
+  /** Express body-parser size limit for `/chat` and `/title` (default `'10mb'`). */
+  requestBodyLimit: string;
   /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
   resolveModel: (modelId: string) => LanguageModel;
 }
@@ -495,6 +497,7 @@ export function readConfig(config: Config): AssistantsConfig {
   }
 
   const maxSteps = root.getOptionalNumber('maxSteps') ?? 10;
+  const requestBodyLimit = root.getOptionalString('requestBodyLimit') ?? '10mb';
   const registerCoreActions =
     root.getOptionalBoolean('registerCoreActions') ?? false;
 
@@ -505,6 +508,7 @@ export function readConfig(config: Config): AssistantsConfig {
     models,
     defaultModel,
     maxSteps,
+    requestBodyLimit,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),
   };

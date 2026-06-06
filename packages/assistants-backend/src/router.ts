@@ -256,9 +256,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       .catch(() => {});
   }
 
-  // The OpenAPI router validates every incoming request body/params against the
-  // spec and parses JSON itself (no separate `express.json()` needed).
-  const router = await createOpenApiRouter();
+  // The OpenAPI router's default middleware uses express.json() with no size
+  // limit (100kb Express default). Chat conversations with tool results easily
+  // exceed that. Override the middleware to use the configurable limit.
+  const router = await createOpenApiRouter({
+    middleware: [express.json({ limit: assistants.requestBodyLimit })],
+  });
 
   // Express 4 does not forward rejections from async handlers to the error
   // middleware, so we forward them to `next` explicitly.
