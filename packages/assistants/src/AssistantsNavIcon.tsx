@@ -16,8 +16,8 @@ const useStyles = makeStyles({
 
 /**
  * The Assistants nav-rail icon with a live status dot: a pulsing dot if any
- * conversation (across all assistants) is generating, else a solid red dot if
- * any is unread, else nothing — generating wins. Derived from the same
+ * conversation (across all assistants) is working, else a solid red dot if
+ * any is unread, else nothing — working wins. Derived from the same
  * Signals-backed status store as the in-page indicators, so they never disagree.
  *
  * @public

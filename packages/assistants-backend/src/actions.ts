@@ -351,7 +351,7 @@ export function actionsToTools(
             // error can embed a full upstream response body, so the error path
             // is just as capable of overflowing the context window as success.
             return {
-              error: true,
+              _error: true,
               message: truncateToolResult(
                 error instanceof Error ? error.message : String(error),
                 toolResultMaxChars,

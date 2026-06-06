@@ -6,6 +6,6 @@ import { navModule } from './modules/nav';
 
 export default createApp({
   // signalsPlugin registers the signalApi the assistants plugin uses for
-  // real-time conversation notifications (generating / unread).
+  // real-time conversation notifications (working / unread).
   features: [catalogPlugin, signalsPlugin, assistantsPlugin, navModule],
 });

@@ -38,7 +38,7 @@ import type { ThreadService } from './threads';
 import { ResumableStreamRegistry } from './resumableStreams';
 import type { SignalsService } from '@backstage/plugin-signals-node';
 
-/** Signals channel for per-user conversation notifications (generating / unread). */
+/** Signals channel for per-user conversation notifications (working / unread). */
 const NOTIFY_CHANNEL = 'assistants:threads';
 
 /**
@@ -55,7 +55,7 @@ export interface RouterOptions {
   assistants: AssistantsConfig;
   /** Server-side conversation persistence. */
   threadService: ThreadService;
-  /** Real-time push for generating / unread indicators (per user). */
+  /** Real-time push for working / unread indicators (per user). */
   signals: SignalsService;
 }
 
@@ -729,9 +729,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     })().catch(next);
   });
 
-  // Cross-assistant unread: which assistants have any unread thread for this
-  // user. Drives the rail's per-assistant unread dots. MUST be registered before
-  // `/:id` so 'unread' isn't matched as a thread id.
   // Per-conversation status across ALL of the user's assistants — the single
   // source the client derives every indicator from (conversation dots, agent
   // rollups, nav). `unread` is durable (DB); `working` is the live in-flight set.

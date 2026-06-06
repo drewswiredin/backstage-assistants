@@ -57,10 +57,10 @@ export interface ThreadSummary {
   remoteId?: string;
   title: string;
   pinned: boolean;
-  /** A reply finished here while you weren't looking. Mutually exclusive with `generating`. */
+  /** A reply finished here while you weren't looking. Mutually exclusive with `working`. */
   unread: boolean;
   /** A reply is currently in flight here (and you're not watching it). */
-  generating: boolean;
+  working: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,8 +214,8 @@ export function createHistoryAdapter(
   }
 
   return {
-    // `useChatRuntime` drives history through `withFormat`; these base methods
-    // are required by the type but not exercised by that path.
+    // assistant-ui consumes history through the `withFormat` adapter below;
+    // these base methods are required by the type but not exercised by that path.
     async load(): Promise<ExportedMessageRepository> {
       return { messages: [] };
     },

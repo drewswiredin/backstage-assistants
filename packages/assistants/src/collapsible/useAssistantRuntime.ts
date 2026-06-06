@@ -1,8 +1,8 @@
 /**
- * Per-thread runtime for `useRemoteThreadListRuntime`. Mirrors assistant-ui's
- * own `useChatThreadRuntime` (the inner hook of `useChatRuntime`) but is driven
- * by OUR `/threads` thread-list adapter rather than Assistant Cloud — so the
- * frontend is a pure view of the plugin's database.
+ * Per-thread runtime for `useRemoteThreadListRuntime`: each thread gets its own
+ * `useChat` wrapped by `useAISDKRuntime`, driven by OUR `/threads` thread-list
+ * adapter rather than Assistant Cloud — so the frontend is a pure view of the
+ * plugin's database.
  *
  * `AssistantChatTransport` awaits the thread-list adapter's `initialize()` before
  * the first send (creating the server thread) and puts its `remoteId` on the

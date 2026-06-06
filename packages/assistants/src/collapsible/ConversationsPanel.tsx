@@ -155,13 +155,13 @@ export function ConversationsPanel({
             >
               <ListItemIcon style={{ minWidth: 32 }}>
                 <Badge
-                  color={conv.generating ? 'primary' : 'error'}
+                  color={conv.working ? 'primary' : 'error'}
                   variant="dot"
                   overlap="circular"
                   invisible={
-                    conv.id === activeId || (!conv.generating && !conv.unread)
+                    conv.id === activeId || (!conv.working && !conv.unread)
                   }
-                  classes={conv.generating ? { dot: classes.pulseDot } : undefined}
+                  classes={conv.working ? { dot: classes.pulseDot } : undefined}
                 >
                   <ChatBubbleOutlineIcon fontSize="small" />
                 </Badge>

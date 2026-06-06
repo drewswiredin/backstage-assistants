@@ -87,7 +87,7 @@ flowchart LR
 
   subgraph SRC["app-config.yaml — assistants:"]
     direction TB
-    G["global<br/>defaultModel · maxSteps · registerCoreActions"]
+    G["global<br/>defaultModel · maxSteps · toolResultMaxChars<br/>requestBodyLimit · registerCoreActions"]
     PROV["providers.{id}<br/>type · apiKey* · baseUrl · options · models[]"]
     MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*"]
     UIG["ui (global defaults)<br/>composer.placeholder · suggestions[]"]
@@ -101,7 +101,7 @@ flowchart LR
     PARSE --> SPLIT
   end
 
-  STATUS["GET /status — browser-safe<br/>profiles[ id · title · description · models · defaultModel · ui · tools[] ]"]
+  STATUS["GET /status — browser-safe<br/>profiles[ id · title · description · color · models · defaultModel · ui · tools[] ]"]
   CHAT["POST /chat — backend applies<br/>system = prompt · tools = Actions(as user) + MCP(as configured)"]
 
   subgraph FE["browser — usePluginStatus"]
@@ -154,8 +154,10 @@ flowchart LR
 assistants:
   <span class="c"># ---- global ----</span>
   defaultModel: openai:gpt-5.5          <span class="c"># required</span>
-  maxSteps: 8                           <span class="c"># streamText stopWhen</span>
-  registerCoreActions: true             <span class="c"># register this plugin's built-in Actions</span>
+  maxSteps: 10                          <span class="c"># max tool-call steps per turn (default 10)</span>
+  toolResultMaxChars: 30000             <span class="c"># cap one tool result; head+tail truncate (default 30000, 0 = off)</span>
+  requestBodyLimit: 10mb                <span class="c"># Express body limit for /chat + /title (default 10mb)</span>
+  registerCoreActions: true             <span class="c"># register this plugin's built-in Actions (default false)</span>
 
   providers:
     openai:
@@ -228,7 +230,9 @@ assistants:
             <tr><td class="k">profiles.*.access</td><td><span class="tag secret">backend</span></td><td>access gate (<code>/status</code> filter + <code>/chat</code>)</td></tr>
             <tr><td class="k">profiles.*.actions[]</td><td><span class="tag secret">backend</span></td><td>Action tool allowlist at <code>/chat</code> (run as user)</td></tr>
             <tr><td class="k">profiles.*.mcpServers[]</td><td><span class="tag secret">backend</span></td><td>MCP tool selection at <code>/chat</code> (run as configured)</td></tr>
-            <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code></td></tr>
+            <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code> (default 10)</td></tr>
+            <tr><td class="k">toolResultMaxChars</td><td><span class="tag secret">backend</span></td><td>cap per tool result — head+tail truncate at the tool boundary (default 30000, <code>0</code> off)</td></tr>
+            <tr><td class="k">requestBodyLimit</td><td><span class="tag secret">backend</span></td><td>Express body-parser limit for <code>/chat</code> + <code>/title</code> (default <code>10mb</code>)</td></tr>
             <tr><td class="k">title · description</td><td><span class="tag safe">browser</span></td><td>assistant rail / welcome</td></tr>
             <tr><td class="k">profiles.*.color</td><td><span class="tag safe">browser</span></td><td>assistant avatar tint (cosmetic)</td></tr>
             <tr><td class="k">models (pool + per-profile allowlist)</td><td><span class="tag safe">browser</span></td><td>model picker (filtered per profile)</td></tr>
@@ -252,6 +256,7 @@ assistants:
             <li><b>UI merge</b> — <code>deepMerge(global ui, profile.ui)</code>: objects deep-merge, arrays replace (so a profile can clear inherited values). Welcome text is derived from <code>title</code> / <code>description</code>.</li>
             <li><b>Theme</b> — one built-in palette that follows Backstage light/dark automatically. Not configurable, by design.</li>
             <li><b>Persistence</b> — conversations are stored server-side via Backstage's <code>backend.database</code>; no new config key (see <a href="architecture.html#persistence">architecture §5</a>).</li>
+            <li><b>Runtime guards</b> — global, backend-only: <code>maxSteps</code> (tool-call steps/turn, default 10), <code>toolResultMaxChars</code> (cap one tool result, head+tail truncate, default 30000, <code>0</code> disables), <code>requestBodyLimit</code> (Express body limit, default <code>10mb</code>).</li>
           </ol>
         </div>
       </section>

@@ -246,7 +246,7 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
   },
-  // The "generating" indicator: a pulsing dot, distinct from the solid unread dot.
+  // The "working" indicator: a pulsing dot, distinct from the solid unread dot.
   '@keyframes auiPulse': {
     '0%': { transform: 'scale(1)', opacity: 1 },
     '50%': { transform: 'scale(1.5)', opacity: 0.45 },
@@ -481,7 +481,7 @@ function ChatChrome({
           title: item?.title ?? 'New Chat',
           pinned: custom?.pinned ?? false,
           unread: st === 'unread',
-          generating: st === 'working',
+          working: st === 'working',
         };
       }),
     [threadList, activeId, statusOf],
@@ -751,14 +751,14 @@ function ChatChrome({
                       onClick={() => handleSelect(conversation.id)}
                     >
                       <Badge
-                        color={conversation.generating ? 'primary' : 'error'}
+                        color={conversation.working ? 'primary' : 'error'}
                         variant="dot"
                         overlap="circular"
                         invisible={
-                          !conversation.generating && !conversation.unread
+                          !conversation.working && !conversation.unread
                         }
                         classes={
-                          conversation.generating
+                          conversation.working
                             ? { dot: classes.pulseDot }
                             : undefined
                         }
