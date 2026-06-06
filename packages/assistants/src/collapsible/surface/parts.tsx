@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { makeStyles } from '@material-ui/core/styles';
+import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
 import { Box, CircularProgress, Collapse, Typography } from '@material-ui/core';
 import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
 import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
@@ -102,6 +102,13 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/** Format a byte count to a human-readable string. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** Serialize a tool input/output payload for display. */
 export function formatPayload(value: unknown) {
   if (typeof value === 'string') {
@@ -115,25 +122,48 @@ export function formatPayload(value: unknown) {
   }
 }
 
+/** Check whether a tool result signals an error (backend marks with `_error`). */
+function isErrorResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  if ('_error' in (result as Record<string, unknown>)) return true;
+  if (Array.isArray(result)) {
+    return result.some(
+      item =>
+        item &&
+        typeof item === 'object' &&
+        typeof (item as { text?: unknown }).text === 'string' &&
+        ((item as { text: string }).text.startsWith('Error') ||
+          (item as { text: string }).text.includes('Failed')),
+    );
+  }
+  return false;
+}
+
 /** Map a tool-call status to a human label + status icon. */
-export function getToolStatus(status: ToolCallMessagePartProps['status']) {
+export function getToolStatus(status: ToolCallMessagePartProps['status'], theme: Theme, result?: unknown) {
   switch (status?.type) {
     case 'complete':
+      if (isErrorResult(result)) {
+        return {
+          label: 'Error',
+          icon: <ErrorOutlineIcon fontSize="small" htmlColor={theme.palette.warning?.main ?? '#ff9800'} />,
+        };
+      }
       return {
         label: 'Complete',
-        icon: <CheckCircleOutlineIcon fontSize="small" color="primary" />,
+        icon: <CheckCircleOutlineIcon fontSize="small" htmlColor={theme.palette.success?.main ?? '#4caf50'} />,
       };
     case 'incomplete':
       return {
         label: 'Incomplete',
-        icon: <ErrorOutlineIcon fontSize="small" color="error" />,
+        icon: <ErrorOutlineIcon fontSize="small" htmlColor={theme.palette.error.main} />,
       };
     case 'running':
-      return { label: 'Running', icon: <CircularProgress size={16} /> };
+      return { label: 'Running', icon: <CircularProgress size={16} color="inherit" /> };
     default:
       return {
         label: 'Pending',
-        icon: <HourglassEmptyIcon fontSize="small" color="disabled" />,
+        icon: <HourglassEmptyIcon fontSize="small" htmlColor={theme.palette.warning?.main ?? '#ff9800'} />,
       };
   }
 }
@@ -149,8 +179,9 @@ export function ToolFallback({
   status,
 }: ToolCallMessagePartProps) {
   const classes = useStyles();
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
-  const { icon } = getToolStatus(status);
+  const { icon } = getToolStatus(status, theme, result);
   const hasArgs = args !== undefined && args !== null;
   const hasResult = result !== undefined && result !== null;
 
@@ -162,7 +193,10 @@ export function ToolFallback({
         onClick={() => setOpen(v => !v)}
       >
         {icon}
-        <span>{open ? toolName : 'Tool Use'}</span>
+        <span>{toolName}</span>
+        {hasResult && !open && (
+          <span>({formatBytes(formatPayload(result).length)})</span>
+        )}
         {open ? (
           <ExpandLessIcon style={{ fontSize: 14 }} />
         ) : (

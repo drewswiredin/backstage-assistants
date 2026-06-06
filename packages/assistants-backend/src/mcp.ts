@@ -202,12 +202,29 @@ export async function buildMcpTools(
                 name: t.name,
                 arguments: (input ?? {}) as Record<string, unknown>,
               });
+              if (result.isError) {
+                const detail =
+                  typeof result.content === 'string'
+                    ? result.content
+                    : JSON.stringify(result.content);
+                logger.warn(
+                  `MCP tool '${server.id}/${t.name}' returned error: ${detail}`,
+                );
+                return {
+                  _error: true,
+                  message: detail,
+                };
+              }
               return result.structuredContent ?? result.content;
             } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              logger.error(
+                `MCP tool '${server.id}/${t.name}' threw: ${message}`,
+              );
               return {
-                error: true,
-                message:
-                  error instanceof Error ? error.message : String(error),
+                _error: true,
+                message,
               };
             }
           },
