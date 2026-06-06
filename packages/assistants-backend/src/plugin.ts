@@ -70,7 +70,7 @@ export const assistantsPlugin = createBackendPlugin({
         // Conversation persistence: the plugin owns its own tables in Backstage's
         // standard `backend.database` (SQLite dev / Postgres prod). Migrations are
         // idempotent and run on every boot.
-        const threadService = new ThreadService(await database.getClient());
+        const threadService = new ThreadService(await database.getClient() as any);
         await threadService.runMigrations();
 
         const router = await createRouter({
@@ -85,6 +85,10 @@ export const assistantsPlugin = createBackendPlugin({
         });
 
         httpRouter.use(router);
+        httpRouter.addAuthPolicy({ path: '/status', allow: 'user-cookie' });
+        httpRouter.addAuthPolicy({ path: '/chat', allow: 'user-cookie' });
+        httpRouter.addAuthPolicy({ path: '/title', allow: 'user-cookie' });
+        httpRouter.addAuthPolicy({ path: '/threads', allow: 'user-cookie' });
 
         logger.info('AI Assistants backend plugin initialized', {
           assistants: assistants.assistants.size,
