@@ -13,7 +13,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
-import { RiRobot2Line } from '@remixicon/react';
+import { AssistantsNavIcon } from '@drewswiredin/backstage-plugin-assistants';
 
 export const SidebarContent = NavContentBlueprint.make({
   params: {
@@ -39,7 +39,7 @@ export const SidebarContent = NavContentBlueprint.make({
             {nav.take('page:catalog')}
             {nav.take('page:scaffolder')}
             <SidebarItem
-              icon={() => <RiRobot2Line />}
+              icon={() => <AssistantsNavIcon />}
               to="/assistants"
               text="Assistants"
             />

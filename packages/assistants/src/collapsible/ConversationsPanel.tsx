@@ -14,7 +14,6 @@ import {
   MenuItem,
   TextField,
   Tooltip,
-  Typography,
 } from '@material-ui/core';
 import BookmarkIcon from '@material-ui/icons/Bookmark';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';

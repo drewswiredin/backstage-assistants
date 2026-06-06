@@ -254,37 +254,28 @@ export async function markThreadRead(
   }
 }
 
-/**
- * The assistant ids for which the user has at least one unread thread. Powers
- * the cross-assistant unread dots in the rail (one query, all assistants).
- * Best-effort: returns [] on failure.
- */
-export async function fetchUnreadAssistantIds(
-  api: AssistantsApi,
-): Promise<string[]> {
-  try {
-    const h = createApiHelper(api);
-    const data = await h.json<{ assistantIds: string[] }>(`/threads/unread`);
-    return data.assistantIds ?? [];
-  } catch {
-    return [];
-  }
+/** Per-conversation status row from `GET /threads/status` (all the user's threads). */
+export interface ConversationStatusRow {
+  threadId: string;
+  assistantId: string;
+  unread: boolean;
+  working: boolean;
 }
 
 /**
- * The threads currently generating a reply for this user (across all assistants).
- * Used to reconcile the ephemeral "generating" indicators on load, since Signals
- * only push transitions. Best-effort: returns [] on failure.
+ * The status of every one of the user's conversations across all assistants —
+ * the single source the client derives all indicators from. Best-effort:
+ * returns [] on failure.
  */
-export async function fetchActiveThreads(
+export async function fetchThreadStatus(
   api: AssistantsApi,
-): Promise<Array<{ threadId: string; assistantId: string }>> {
+): Promise<ConversationStatusRow[]> {
   try {
     const h = createApiHelper(api);
-    const data = await h.json<{
-      active: Array<{ threadId: string; assistantId: string }>;
-    }>(`/threads/active`);
-    return data.active ?? [];
+    const data = await h.json<{ threads: ConversationStatusRow[] }>(
+      `/threads/status`,
+    );
+    return data.threads ?? [];
   } catch {
     return [];
   }

@@ -6,6 +6,7 @@ import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-comm
 import { AssistantsList } from './AssistantsList';
 import { ConversationsPanel } from './ConversationsPanel';
 import type { ThreadSummary } from './threadListAdapter';
+import type { ConvStatus } from './useThreadStatus';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -46,10 +47,8 @@ export interface SidePaneProps {
   activeAssistantId: string;
   /** Switch assistant (drives `?assistant=<id>`). */
   onSelectAssistant: (id: string) => void;
-  /** Assistant ids with at least one unread conversation (server-computed). */
-  unreadAssistantIds?: ReadonlySet<string>;
-  /** Assistant ids with at least one in-flight (generating) reply. */
-  generatingAssistantIds?: ReadonlySet<string>;
+  /** Per-assistant rollup status (working/unread/read) for the rail dots. */
+  agentStatus?: (assistantId: string) => ConvStatus;
   conversations: ThreadSummary[];
   activeId: string | null;
   onNew: () => void;
@@ -73,8 +72,7 @@ export function SidePane(props: SidePaneProps) {
     assistants,
     activeAssistantId,
     onSelectAssistant,
-    unreadAssistantIds,
-    generatingAssistantIds,
+    agentStatus,
     conversations,
     activeId,
     onNew,
@@ -104,8 +102,7 @@ export function SidePane(props: SidePaneProps) {
         assistants={assistants}
         activeId={activeAssistantId}
         onSelect={onSelectAssistant}
-        unreadAssistantIds={unreadAssistantIds}
-        generatingAssistantIds={generatingAssistantIds}
+        agentStatus={agentStatus}
       />
 
       <div className={classes.divider} />

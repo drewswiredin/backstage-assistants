@@ -13,6 +13,7 @@ import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { AssistantDetailDialog } from './AssistantDetailDialog';
+import type { ConvStatus } from './useThreadStatus';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -75,17 +76,9 @@ export const AssistantsList: FC<{
   assistants: AssistantSummary[];
   activeId: string;
   onSelect: (id: string) => void;
-  /** Assistant ids with at least one unread conversation (server-computed). */
-  unreadAssistantIds?: ReadonlySet<string>;
-  /** Assistant ids with at least one in-flight (generating) reply. */
-  generatingAssistantIds?: ReadonlySet<string>;
-}> = ({
-  assistants,
-  activeId,
-  onSelect,
-  unreadAssistantIds,
-  generatingAssistantIds,
-}) => {
+  /** Per-assistant rollup status (working/unread/read) for the rail dots. */
+  agentStatus?: (assistantId: string) => ConvStatus;
+}> = ({ assistants, activeId, onSelect, agentStatus }) => {
   const classes = useStyles();
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -111,15 +104,12 @@ export const AssistantsList: FC<{
           >
             <ListItemIcon className={classes.icon}>
               <Badge
-                color={generatingAssistantIds?.has(a.id) ? 'primary' : 'error'}
+                color={agentStatus?.(a.id) === 'working' ? 'primary' : 'error'}
                 variant="dot"
                 overlap="circular"
-                invisible={
-                  !generatingAssistantIds?.has(a.id) &&
-                  !unreadAssistantIds?.has(a.id)
-                }
+                invisible={(agentStatus?.(a.id) ?? 'read') === 'read'}
                 classes={
-                  generatingAssistantIds?.has(a.id)
+                  agentStatus?.(a.id) === 'working'
                     ? { dot: classes.pulseDot }
                     : undefined
                 }

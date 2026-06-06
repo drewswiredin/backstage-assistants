@@ -256,6 +256,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       .catch(() => {});
   }
 
+  // A thread's metadata changed (e.g. an auto-generated title) without a status
+  // change — tells views to refresh the list. Distinct from turn-finished so it
+  // doesn't re-toggle read/unread.
+  function noteUpdated(userRef: string, threadId: string, assistantId: string) {
+    void signals
+      .publish({
+        recipients: { type: 'user', entityRef: userRef },
+        channel: NOTIFY_CHANNEL,
+        message: { type: 'updated', threadId, assistantId },
+      })
+      .catch(() => {});
+  }
+
   // The OpenAPI router's default middleware uses express.json() with no size
   // limit (100kb Express default). Chat conversations with tool results easily
   // exceed that. Override the middleware to use the configurable limit.
@@ -492,35 +505,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
               requestId,
               threadId,
             });
-            return;
-          }
-          // Auto-title the conversation on its first completed turn, server-side
-          // (single source of truth). Best-effort: failures leave 'New Chat'.
-          const thread = await threadService.getThread(user.userEntityRef, threadId);
-          if (thread && thread.title === 'New Chat') {
-            try {
-              const titled = await generateText({
-                model,
-                system: TITLE_SYSTEM_PROMPT,
-                prompt: buildTitleExcerpt(finalMessages as unknown as TitleMessage[]),
-                maxRetries: 1,
-              });
-              const title = titled.text.trim().replace(/["']+/g, '').slice(0, 80);
-              if (title) {
-                await threadService.updateThread(user.userEntityRef, threadId, {
-                  title,
-                });
-              }
-            } catch (titleError) {
-              logger.warn('auto-title failed', {
-                requestId,
-                threadId,
-                error:
-                  titleError instanceof Error
-                    ? titleError.message
-                    : String(titleError),
-              });
-            }
           }
         } catch (error) {
           logger.error('failed to persist chat turn', {
@@ -529,8 +513,39 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             error: error instanceof Error ? error.message : String(error),
           });
         } finally {
+          // Clear "working" the instant the reply is done — titling is background.
           noteFinished(user.userEntityRef, threadId, assistantId);
         }
+
+        // Auto-title the conversation's first turn OFF the critical path, so the
+        // pulse never lingers through title generation. On success emit a
+        // lightweight 'updated' signal so views refresh the title (no status change).
+        void (async () => {
+          try {
+            const thread = await threadService.getThread(user.userEntityRef, threadId);
+            if (!thread || thread.title !== 'New Chat') return;
+            const titled = await generateText({
+              model,
+              system: TITLE_SYSTEM_PROMPT,
+              prompt: buildTitleExcerpt(finalMessages as unknown as TitleMessage[]),
+              maxRetries: 1,
+            });
+            const title = titled.text.trim().replace(/["']+/g, '').slice(0, 80);
+            if (title) {
+              await threadService.updateThread(user.userEntityRef, threadId, { title });
+              noteUpdated(user.userEntityRef, threadId, assistantId);
+            }
+          } catch (titleError) {
+            logger.warn('auto-title failed', {
+              requestId,
+              threadId,
+              error:
+                titleError instanceof Error
+                  ? titleError.message
+                  : String(titleError),
+            });
+          }
+        })();
       },
       sendReasoning: true,
       headers: { 'Cache-Control': 'no-cache, no-transform' },
@@ -654,24 +669,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // Cross-assistant unread: which assistants have any unread thread for this
   // user. Drives the rail's per-assistant unread dots. MUST be registered before
   // `/:id` so 'unread' isn't matched as a thread id.
-  threads.get('/unread', (req, res, next) => {
+  // Per-conversation status across ALL of the user's assistants — the single
+  // source the client derives every indicator from (conversation dots, agent
+  // rollups, nav). `unread` is durable (DB); `working` is the live in-flight set.
+  // MUST precede `/:id` so 'status' isn't matched as a thread id.
+  threads.get('/status', (req, res, next) => {
     (async () => {
       const userRef = await resolveUserRef(req);
-      res.json({ assistantIds: await threadService.unreadAssistantIds(userRef) });
-    })().catch(next);
-  });
-
-  // Currently-generating threads for this user (the live in-flight set). Lets the
-  // client reconcile "generating" indicators on load, since that state is
-  // ephemeral (signals only push transitions). MUST precede `/:id`.
-  threads.get('/active', (req, res, next) => {
-    (async () => {
-      const userRef = await resolveUserRef(req);
-      const m = inFlight.get(userRef);
-      const active = m
-        ? [...m.entries()].map(([threadId, assistantId]) => ({ threadId, assistantId }))
-        : [];
-      res.json({ active });
+      const rows = await threadService.listUserThreadStatuses(userRef);
+      const working = inFlight.get(userRef);
+      res.json({
+        threads: rows.map(r => ({
+          threadId: r.threadId,
+          assistantId: r.assistantId,
+          unread: r.unread,
+          working: working?.has(r.threadId) ?? false,
+        })),
+      });
     })().catch(next);
   });
 
@@ -715,8 +729,17 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   threads.post('/:id/read', (req, res, next) => {
     (async () => {
       const userRef = await resolveUserRef(req);
-      const ok = await threadService.markRead(userRef, req.params.id);
-      if (!ok) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      const assistantId = await threadService.markRead(userRef, req.params.id);
+      if (!assistantId) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      // Tell every one of this user's views (chat page + nav icon) it's read, so
+      // their derived indicators converge — same channel as working/unread.
+      void signals
+        .publish({
+          recipients: { type: 'user', entityRef: userRef },
+          channel: NOTIFY_CHANNEL,
+          message: { type: 'read', threadId: req.params.id, assistantId },
+        })
+        .catch(() => {});
       res.status(204).end();
     })().catch(next);
   });

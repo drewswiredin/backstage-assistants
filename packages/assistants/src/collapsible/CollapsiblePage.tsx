@@ -46,13 +46,12 @@ import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
 import {
   createThreadListAdapter,
-  markThreadRead,
   patchThread,
   type ThreadCustomMetadata,
   type ThreadSummary,
 } from './threadListAdapter';
 import { makeRuntimeHook } from './useAssistantRuntime';
-import { useThreadNotifications } from './useThreadNotifications';
+import { useThreadStatus, type ConvStatus } from './useThreadStatus';
 
 const SIDEPANE_COLLAPSED_KEY = 'ai-chat-sidepane-collapsed';
 
@@ -419,7 +418,6 @@ function ChatChrome({
   const classes = useStyles();
   const runtime = useAssistantRuntime();
   const [, setSearchParams] = useSearchParams();
-  const notifications = useThreadNotifications(api);
 
   // Reactive snapshot of the server-backed thread list.
   const [threadList, setThreadList] = useState<ThreadListState>(() =>
@@ -432,60 +430,69 @@ function ChatChrome({
     );
   }, [runtime]);
 
-  // Always-one: when the thread list has loaded and contains no persisted
-  // (remote) threads, create one server-side immediately so the conversation
-  // list is never empty and the chat pane has a focused, initialized thread.
-  const hasRemoteThreads = threadList.threadIds.some(
-    id => threadList.threadItems[id]?.remoteId,
-  );
-  useEffect(() => {
-    if (!threadList.isLoading && !hasRemoteThreads) {
-      void (async () => {
-        await runtime.threads.switchToNewThread();
-        // Force server-side initialization so the thread appears in the list.
-        try {
-          await runtime.threads.mainItem.initialize();
-          await runtime.threads.reload();
-        } catch {
-          // initialize may fail if already initialized; safe to ignore.
-        }
-      })();
-    }
-  }, [threadList.isLoading, hasRemoteThreads, runtime]);
-
   const activeId = threadList.mainThreadId;
   const activeItem = threadList.threadItems[activeId];
   const activeRemoteId = activeItem?.remoteId;
   const activeTitle = activeItem?.title ?? '';
 
-  const { generatingThreadIds } = notifications;
+  // Single source of truth for read/working/unread, derived from server + signals.
+  const { statusOf, agentStatus, markRead, finishedTick } = useThreadStatus(
+    api,
+    activeRemoteId,
+  );
+
+  // On first load for this agent (the component is keyed by assistant.id), land
+  // on the agent's MOST RECENT conversation. The runtime defaults the main thread
+  // to a blank "new thread"; we switch off it to the latest existing conversation
+  // so selecting an agent shows a conversation, never a bare agent. An agent with
+  // no conversations stays on the unpersisted draft (the only no-"+" empty state).
+  // A new conversation is created ONLY via "+", never by typing.
+  const didSelectInitial = useRef(false);
+  useEffect(() => {
+    if (didSelectInitial.current || threadList.isLoading) return;
+    didSelectInitial.current = true;
+    // Only auto-select if we're still on the blank draft (don't override a user pick).
+    if (activeId !== threadList.newThreadId) return;
+    const mostRecent = [...threadList.threadIds]
+      .map(id => ({
+        id,
+        updatedAt:
+          (threadList.threadItems[id]?.custom as Partial<ThreadCustomMetadata>)
+            ?.updatedAt ?? '',
+      }))
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0]?.id;
+    if (mostRecent) {
+      void runtime.threads.switchToThread(mostRecent);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadList.isLoading]);
+
   const conversations = useMemo<ThreadSummary[]>(
     () =>
       threadList.threadIds.map(id => {
         const item = threadList.threadItems[id];
         const custom = item?.custom as Partial<ThreadCustomMetadata> | undefined;
-        const generating =
-          !!item?.remoteId && generatingThreadIds.has(item.remoteId) && id !== activeId;
+        // Every dot derives from the single status store; the focused
+        // conversation shows neither (you're looking at it).
+        const st: ConvStatus = id === activeId ? 'read' : statusOf(item?.remoteId);
         return {
           id,
           remoteId: item?.remoteId,
           title: item?.title ?? 'New Chat',
           pinned: custom?.pinned ?? false,
-          // generating and unread are mutually exclusive; generating wins.
-          unread: !generating && (custom?.unread ?? false) && id !== activeId,
-          generating,
+          unread: st === 'unread',
+          generating: st === 'working',
         };
       }),
-    [threadList, activeId, generatingThreadIds],
+    [threadList, activeId, statusOf],
   );
 
-  // A turn finished somewhere — refresh the thread list so the sidebar picks up
-  // new titles / unread state for background conversations.
+  // A turn finished — refresh the thread list so the sidebar picks up new titles.
   useEffect(() => {
-    if (notifications.finishedTick > 0) {
+    if (finishedTick > 0) {
       void runtime.threads.reload();
     }
-  }, [notifications.finishedTick, runtime]);
+  }, [finishedTick, runtime]);
 
   // Model picker: limited to the assistant's allowlist (else the global pool).
   const allowedModels = useMemo<ModelId[]>(
@@ -525,13 +532,11 @@ function ChatChrome({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  // Viewing a thread clears its unread flag (server-side), then refresh the list.
+  // Viewing a conversation marks it read — instantly in the store, persisted on
+  // the server. The conversation dot and the agent rollup both derive from the
+  // store, so they clear together.
   useEffect(() => {
-    if (activeRemoteId) {
-      markThreadRead(api, activeRemoteId)
-        .then(() => runtime.threads.reload())
-        .catch(() => {});
-    }
+    if (activeRemoteId) markRead(activeRemoteId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRemoteId]);
 
@@ -695,18 +700,13 @@ function ChatChrome({
                     >
                       <Badge
                         color={
-                          notifications.generatingAssistantIds.has(a.id)
-                            ? 'primary'
-                            : 'error'
+                          agentStatus(a.id) === 'working' ? 'primary' : 'error'
                         }
                         variant="dot"
                         overlap="circular"
-                        invisible={
-                          !notifications.generatingAssistantIds.has(a.id) &&
-                          !notifications.unreadAssistantIds.has(a.id)
-                        }
+                        invisible={agentStatus(a.id) === 'read'}
                         classes={
-                          notifications.generatingAssistantIds.has(a.id)
+                          agentStatus(a.id) === 'working'
                             ? { dot: classes.pulseDot }
                             : undefined
                         }
@@ -776,8 +776,7 @@ function ChatChrome({
                 assistants={status.assistants}
                 activeAssistantId={assistant.id}
                 onSelectAssistant={handleSelectAssistant}
-                unreadAssistantIds={notifications.unreadAssistantIds}
-                generatingAssistantIds={notifications.generatingAssistantIds}
+                agentStatus={agentStatus}
                 conversations={conversations}
                 activeId={activeId}
                 onNew={handleNew}

@@ -130,26 +130,39 @@ export class ThreadService {
     });
   }
 
-  /** Mark a thread read (clears its unread flag). Returns false if not owned. */
-  async markRead(userRef: string, threadId: string): Promise<boolean> {
-    const count = await this.db('threads')
+  /** Mark a thread read. Returns the thread's assistantId, or null if not owned. */
+  async markRead(userRef: string, threadId: string): Promise<string | null> {
+    const row = await this.db('threads')
+      .where({ id: threadId, user_ref: userRef })
+      .first();
+    if (!row) return null;
+    await this.db('threads')
       .where({ id: threadId, user_ref: userRef })
       .update({ last_read_at: new Date().toISOString() });
-    return count > 0;
+    return row.assistant_id as string;
   }
 
   /**
-   * The assistant ids for which this user has at least one unread thread
-   * (`updated_at > last_read_at`, not archived). Powers the cross-assistant
-   * unread dots in the rail — one cheap query across all of the user's threads.
+   * Per-conversation status for ALL of this user's non-archived threads (across
+   * every assistant) — the single source the client derives every indicator
+   * from. `unread` (`updated_at > last_read_at`) is durable; the live `working`
+   * flag is merged in by the router from its in-flight set. One cheap query.
    */
-  async unreadAssistantIds(userRef: string): Promise<string[]> {
+  async listUserThreadStatuses(
+    userRef: string,
+  ): Promise<Array<{ threadId: string; assistantId: string; unread: boolean }>> {
     const rows = await this.db('threads')
       .where({ user_ref: userRef, archived: false })
-      .whereNotNull('last_read_at')
-      .where('updated_at', '>', this.db.ref('last_read_at'))
-      .distinct('assistant_id');
-    return rows.map(r => r.assistant_id as string);
+      .select('id', 'assistant_id', 'updated_at', 'last_read_at');
+    return rows.map(r => {
+      const updatedAt = String(r.updated_at);
+      const lastReadAt = r.last_read_at ? String(r.last_read_at) : null;
+      return {
+        threadId: r.id as string,
+        assistantId: r.assistant_id as string,
+        unread: lastReadAt ? new Date(updatedAt) > new Date(lastReadAt) : false,
+      };
+    });
   }
 
   // ---- Messages -------------------------------------------------------------
