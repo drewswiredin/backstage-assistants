@@ -88,7 +88,7 @@ export interface Config {
         /**
          * The AI-SDK factory to instantiate for this provider. Selects the
          * `@ai-sdk/*` package used to build the connection; model ids are
-         * `<providerId>:<model>`. See ADR 0004.
+         * `<providerId>:<model>`.
          */
         type: 'openai' | 'anthropic' | 'azure' | 'openai-compatible';
 
@@ -105,7 +105,7 @@ export interface Config {
         /**
          * Untyped passthrough connection options, spread verbatim into the
          * selected AI-SDK factory. Exposes each provider's full native
-         * connection surface without schema maintenance (ADR 0004). Not
+         * connection surface without schema maintenance. Not
          * field-validated by Backstage's config schema.
          */
         options?: { [key: string]: unknown };
@@ -127,8 +127,6 @@ export interface Config {
       suggestions?: Array<{
         /** Short label shown on the suggestion chip. */
         title: string;
-        /** Optional secondary line under the title. */
-        label?: string;
         /** The text submitted when the chip is clicked. */
         prompt: string;
       }>;
@@ -211,7 +209,6 @@ export interface Config {
           };
           suggestions?: Array<{
             title: string;
-            label?: string;
             prompt: string;
           }>;
         };

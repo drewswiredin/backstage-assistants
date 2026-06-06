@@ -20,7 +20,7 @@ import {
 /**
  * The set of provider `type` discriminators whose AI-SDK factories we know how
  * to construct. Adding a new provider is one more value here plus a `case` in
- * {@link buildProvider} (ADR 0004).
+ * {@link buildProvider}.
  */
 const SUPPORTED_PROVIDER_TYPES = [
   'openai',
@@ -200,7 +200,7 @@ function readUi(uiConfig: Config | undefined): UiOptions | undefined {
 /**
  * Builds the AI-SDK provider factory selected by the provider's `type`
  * discriminator, spreading the passthrough `options` bag verbatim into the
- * factory and keeping the top-level `apiKey`/`baseUrl` (ADR 0004).
+ * factory and keeping the top-level `apiKey`/`baseUrl`.
  */
 function buildProvider(
   type: SupportedProviderType,
@@ -209,7 +209,7 @@ function buildProvider(
   const apiKey = providerConfig.getString('apiKey');
   const baseUrl = providerConfig.getOptionalString('baseUrl');
   // Untyped passthrough bag, spread verbatim into the factory. Not
-  // field-validated by the config schema (ADR 0004).
+  // field-validated by the config schema.
   const options =
     (providerConfig.getOptional('options') as Record<string, unknown>) ?? {};
 

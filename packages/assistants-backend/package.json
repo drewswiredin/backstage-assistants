@@ -33,7 +33,8 @@
   "files": [
     "dist",
     "config.d.ts",
-    "examples"
+    "examples",
+    "migrations"
   ],
   "configSchema": "config.d.ts",
   "scripts": {
@@ -55,11 +56,13 @@
     "@backstage/config": "^1.3.8",
     "@backstage/errors": "^1.3.1",
     "@backstage/plugin-search-common": "^1.2.24",
+    "@backstage/plugin-signals-node": "^0.2.1",
     "@backstage/types": "^1.2.2",
     "@drewswiredin/backstage-plugin-assistants-common": "0.5.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.193",
     "express": "^4.21.2",
+    "knex": "^3.1.0",
     "node-html-parser": "^7.1.0",
     "turndown": "^7.2.4"
   },

@@ -3,200 +3,266 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>backstage-assistants — Config flow</title>
+    <title>backstage-assistants — config flow</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
     <style>
-      :root { --fg:#1d2430; --muted:#5b6675; --line:#e2e6ec; --bg:#fff; --panel:#f7f9fc; --accent:#c2410c; --secret:#b42318; --safe:#0a7d52; }
-      * { box-sizing: border-box; }
-      body { margin:0; font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--fg); background:var(--bg); }
-      header { padding:28px 32px 18px; border-bottom:1px solid var(--line); }
-      header h1 { margin:0 0 6px; font-size:22px; }
-      header p { margin:0; color:var(--muted); max-width:78ch; }
-      main { padding:24px 32px 64px; }
-      .diagram { border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--panel); overflow-x:auto; }
+      :root {
+        --ink:#1f2933; --muted:#5b6675; --rule:#d6dce3; --paper:#fff; --panel:#f7f9fb;
+        --plugin:#0b6b6b; --secret:#b42318; --safe:#0a7d52;
+        --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+      }
+      * { box-sizing:border-box; }
+      body { margin:0; color:var(--ink); background:var(--paper);
+        font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+      header { padding:30px 36px 20px; border-bottom:1px solid var(--rule); }
+      header h1 { margin:0 0 6px; font-size:21px; letter-spacing:-0.01em; }
+      header p { margin:0; color:var(--muted); max-width:84ch; }
+      nav { padding:12px 36px; border-bottom:1px solid var(--rule); background:var(--panel);
+        font-family:var(--mono); font-size:12.5px; }
+      nav a { color:var(--plugin); text-decoration:none; margin-right:18px; }
+      nav a:hover { text-decoration:underline; }
+      main { padding:8px 36px 72px; }
+      section { margin-top:36px; }
+      h2 { font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);
+        margin:0 0 4px; font-weight:700; }
+      h2 .n { color:var(--plugin); margin-right:8px; }
+      .lead { margin:0 0 14px; color:var(--muted); max-width:84ch; font-size:14px; }
+      .frame { border:1px solid var(--rule); border-radius:6px; background:var(--paper); }
+      .frame .diagram { padding:18px; overflow-x:auto; }
       .mermaid { text-align:center; }
-      h2 { font-size:16px; margin:32px 0 10px; }
-      .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-      @media (max-width:980px){ .grid { grid-template-columns:1fr; } }
-      .panel { border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:var(--bg); }
-      .panel h3 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-      pre.code { margin:0; background:#0f1729; color:#e6edf6; border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:13px; line-height:1.5; }
-      pre.code .c { color:#7c89a3; }
-      pre.code .k { color:#9ecbff; }
-      pre.code .s { color:#a5d6a4; }
-      pre.code .secret { color:#ff8a80; font-weight:600; }
-      table { border-collapse:collapse; width:100%; font-size:13px; }
-      th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
-      th { color:var(--muted); font-weight:600; }
-      code { background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:13px; }
-      .tag { font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; }
-      .tag.secret { background:#fde7e1; color:var(--secret); }
-      .tag.safe { background:#e6f6ee; color:var(--safe); }
-      .legend { display:flex; flex-wrap:wrap; gap:14px; margin:14px 0 0; font-size:13px; color:var(--muted); }
-      .note { color:var(--muted); font-size:13px; margin-top:10px; }
-      ol { margin:0; padding-left:18px; } ol li { margin:5px 0; }
+      .legend { display:flex; flex-wrap:wrap; gap:10px 22px; padding:12px 16px;
+        border-top:1px solid var(--rule); background:var(--panel); font-size:12.5px; color:var(--muted);
+        font-family:var(--mono); border-radius:0 0 6px 6px; }
+      .legend .sw { display:inline-block; width:22px; height:13px; vertical-align:middle; margin-right:7px; border-radius:2px; }
+      .sw.safe { background:#e9f6ef; border:1px solid var(--safe); }
+      .sw.secret { background:#fbece9; border:1px solid var(--secret); }
+      .sw.line { border:0; height:0; border-top:4px solid var(--ink); width:22px; }
+      .sw.line.dash { border-top:2px dashed var(--muted); }
+      pre.code { margin:0; padding:18px; background:var(--panel); border-radius:6px; overflow-x:auto;
+        font-family:var(--mono); font-size:12.5px; line-height:1.55; color:var(--ink); border:1px solid var(--rule); }
+      pre.code .c { color:var(--muted); }
+      pre.code .s { color:var(--secret); font-weight:600; }
+      table { border-collapse:collapse; width:100%; font-size:13.5px; }
+      th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); vertical-align:top; }
+      th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; }
+      td.k, code { font-family:var(--mono); }
+      code { background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:0.5px 5px; font-size:12.5px; }
+      .tag { font-family:var(--mono); font-size:11px; font-weight:700; padding:1px 7px; border-radius:3px; white-space:nowrap; }
+      .tag.secret { background:#fbece9; color:var(--secret); }
+      .tag.safe { background:#e9f6ef; color:var(--safe); }
+      .note { color:var(--muted); font-size:13px; margin:12px 0 0; max-width:88ch; }
+      .note b { color:var(--ink); }
+      ol { margin:0; padding-left:20px; } ol li { margin:7px 0; }
+      ol li b { font-family:var(--mono); font-weight:700; }
     </style>
   </head>
   <body>
     <header>
       <h1>backstage-assistants — config flow</h1>
       <p>
-        One declarative <code>assistants:</code> block in <code>app-config.yaml</code> defines <em>multiple assistant
-        profiles</em> — each with its own prompt, access policy, tools, allowed models, and a few UI options. This maps
-        how that config is validated, split into <strong>secret / backend-only</strong> vs <strong>browser-safe</strong>,
-        exposed via <code>/status</code>, and applied on the frontend.
+        One declarative <code>assistants:</code> block defines global settings, providers, MCP servers, and many
+        assistant profiles. This traces how that config is validated, split into <b>secret / backend-only</b> vs
+        <b>browser-safe</b>, exposed via <code>/status</code>, and applied at <code>/chat</code>. Sister doc:
+        <a href="architecture.html">architecture</a>.
       </p>
     </header>
 
+    <nav>
+      <a href="#flow">1 · flow</a>
+      <a href="#surface">2 · config surface</a>
+      <a href="#exposure">3 · field exposure</a>
+      <a href="#facts">4 · settled facts</a>
+    </nav>
+
     <main>
-      <div class="diagram">
-        <pre class="mermaid">
+
+      <!-- 1 · FLOW -------------------------------------------------------- -->
+      <section id="flow">
+        <h2><span class="n">1</span>Flow</h2>
+        <p class="lead">Config is parsed once on the backend, split by visibility, and only the browser-safe half ever reaches the client. Secrets — prompts, API keys, MCP credentials, access rules — stay server-side.</p>
+        <div class="frame">
+          <div class="diagram">
+            <pre class="mermaid">
 flowchart LR
 
-  subgraph SRC["📄 app-config.yaml · assistants:"]
+  subgraph SRC["app-config.yaml — assistants:"]
     direction TB
     G["global<br/>defaultModel · maxSteps · registerCoreActions"]
-    PROV["providers.{id}<br/>apiKey 🔒 · baseUrl · models[ ]"]
-    UIG["ui (global defaults)<br/>suggestions · composer.placeholder"]
-    DEFS["profiles.{id} — many<br/>title · description · prompt 🔒 · access 🔒<br/>actions[ ] · models[ ] · defaultModel · ui"]
+    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options · models[]"]
+    MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*"]
+    UIG["ui (global defaults)<br/>composer.placeholder · suggestions[]"]
+    PROF["profiles.{id} — many<br/>title · description · color · prompt* · access*<br/>actions[] · mcpServers[] · models[] · defaultModel · ui"]
   end
 
-  subgraph BE["⚙️ Backend — config.d.ts + readConfig"]
+  subgraph BE["backend — config.d.ts + readConfig()"]
     direction TB
-    SCHEMA["config.d.ts schema<br/>@visibility secret on apiKey"]
-    PARSE["readConfig()<br/>validate · build provider/model registry<br/>check each profile's model allowlist + default"]
-    MERGE["resolve per-profile ui =<br/>deepMerge(global ui, profile.ui)"]
+    PARSE["validate · build provider/model registry<br/>resolve ui = deepMerge(global, profile)<br/>check model allowlist + default"]
     SPLIT{"split by visibility"}
+    PARSE --> SPLIT
   end
 
-  STATUS["GET /status — browser-safe<br/>profiles[ id · title · description · models · defaultModel · ui ]<br/>models[ ] · defaultModel"]
-  CHAT["POST /chat — backend applies<br/>system = prompt · tools = actions"]
+  STATUS["GET /status — browser-safe<br/>profiles[ id · title · description · models · defaultModel · ui · tools[] ]"]
+  CHAT["POST /chat — backend applies<br/>system = prompt · tools = Actions(as user) + MCP(as configured)"]
 
-  subgraph FE["🖥️ Frontend — usePluginStatus"]
+  subgraph FE["browser — usePluginStatus"]
     direction TB
-    PICK["assistant + conversations (rail)<br/>model picker (chat header) — limited to the profile's allowlist"]
-    APPLY["profile.ui → composer placeholder · starter suggestions"]
+    PICK["assistant rail · conversations · model picker (per-profile allowlist)"]
+    APPLY["ui → composer placeholder · suggestions"]
   end
-
-  THEME["🎨 Theme: one built-in palette,<br/>auto-synced to Backstage light/dark<br/>(not configurable)"]
 
   G --> PARSE
-  PROV --> SCHEMA --> PARSE
-  UIG --> MERGE
-  DEFS --> MERGE
-  DEFS --> PARSE
-  PARSE --> SPLIT
-  MERGE --> SPLIT
-  SPLIT ==>|browser-safe| STATUS
-  SPLIT -. "backend-only: prompt · access · apiKey" .-> CHAT
+  PROV --> PARSE
+  MCP --> PARSE
+  UIG --> PARSE
+  PROF --> PARSE
+  SPLIT ==>|"browser-safe"| STATUS
+  SPLIT -.->|"backend-only: prompt · access · apiKey · headers · env"| CHAT
   STATUS --> PICK --> APPLY
-  APPLY -. "sends { assistantId, modelId, messages }" .-> CHAT
-  THEME -.-> APPLY
+  APPLY -.->|"{ assistantId, modelId, threadId, messages }"| CHAT
 
-  classDef src fill:#eef2f9,stroke:#5b6675,color:#1d2430;
-  classDef be fill:#f1f3f5,stroke:#868e96,color:#1d2430;
-  classDef safe fill:#e6f6ee,stroke:#0a7d52,color:#1d2430;
-  classDef secret fill:#fde7e1,stroke:#b42318,color:#1d2430;
-  classDef fe fill:#efeaff,stroke:#6d4aff,color:#1d2430;
-  classDef gate fill:#fff6e6,stroke:#d2691e,color:#1d2430;
-  classDef theme fill:#eafaf6,stroke:#1a9e8f,color:#1d2430;
+  classDef src fill:#eef2f7,stroke:#5b6675,color:#1f2933;
+  classDef be fill:#e7f3f2,stroke:#0b6b6b,color:#10312f;
+  classDef gate fill:#ffffff,stroke:#0b6b6b,color:#10312f;
+  classDef safe fill:#e9f6ef,stroke:#0a7d52,color:#08311f;
+  classDef secret fill:#fbece9,stroke:#b42318,color:#4a120c;
+  classDef fe fill:#eef2f7,stroke:#5b6675,color:#1f2933;
 
-  class G,PROV,UIG,DEFS src;
-  class SCHEMA,PARSE,MERGE be;
+  class G,PROV,MCP,UIG,PROF src;
+  class PARSE be;
   class SPLIT gate;
   class STATUS safe;
   class CHAT secret;
   class PICK,APPLY fe;
-  class THEME theme;
-        </pre>
-        <div class="legend">
-          <span>🔒 = secret / backend-only — never crosses to the browser</span>
-          <span>══ = browser-safe exposure (<code>/status</code>) · ·· = stays server-side</span>
+            </pre>
+          </div>
+          <div class="legend">
+            <span><span class="sw safe"></span>browser-safe (via /status)</span>
+            <span><span class="sw secret"></span>secret / backend-only</span>
+            <span><span class="sw line"></span>browser-safe exposure</span>
+            <span><span class="sw line dash"></span>stays server-side / request body</span>
+            <span><code>*</code> = secret field (never sent to the browser)</span>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <h2>The config surface (one block, many profiles)</h2>
-<pre class="code"><span class="k">assistants</span>:
-  <span class="c"># ---------- global ----------</span>
-  <span class="k">defaultModel</span>: <span class="s">openai:gpt-5.5</span>          <span class="c"># required</span>
-  <span class="k">maxSteps</span>: <span class="s">8</span>
-  <span class="k">registerCoreActions</span>: <span class="s">true</span>
-  <span class="k">providers</span>:
-    <span class="k">openai</span>:
-      <span class="k">apiKey</span>: <span class="secret">${OPENAI_API_KEY}        # 🔒 @visibility secret — backend only</span>
-      <span class="k">baseUrl</span>: <span class="s">https://api.openai.com/v1</span>
-      <span class="k">models</span>: [<span class="s">gpt-5.5</span>, <span class="s">gpt-4o-mini</span>]
-  <span class="k">ui</span>:                          <span class="c"># global UI defaults — deep-merged into every profile</span>
-    <span class="k">composer</span>: { <span class="k">placeholder</span>: <span class="s">"Send a message…"</span> }
-    <span class="k">suggestions</span>: []
+      <!-- 2 · SURFACE ----------------------------------------------------- -->
+      <section id="surface">
+        <h2><span class="n">2</span>Config surface</h2>
+        <p class="lead">One block, many profiles. Secrets marked <span class="tag secret">*</span>.</p>
+        <div class="frame">
+<pre class="code"><span class="c"># app-config.yaml</span>
+assistants:
+  <span class="c"># ---- global ----</span>
+  defaultModel: openai:gpt-5.5          <span class="c"># required</span>
+  maxSteps: 8                           <span class="c"># streamText stopWhen</span>
+  registerCoreActions: true             <span class="c"># register this plugin's built-in Actions</span>
 
-  <span class="c"># ---------- profiles (multiple assistants) ----------</span>
-  <span class="k">profiles</span>:
-    <span class="k">general</span>:
-      <span class="k">title</span>: <span class="s">General Assistant</span>
-      <span class="k">description</span>: <span class="s">Catalog + TechDocs helper.</span>
-      <span class="k">prompt</span>: <span class="secret">|                     # 🔒 backend only — never sent to browser</span>
+  providers:
+    openai:
+      type: openai                      <span class="c"># selects the @ai-sdk/* factory</span>
+      apiKey: <span class="s">${OPENAI_API_KEY}</span>          <span class="c"># * secret — backend only</span>
+      baseUrl: https://api.openai.com/v1
+      options: {}                       <span class="c"># passthrough, spread verbatim into the factory</span>
+      models: [gpt-5.5, gpt-4o-mini]    <span class="c"># model ids namespaced as openai:&lt;model&gt;</span>
+
+  <span class="c"># ---- external MCP servers (optional) ----</span>
+  mcp:
+    servers:
+      github:                           <span class="c"># remote (Streamable HTTP)</span>
+        transport: http
+        url: https://mcp.internal/github
+        headers:                        <span class="c"># * secret — static per-server credential, NOT run-as-user</span>
+          Authorization: <span class="s">${GITHUB_MCP_TOKEN}</span>
+      filesystem:                       <span class="c"># local process</span>
+        transport: stdio
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/srv/docs"]
+        env:                            <span class="c"># * secret</span>
+          TOKEN: <span class="s">${FS_TOKEN}</span>
+
+  ui:                                   <span class="c"># global UI defaults — deep-merged into every profile</span>
+    composer: { placeholder: "Send a message…" }
+    suggestions: []
+
+  <span class="c"># ---- profiles (one per assistant) ----</span>
+  profiles:
+    general:
+      title: General Assistant
+      description: Catalog + TechDocs helper.
+      color: "#0b6b6b"                  <span class="c"># optional avatar tint — browser-safe, cosmetic</span>
+      prompt: |                         <span class="c"># * secret — system prompt, never sent to browser</span>
         <span class="s">You are a Backstage developer-portal assistant…</span>
-      <span class="k">access</span>: { <span class="k">allowAuthenticated</span>: <span class="s">true</span> }   <span class="c"># 🔒 backend only</span>
-      <span class="k">actions</span>: [<span class="s">search-catalog</span>, <span class="s">search-techdocs</span>, <span class="s">read-techdocs</span>]
-      <span class="k">ui</span>:                       <span class="c"># per-profile overrides (win over global ui)</span>
-        <span class="k">suggestions</span>:
-          - { <span class="k">title</span>: <span class="s">"Who owns…"</span>, <span class="k">prompt</span>: <span class="s">"Who owns the payments service?"</span> }
+      access: { allowAuthenticated: true }   <span class="c"># * secret — who may use this assistant</span>
+      actions: [search-catalog, search-techdocs, read-techdocs]  <span class="c"># run as the user</span>
+      mcpServers:                       <span class="c"># opt in to MCP servers + optional per-tool allowlist</span>
+        - { server: github, tools: ["search_issues", "get_file"] }
+        - { server: filesystem }        <span class="c"># omit tools = all tools from that server</span>
+      ui:
+        suggestions:
+          - { title: "Who owns…", prompt: "Who owns the payments service?" }
 
-    <span class="k">docs</span>:
-      <span class="k">title</span>: <span class="s">Docs Assistant</span>
-      <span class="k">prompt</span>: <span class="secret">| …</span>
-      <span class="k">access</span>: { <span class="k">groups</span>: [<span class="s">group:default/platform</span>] }  <span class="c"># 🔒</span>
-      <span class="k">actions</span>: [<span class="s">search-techdocs</span>, <span class="s">read-techdocs</span>]
-      <span class="k">models</span>: [<span class="s">openai:gpt-4o-mini</span>]     <span class="c"># optional allowlist (subset of pool; omit = full pool)</span>
-      <span class="k">defaultModel</span>: <span class="s">openai:gpt-4o-mini</span>   <span class="c"># required when the allowlist excludes the global default</span></pre>
-      <p class="note">No <code>theme</code> key — see "Theme" below.</p>
+    docs:
+      title: Docs Assistant
+      prompt: |
+        <span class="s">…</span>
+      access: { groups: [group:default/platform] }     <span class="c"># *</span>
+      actions: [search-techdocs, read-techdocs]
+      models: [openai:gpt-4o-mini]      <span class="c"># optional allowlist (subset of pool; omit = full pool)</span>
+      defaultModel: openai:gpt-4o-mini  <span class="c"># required when the allowlist excludes the global default</span></pre>
+        </div>
+        <p class="note"><b>No <code>assistants.database</code> key.</b> Conversation persistence uses Backstage's standard <code>backend.database</code> — the same database the catalog and search already require. No operator action beyond having one configured. <b>No <code>theme</code> key</b> — see §4.</p>
+      </section>
 
-      <h2>Where each field goes</h2>
-      <div class="grid">
-        <div class="panel">
-          <h3>Exposure — secret/backend-only vs browser-safe</h3>
+      <!-- 3 · EXPOSURE ---------------------------------------------------- -->
+      <section id="exposure">
+        <h2><span class="n">3</span>Field exposure</h2>
+        <p class="lead">Where each field goes, and whether it crosses to the browser. The browser receives only the <span class="tag safe">browser</span> rows and sends back only <code>{ assistantId, modelId, threadId, messages }</code>.</p>
+        <div class="frame">
           <table>
             <tr><th>Field</th><th>Scope</th><th>Consumed by</th></tr>
-            <tr><td><code>providers.*.apiKey</code></td><td><span class="tag secret">secret</span></td><td>provider registry (server)</td></tr>
-            <tr><td><code>prompt</code></td><td><span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code></td></tr>
-            <tr><td><code>access</code></td><td><span class="tag secret">backend</span></td><td>access gate (<code>/status</code> filter + <code>/chat</code>)</td></tr>
-            <tr><td><code>actions[]</code></td><td><span class="tag secret">backend</span></td><td>tool allowlist at <code>/chat</code></td></tr>
-            <tr><td><code>maxSteps</code></td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code></td></tr>
-            <tr><td><code>title</code>, <code>description</code></td><td><span class="tag safe">browser</span></td><td>assistant rail / welcome</td></tr>
-            <tr><td><code>models</code> (pool + per-profile allowlist)</td><td><span class="tag safe">browser</span></td><td>model picker (filtered per profile)</td></tr>
-            <tr><td><code>defaultModel</code> (global + per-profile)</td><td><span class="tag safe">browser</span></td><td>model picker default</td></tr>
-            <tr><td><code>ui</code> (resolved)</td><td><span class="tag safe">browser</span></td><td>composer + suggestions</td></tr>
+            <tr><td class="k">providers.*.apiKey</td><td><span class="tag secret">secret</span></td><td>provider registry (server)</td></tr>
+            <tr><td class="k">providers.* (type · baseUrl · options)</td><td><span class="tag secret">backend</span></td><td>provider registry (server)</td></tr>
+            <tr><td class="k">mcp.servers.*.headers · env</td><td><span class="tag secret">secret</span></td><td>MCP transport auth (server)</td></tr>
+            <tr><td class="k">mcp.servers.* (transport · url · command · args · cwd)</td><td><span class="tag secret">backend</span></td><td>MCP connection (server)</td></tr>
+            <tr><td class="k">profiles.*.prompt</td><td><span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code></td></tr>
+            <tr><td class="k">profiles.*.access</td><td><span class="tag secret">backend</span></td><td>access gate (<code>/status</code> filter + <code>/chat</code>)</td></tr>
+            <tr><td class="k">profiles.*.actions[]</td><td><span class="tag secret">backend</span></td><td>Action tool allowlist at <code>/chat</code> (run as user)</td></tr>
+            <tr><td class="k">profiles.*.mcpServers[]</td><td><span class="tag secret">backend</span></td><td>MCP tool selection at <code>/chat</code> (run as configured)</td></tr>
+            <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code></td></tr>
+            <tr><td class="k">title · description</td><td><span class="tag safe">browser</span></td><td>assistant rail / welcome</td></tr>
+            <tr><td class="k">profiles.*.color</td><td><span class="tag safe">browser</span></td><td>assistant avatar tint (cosmetic)</td></tr>
+            <tr><td class="k">models (pool + per-profile allowlist)</td><td><span class="tag safe">browser</span></td><td>model picker (filtered per profile)</td></tr>
+            <tr><td class="k">defaultModel (global + per-profile)</td><td><span class="tag safe">browser</span></td><td>model picker default</td></tr>
+            <tr><td class="k">ui (resolved)</td><td><span class="tag safe">browser</span></td><td>composer placeholder + suggestions</td></tr>
+            <tr><td class="k">tools (resolved summaries)</td><td><span class="tag safe">browser</span></td><td>tool list / detail — name · description · source, for both Actions and MCP</td></tr>
           </table>
-          <p class="note">The browser only receives the <span class="tag safe">browser</span> rows (via <code>/status</code>) and only sends back <code>{ assistantId, modelId, messages }</code>. Prompt, keys, and access never leave the backend.</p>
         </div>
-        <div class="panel">
-          <h3>UI options (v1) &amp; theme</h3>
-          <p style="margin-top:0">Resolved per profile via <code>deepMerge(global ui, profile.ui)</code>, returned in <code>/status</code>, applied to the chat. <strong>Objects deep-merge; arrays (e.g. <code>suggestions</code>) replace</strong> so a profile can clear inherited values.</p>
-          <table>
-            <tr><th>ui key</th><th>Effect</th></tr>
-            <tr><td><code>suggestions[]</code></td><td>starter prompt chips on the empty thread</td></tr>
-            <tr><td><code>composer.placeholder</code></td><td>composer input placeholder text</td></tr>
-            <tr><td>welcome heading/subtext</td><td>derived automatically from the profile's <code>title</code>/<code>description</code></td></tr>
-          </table>
-          <p class="note"><strong>Theme:</strong> a single built-in palette that follows Backstage's light/dark mode automatically — <em>not</em> configurable. <strong>Deferred:</strong> file attachments (needs an upload path + multimodal model) and fine-grained toggles (branch picker, action-bar buttons) — the merge pipeline already supports them; they light up later with no config change.</p>
-        </div>
-      </div>
+        <p class="note"><b>Tool summaries are browser-safe; tool execution is not.</b> <code>/status</code> lists each assistant's effective tools (Action + MCP) so the UI can show them; the actual invoke happens only at <code>/chat</code>, under the identities described in the <a href="architecture.html#identity">architecture trust model</a>.</p>
+      </section>
 
-      <h2>Settled decisions</h2>
-      <div class="panel">
-        <ol>
-          <li><strong>Block shape:</strong> <code>assistants.profiles.{id}</code> — global settings + a named map of assistant profiles.</li>
-          <li><strong>UI options (v1):</strong> <code>suggestions[]</code> + <code>composer.placeholder</code>; welcome text derived from <code>title</code>/<code>description</code>. Attachments &amp; extra toggles deferred.</li>
-          <li><strong>Theme:</strong> one built-in palette, auto-synced to Backstage light/dark. Not configurable — keeps it simple and always-consistent with the host.</li>
-          <li><strong>Models:</strong> global pool + optional per-profile <code>models</code> allowlist (subset of pool; omit = all) + per-profile <code>defaultModel</code>. A profile's effective default must be within its allowlist; a restricted profile that excludes the global default must declare its own.</li>
-          <li><strong>Merge semantics:</strong> <code>ui</code> objects deep-merge; arrays replace.</li>
-        </ol>
-      </div>
+      <!-- 4 · FACTS ------------------------------------------------------- -->
+      <section id="facts">
+        <h2><span class="n">4</span>Settled facts</h2>
+        <div class="frame" style="padding:16px 20px;">
+          <ol>
+            <li><b>Block shape</b> — <code>assistants.profiles.{id}</code>: global settings + a named map of profiles, one per assistant.</li>
+            <li><b>Providers</b> — a <code>type</code> discriminator selects the <code>@ai-sdk/*</code> factory; <code>options</code> is spread verbatim; the union of all <code>models</code> is the pool; a model id is <code>&lt;providerId&gt;:&lt;model&gt;</code>.</li>
+            <li><b>MCP</b> — <code>assistants.mcp.servers.{id}</code> defines connections; profiles opt in via <code>mcpServers: [{ server, tools? }]</code>. Each server uses one static credential (<code>headers</code> / <code>env</code>) — a shared identity, not run-as-user.</li>
+            <li><b>Models</b> — global pool + optional per-profile <code>models</code> allowlist (subset of pool; omit = all) + per-profile <code>defaultModel</code>. A profile's effective default must lie within its allowlist.</li>
+            <li><b>UI merge</b> — <code>deepMerge(global ui, profile.ui)</code>: objects deep-merge, arrays replace (so a profile can clear inherited values). Welcome text is derived from <code>title</code> / <code>description</code>.</li>
+            <li><b>Theme</b> — one built-in palette that follows Backstage light/dark automatically. Not configurable, by design.</li>
+            <li><b>Persistence</b> — conversations are stored server-side via Backstage's <code>backend.database</code>; no new config key (see <a href="architecture.html#persistence">architecture §5</a>).</li>
+          </ol>
+        </div>
+      </section>
+
     </main>
 
     <script>
-      mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { htmlLabels: true, curve: 'basis' } });
+      mermaid.initialize({
+        startOnLoad:true, theme:'neutral',
+        flowchart:{ htmlLabels:true, curve:'basis', nodeSpacing:40, rankSpacing:50 }
+      });
     </script>
   </body>
 </html>

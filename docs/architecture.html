@@ -3,211 +3,345 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>backstage-assistants — Architecture (draft)</title>
+    <title>backstage-assistants — architecture</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
     <style>
-      :root { --fg:#1d2430; --muted:#5b6675; --line:#e2e6ec; --bg:#fff; --panel:#f7f9fc; --accent:#c2410c; }
-      * { box-sizing: border-box; }
-      body { margin:0; font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--fg); background:var(--bg); }
-      header { padding:28px 32px 18px; border-bottom:1px solid var(--line); }
-      header h1 { margin:0 0 6px; font-size:22px; }
-      header p { margin:0; color:var(--muted); max-width:74ch; }
-      .draft { display:inline-block; margin-left:10px; padding:2px 8px; border-radius:999px; background:#fff3e6; color:var(--accent); font-size:12px; font-weight:600; vertical-align:middle; }
-      main { padding:24px 32px 64px; }
-      h2 { font-size:16px; margin:32px 0 10px; }
-
-      .key { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-      @media (max-width:980px){ .key { grid-template-columns:1fr; } }
-      .fam { border:1px solid var(--line); border-left-width:6px; border-radius:8px; padding:12px 14px; background:var(--bg); }
-      .fam-title { font-weight:700; font-size:14px; margin:0 0 8px; }
-      .pkglist { list-style:none; margin:0; padding:0; }
-      .pkglist li { font-size:13px; color:var(--muted); padding:6px 0; border-top:1px solid var(--line); }
-      .pkglist li:first-child { border-top:0; padding-top:0; }
-      .pkglist .pn { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-weight:700; color:var(--fg); text-decoration:none; border-bottom:1px dashed currentColor; }
-
-      .diagram { border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--panel); overflow-x:auto; margin-top:6px; }
+      :root {
+        --ink:#1f2933; --muted:#5b6675; --rule:#d6dce3; --paper:#fff; --panel:#f7f9fb;
+        --plugin:#0b6b6b; --ext:#9a7b3f; --store:#3b4b8a; --secret:#b42318; --safe:#0a7d52;
+        --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+      }
+      * { box-sizing:border-box; }
+      body { margin:0; color:var(--ink); background:var(--paper);
+        font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+      header { padding:30px 36px 20px; border-bottom:1px solid var(--rule); }
+      header h1 { margin:0 0 6px; font-size:21px; letter-spacing:-0.01em; }
+      header p { margin:0; color:var(--muted); max-width:80ch; }
+      nav { padding:12px 36px; border-bottom:1px solid var(--rule); background:var(--panel);
+        font-family:var(--mono); font-size:12.5px; }
+      nav a { color:var(--plugin); text-decoration:none; margin-right:18px; }
+      nav a:hover { text-decoration:underline; }
+      main { padding:8px 36px 72px; }
+      section { margin-top:36px; }
+      h2 { font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);
+        margin:0 0 4px; font-weight:700; }
+      h2 .n { color:var(--plugin); margin-right:8px; }
+      .lead { margin:0 0 14px; color:var(--muted); max-width:82ch; font-size:14px; }
+      .frame { border:1px solid var(--rule); border-radius:6px; background:var(--paper); }
+      .frame .diagram { padding:18px; overflow-x:auto; }
       .mermaid { text-align:center; }
-      .legend { display:flex; flex-wrap:wrap; gap:14px; margin:14px 0 0; font-size:13px; color:var(--muted); }
-      .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-      @media (max-width:880px){ .grid { grid-template-columns:1fr; } }
-      .panel { border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:var(--bg); }
-      .panel h3 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-      ol { margin:0; padding-left:20px; } ol li { margin:6px 0; }
-      code { background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:13px; }
-      .note { color:var(--muted); font-size:13px; margin-top:8px; }
-      strong.k { color:var(--fg); }
-      .dxgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-      @media (max-width:880px){ .dxgrid { grid-template-columns:1fr; } }
-      details.dx { border:1px solid var(--line); border-radius:8px; background:var(--bg); }
-      details.dx summary { cursor:pointer; padding:11px 14px; font-size:14px; font-weight:600; list-style:none; }
-      details.dx summary::-webkit-details-marker { display:none; }
-      details.dx summary::before { content:'▸'; color:var(--muted); margin-right:8px; }
-      details.dx[open] summary::before { content:'▾'; }
-      details.dx[open] summary { border-bottom:1px solid var(--line); }
-      details.dx .body { padding:11px 14px 13px 32px; color:var(--muted); font-size:13px; }
-      details.dx .body ol { margin:0; padding-left:18px; } details.dx .body ol li { margin:5px 0; }
-      .dot { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:8px; vertical-align:middle; border:1px solid rgba(0,0,0,.15); }
-      .nodetip { position:fixed; z-index:1000; max-width:330px; background:#1d2430; color:#fff; padding:10px 13px; border-radius:8px; font-size:13px; line-height:1.55; pointer-events:none; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; transition:opacity .12s ease; }
-      .nodetip b { display:block; margin-bottom:4px; }
-      .nodetip code { background:rgba(255,255,255,.14); border:0; color:#fff; }
+      .legend { display:flex; flex-wrap:wrap; gap:10px 22px; padding:12px 16px;
+        border-top:1px solid var(--rule); background:var(--panel); font-size:12.5px; color:var(--muted);
+        font-family:var(--mono); border-radius:0 0 6px 6px; }
+      .legend .sw { display:inline-block; width:22px; height:13px; vertical-align:middle; margin-right:7px;
+        border-radius:2px; }
+      .sw.plugin { background:#e7f3f2; border:1px solid var(--plugin); }
+      .sw.ext { background:#fbf6ec; border:1px dashed var(--ext); }
+      .sw.gate { background:#fff; border:1px solid var(--plugin);
+        clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); border-radius:0; }
+      .sw.store { background:#eef0fb; border:1px solid var(--store); border-radius:7px/4px; }
+      .sw.line { border:0; height:0; border-top:2px solid var(--ink); width:22px; }
+      .sw.line.heavy { border-top:4px solid var(--ink); }
+      .sw.line.dash { border-top:2px dashed var(--muted); }
+      table { border-collapse:collapse; width:100%; font-size:13.5px; }
+      th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); vertical-align:top; }
+      th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; }
+      td.k, code { font-family:var(--mono); }
+      code { background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:0.5px 5px; font-size:12.5px; }
+      .tag { font-family:var(--mono); font-size:11px; font-weight:700; padding:1px 7px; border-radius:3px; white-space:nowrap; }
+      .tag.user { background:#e7f3f2; color:#0b6b6b; }
+      .tag.cfg { background:#fbf6ec; color:#7a5f2a; }
+      .note { color:var(--muted); font-size:13px; margin:12px 0 0; max-width:84ch; }
+      .note b { color:var(--ink); }
+      .cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+      @media (max-width:900px){ .cols { grid-template-columns:1fr; } }
+      .pill { font-family:var(--mono); font-size:11px; color:var(--muted); border:1px solid var(--rule);
+        border-radius:999px; padding:2px 9px; }
     </style>
   </head>
   <body>
     <header>
-      <h1>backstage-assistants — architecture <span class="draft">DRAFT — for review</span></h1>
+      <h1>backstage-assistants — architecture</h1>
       <p>
-        How the major packages we stitch together — <strong class="k">assistant-ui</strong>, the
-        <strong class="k">Vercel AI SDK</strong>, and <strong class="k">Backstage</strong> — compose into one chat
-        plugin, and how Backstage <em>permissions</em> and the <em>Actions registry</em> become the AI SDK's available
-        <em>tools</em>, executed as the calling user.
+        The intended design. An in-portal AI chat for Backstage, built by stitching <b>assistant-ui</b> (chat UI),
+        the <b>Vercel AI SDK</b> (model + tool loop), and <b>Backstage</b> (auth, Actions, database) with thin glue.
+        This is the blueprint we build to — see <a href="PRINCIPLES.md">PRINCIPLES.md</a>.
       </p>
     </header>
 
+    <nav>
+      <a href="#stack">1 · stack</a>
+      <a href="#components">2 · components &amp; wiring</a>
+      <a href="#chat">3 · chat turn</a>
+      <a href="#identity">4 · identity &amp; authorization</a>
+      <a href="#persistence">5 · persistence &amp; data model</a>
+      <a href="#notifications">6 · notifications &amp; live streaming</a>
+    </nav>
+
     <main>
-      <h2>Package key</h2>
-      <div class="key">
-        <div class="fam" style="border-left-color:#7048e8">
-          <div class="fam-title" style="color:#7048e8">assistant-ui</div>
-          <ul class="pkglist">
-            <li><a class="pn" href="https://www.assistant-ui.com" target="_blank" rel="noopener">@assistant-ui/react</a> — an open-source library of prebuilt, themeable React components for AI chat.</li>
-            <li><a class="pn" href="https://www.assistant-ui.com/docs/runtimes/ai-sdk/use-chat" target="_blank" rel="noopener">@assistant-ui/react-ai-sdk</a> — connects assistant-ui to the Vercel AI SDK.</li>
-          </ul>
-        </div>
-        <div class="fam" style="border-left-color:#111827">
-          <div class="fam-title" style="color:#111827">Vercel AI SDK</div>
-          <ul class="pkglist">
-            <li><a class="pn" href="https://ai-sdk.dev" target="_blank" rel="noopener">ai</a> — the core TypeScript toolkit for building with LLMs: streaming, tool calling, provider-agnostic.</li>
-            <li><a class="pn" href="https://ai-sdk.dev/docs/ai-sdk-ui/chatbot" target="_blank" rel="noopener">@ai-sdk/react</a> — React hooks for AI chat UIs.</li>
-            <li><a class="pn" href="https://ai-sdk.dev/providers/ai-sdk-providers" target="_blank" rel="noopener">@ai-sdk/openai · anthropic · azure</a> — adapters for the model providers.</li>
-          </ul>
-        </div>
-        <div class="fam" style="border-left-color:#868e96">
-          <div class="fam-title" style="color:#868e96">Backstage</div>
-          <ul class="pkglist">
-            <li><a class="pn" href="https://backstage.io/docs/frontend-system/" target="_blank" rel="noopener">@backstage/frontend-plugin-api · core-*</a> — Backstage's frontend plugin system.</li>
-            <li><a class="pn" href="https://backstage.io/docs/backend-system/" target="_blank" rel="noopener">@backstage/backend-plugin-api · backend-openapi-utils</a> — Backstage's backend plugin system, including the Actions registry.</li>
-          </ul>
-        </div>
-        <div class="fam" style="border-left-color:#1a9e8f">
-          <div class="fam-title" style="color:#1a9e8f">backstage-assistants — this plugin</div>
-          <ul class="pkglist">
-            <li><a class="pn" href="https://github.com/drewswiredin/backstage-assistants" target="_blank" rel="noopener">backstage-assistants</a> — this plugin: stitches the packages above into an AI assistants experience for Backstage.</li>
-          </ul>
-        </div>
-      </div>
 
-      <h2>Diagram</h2>
-      <div class="diagram">
-        <pre class="mermaid">
-flowchart LR
+      <!-- 1 · STACK ------------------------------------------------------- -->
+      <section id="stack">
+        <h2><span class="n">1</span>Stack</h2>
+        <p class="lead">What each layer is and which packages provide it. The plugin is glue; the capabilities are the libraries'.</p>
+        <div class="frame">
+          <table>
+            <tr><th>Layer</th><th>Packages</th><th>Role</th></tr>
+            <tr>
+              <td class="k">Chat UI</td>
+              <td class="k">@assistant-ui/react · -ai-sdk · -markdown · -ui</td>
+              <td>Prebuilt thread, composer, markdown, reasoning &amp; tool-call rendering, Mermaid. Owns the multi-conversation runtime.</td>
+            </tr>
+            <tr>
+              <td class="k">Model loop</td>
+              <td class="k">ai (Vercel AI SDK) · @ai-sdk/react</td>
+              <td>Provider-agnostic <code>streamText</code> tool loop, streaming, server-side persistence hooks.</td>
+            </tr>
+            <tr>
+              <td class="k">Providers</td>
+              <td class="k">@ai-sdk/openai · anthropic · azure</td>
+              <td>Model connections; their union is the model pool.</td>
+            </tr>
+            <tr>
+              <td class="k">Backend platform</td>
+              <td class="k">@backstage/backend-plugin-api · backend-defaults · backend-openapi-utils</td>
+              <td>Plugin + router + core services (<code>database</code>, <code>httpAuth</code>, <code>userInfo</code>) + the Actions service (<code>actionsServiceRef</code>, from <code>backend-plugin-api/alpha</code>).</td>
+            </tr>
+            <tr>
+              <td class="k">Tools</td>
+              <td class="k">Backstage Actions registry · @modelcontextprotocol/sdk</td>
+              <td>In-process Actions (run as the user) + external MCP servers (run as configured).</td>
+            </tr>
+            <tr>
+              <td class="k">Persistence</td>
+              <td class="k">coreServices.database (Knex; SQLite dev / Postgres prod)</td>
+              <td>Plugin-owned <code>threads</code> + <code>messages</code> tables, scoped per user.</td>
+            </tr>
+          </table>
+        </div>
+      </section>
 
-  subgraph FE["🖥️ Frontend plugin (browser)"]
-    UI["<b>assistant-ui</b><br/>Chat UI"]
-  end
+      <!-- 2 · COMPONENTS -------------------------------------------------- -->
+      <section id="components">
+        <h2><span class="n">2</span>Components &amp; wiring</h2>
+        <p class="lead">Two packages we own (teal) talking to external systems across a trust boundary (dashed). The frontend holds no conversation state — it is a view of the server.</p>
+        <div class="frame">
+          <div class="diagram">
+            <pre class="mermaid">
+flowchart TB
 
-  subgraph BE["⚙️ Backend plugin"]
+  subgraph FE["Frontend plugin · packages/assistants (browser)"]
     direction TB
-    Gate{"<b>Backstage</b><br/>Permission check"}
-    Loop["<b>AI SDK</b><br/>Model + tool loop"]
-    Gate -->|"allowed"| Loop
+    CHROME["Backstage chrome<br/>assistant rail · conversation list · model picker"]
+    SURF["assistant-ui surface<br/>Thread: composer · markdown · tool calls · mermaid"]
+    RUNTIME["Runtime<br/>useRemoteThreadListRuntime<br/>RemoteThreadListAdapter + ThreadHistoryAdapter + useChatRuntime"]
+    CHROME --> SURF --> RUNTIME
   end
 
-  Actions["<b>Backstage</b><br/>Actions registry<br/>(org tools)"]
-  Prov["<b>AI SDK providers</b><br/>LLM"]
-  Data["<b>Backstage</b><br/>Catalog · TechDocs · Search"]
+  subgraph BE["Backend plugin · packages/assistants-backend"]
+    direction TB
+    ROUTER["Router<br/>/status · /title (OpenAPI JSON)<br/>/chat · /chat/resume (stream) · /threads (REST)"]
+    GATE{"Identity + access<br/>httpAuth · userInfo · access policy"}
+    CONFIG["readConfig()<br/>providers · profiles · mcp · ui"]
+    ASM["Tool assembly<br/>Actions ∩ user · MCP allowlist"]
+    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps<br/>persist on finish · consumeStream"]
+    THREADS["ThreadService<br/>Knex over DatabaseService"]
+    RESUME["Resumable buffer<br/>in-memory · live resume"]
+    ROUTER --> GATE --> ASM --> LOOP
+    CONFIG -.-> ASM
+    CONFIG -.-> LOOP
+    LOOP --> THREADS
+    LOOP --> RESUME
+    ROUTER --> THREADS
+    ROUTER --> RESUME
+  end
 
-  UI ==>|"chat request — as the user"| Gate
-  Actions ==>|"actions → AI SDK tools"| Loop
-  Loop -->|"run a tool — as the user"| Actions
-  Loop <-->|"reasoning + tool calls"| Prov
-  Actions -->|"as the user"| Data
-  Loop -.->|"streamed answer"| UI
+  subgraph EXT["External systems / host · separate trust boundary"]
+    direction TB
+    PROV["LLM providers<br/>@ai-sdk/openai · anthropic · azure"]
+    ACTIONS["Backstage Actions registry<br/>catalog · techdocs · search · …"]
+    MCP["External MCP servers<br/>stdio · http · sse · websocket"]
+  end
 
-  classDef p_aui fill:#efe7ff,stroke:#7048e8,color:#1d2430;
-  classDef p_vercel fill:#111827,stroke:#111827,color:#ffffff;
-  classDef p_backstage fill:#f1f3f5,stroke:#868e96,color:#1d2430;
+  DB[("Plugin database<br/>threads · messages")]
+  SIG["Backstage Signals<br/>real-time push (per user)"]
 
-  class UI p_aui;
-  class Loop,Prov p_vercel;
-  class Gate,Actions,Data p_backstage;
+  RUNTIME ==>|"POST /chat · resume"| ROUTER
+  RUNTIME <==>|"threads + history"| ROUTER
+  LOOP <-->|"model + tool calls"| PROV
+  LOOP -->|"invoke — as the user"| ACTIONS
+  LOOP -->|"call — as configured"| MCP
+  THREADS <-->|"per-user rows"| DB
+  LOOP -.->|"turn-started / -finished"| SIG
+  SIG -.->|"generating + unread"| CHROME
 
-  %% teal containers = our plugin (frontend + backend)
-  style FE fill:#eafaf6,stroke:#1a9e8f
-  style BE fill:#eafaf6,stroke:#1a9e8f
-        </pre>
-        <div class="legend">
-          <span><strong style="color:#1a9e8f">teal</strong> = this plugin · box color = its package (see key)</span>
-          <span>◇ gate · ══ request &amp; tools · ·· streamed answer</span>
-          <span>hover a box for detail</span>
+  classDef plugin fill:#e7f3f2,stroke:#0b6b6b,color:#10312f;
+  classDef gate fill:#ffffff,stroke:#0b6b6b,color:#10312f;
+  classDef ext fill:#fbf6ec,stroke:#9a7b3f,color:#3d2f12,stroke-dasharray:4 3;
+  classDef store fill:#eef0fb,stroke:#3b4b8a,color:#1c244a;
+
+  class CHROME,SURF,RUNTIME,ROUTER,CONFIG,ASM,LOOP,THREADS,RESUME,SIG plugin;
+  class GATE gate;
+  class PROV,ACTIONS,MCP ext;
+  class DB store;
+
+  style FE fill:#f4faf9,stroke:#0b6b6b
+  style BE fill:#f4faf9,stroke:#0b6b6b
+  style EXT fill:#fcfaf4,stroke:#9a7b3f,stroke-dasharray:4 3
+            </pre>
+          </div>
+          <div class="legend">
+            <span><span class="sw plugin"></span>this plugin (in-process)</span>
+            <span><span class="sw ext"></span>external system / trust boundary</span>
+            <span><span class="sw gate"></span>identity + access gate</span>
+            <span><span class="sw store"></span>plugin datastore</span>
+            <span><span class="sw line heavy"></span>browser → backend (HTTP)</span>
+            <span><span class="sw line"></span>call / data flow</span>
+            <span><span class="sw line dash"></span>config / derived</span>
+          </div>
         </div>
-      </div>
+        <p class="note"><b>One tool set, two identities.</b> The loop receives Backstage Actions and MCP tools as a single tool list, but they execute under different credentials — see §4.</p>
+      </section>
 
-      <h2>How the key connections work <span class="note" style="font-weight:400">— click to expand</span></h2>
-      <div class="dxgrid">
-        <details class="dx"><summary>🧰 Backstage Actions → AI SDK tools</summary>
-          <div class="body"><ol>
-            <li>Each assistant declares an <code>actions[]</code> allowlist (action names) in app-config.</li>
-            <li>Per request, <code>actions.list({ credentials })</code> returns the actions this user may see.</li>
-            <li>The backend keeps only the assistant's allowlisted names and adapts each to an AI SDK <code>tool()</code> (schema → <code>inputSchema</code>, <code>execute</code> → <code>actions.invoke</code>).</li>
-            <li>Those tools are handed to the model loop; one source of tools — no parallel tool system (the same registry can also surface over MCP).</li>
-          </ol></div></details>
-        <details class="dx"><summary>🔒 "As the user" — credentials flow through</summary>
-          <div class="body"><ol>
-            <li>The request carries the caller's Backstage user token; the backend resolves their identity + groups.</li>
-            <li>The <em>same</em> credentials are used to both list and invoke actions.</li>
-            <li>So every tool runs with the caller's own permissions — catalog / TechDocs / search results are scoped to that user, never a service account.</li>
-            <li>Two independent gates: <em>access policy</em> (may you use this assistant?) and <em>per-tool permissions</em> (what can the tool see, as you?).</li>
-          </ol></div></details>
-      </div>
+      <!-- 3 · CHAT TURN --------------------------------------------------- -->
+      <section id="chat">
+        <h2><span class="n">3</span>Chat turn</h2>
+        <p class="lead">A single <code>/chat</code> request. The server is the only writer of message rows: it persists the completed turn on finish, so a reply is never lost if the browser navigates away mid-stream.</p>
+        <div class="frame">
+          <div class="diagram">
+            <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Browser (assistant-ui)
+  participant R as Router
+  participant G as Identity / access
+  participant A as Tool assembly
+  participant L as AI SDK loop
+  participant P as LLM provider
+  participant T as Action / MCP tool
+  participant D as Database
 
-      <p class="note" style="margin-top:24px">
-        Draft. Easy to add on request: the <code>/status</code> + <code>/title</code> routes, the OpenAPI validation layer,
-        local conversation persistence, or the post-MVP external-MCP path.
-      </p>
+  U->>R: POST /chat { assistantId, modelId, threadId, messages }
+  R->>G: resolve user (httpAuth/userInfo) + check access policy
+  G-->>R: identity + groups — deny by default
+  R->>A: actions.list(credentials) ∩ allowlist + MCP allowlist
+  A-->>L: tools — Actions (as user) · MCP (as configured)
+  loop reasoning, up to maxSteps
+    L->>P: messages + tool schemas
+    P-->>L: text or tool call
+    alt Backstage Action
+      L->>T: invoke as the user
+    else MCP tool
+      L->>T: call as configured
+    end
+    T-->>L: result
+  end
+  L-->>U: stream UI messages (pipeUIMessageStreamToResponse)
+  L->>D: on finish — persist the turn (consumeStream, scoped to user)
+            </pre>
+          </div>
+        </div>
+        <p class="note"><b>Thread lifecycle (separate from a turn).</b> On mount the runtime loads the list (<code>GET /threads</code>) and the active thread's messages (<code>GET /threads/:id/messages</code>); selecting a thread marks it read (<code>POST /threads/:id/read</code>). Create / rename / archive / delete are REST calls through the <code>RemoteThreadListAdapter</code>. The browser keeps no conversation state of its own.</p>
+      </section>
+
+      <!-- 4 · IDENTITY ---------------------------------------------------- -->
+      <section id="identity">
+        <h2><span class="n">4</span>Identity &amp; authorization</h2>
+        <p class="lead">The trust model. Tools reach the model from two sources with two different identities — this is the single most important property to get right.</p>
+        <div class="frame">
+          <table>
+            <tr><th>Tool source</th><th>Runs as</th><th>Authorization gates</th></tr>
+            <tr>
+              <td class="k">Backstage Action<br/><span class="pill">in-process</span></td>
+              <td><span class="tag user">as the user</span><br/>the caller's own Backstage credentials</td>
+              <td>(1) the assistant's <code>actions[]</code> allowlist <b>∩</b> (2) the user's Backstage permissions, enforced natively at <code>actions.list</code> (visibility) and <code>actions.invoke</code> (per-resource).</td>
+            </tr>
+            <tr>
+              <td class="k">External MCP tool<br/><span class="pill">over MCP</span></td>
+              <td><span class="tag cfg">as configured</span><br/>one static per-server credential (<code>headers</code> / <code>env</code>) — the same identity for every user, <b>not</b> the caller</td>
+              <td>(1) the assistant's <code>access</code> policy + (2) its per-profile <code>mcpServers</code> allowlist + (3) an optional per-tool allowlist. <b>No per-user check on this path.</b></td>
+            </tr>
+          </table>
+        </div>
+        <p class="note">
+          <b>Deny by default.</b> Omitting an Action allowlist yields no Action tools; omitting <code>mcpServers</code> yields no MCP tools. The <code>access</code> policy gates whether a user may use the assistant at all.
+          <br/><b>Consequence.</b> A low-privilege user chatting with an assistant wired to a powerful MCP server gets that server's full configured access — Backstage's per-user permissions do not apply on the MCP path. Choose MCP servers and the scope of their credentials deliberately.
+        </p>
+      </section>
+
+      <!-- 5 · PERSISTENCE ------------------------------------------------- -->
+      <section id="persistence">
+        <h2><span class="n">5</span>Persistence &amp; data model</h2>
+        <p class="lead">Conversations live server-side, scoped to their owner. The frontend is a pure view through two assistant-ui adapters; the server is the single source of truth and the only writer of messages.</p>
+        <div class="cols">
+          <div class="frame">
+            <table>
+              <tr><th colspan="2">threads</th></tr>
+              <tr><td class="k">id</td><td>thread id (primary key)</td></tr>
+              <tr><td class="k">assistant_id</td><td>owning assistant (immutable)</td></tr>
+              <tr><td class="k">user_ref</td><td>owner — every read/write is scoped to it</td></tr>
+              <tr><td class="k">title</td><td>generated from the first turn</td></tr>
+              <tr><td class="k">model</td><td>last model id used</td></tr>
+              <tr><td class="k">pinned · archived</td><td>list state</td></tr>
+              <tr><td class="k">created_at · updated_at</td><td>timestamps</td></tr>
+              <tr><td class="k">last_read_at</td><td>unread = <code>updated_at &gt; last_read_at</code></td></tr>
+            </table>
+          </div>
+          <div class="frame">
+            <table>
+              <tr><th colspan="2">messages</th></tr>
+              <tr><td class="k">id</td><td>message id (primary key)</td></tr>
+              <tr><td class="k">thread_id</td><td>parent thread (cascade delete)</td></tr>
+              <tr><td class="k">parent_id</td><td>prior message (branching, optional)</td></tr>
+              <tr><td class="k">role</td><td>user / assistant / system</td></tr>
+              <tr><td class="k">content_json</td><td>the assistant-ui message, stored verbatim</td></tr>
+              <tr><td class="k">sort_order</td><td>order within the thread</td></tr>
+              <tr><td class="k">created_at</td><td>timestamp</td></tr>
+            </table>
+          </div>
+        </div>
+        <p class="note">
+          <b>Adapters (the only glue).</b> <code>RemoteThreadListAdapter</code> backs the thread list (list / create / rename / archive / delete / title) over <code>/threads</code>; <code>ThreadHistoryAdapter</code> loads a thread's messages over <code>/threads/:id/messages</code>. Message <i>writes</i> are not a client concern — the loop persists them on finish (§3). <code>useRemoteThreadListRuntime</code> provides the switcher, active-thread state, and (de)serialization for free.
+          <br/><b>Unread</b> is server-computed (<code>updated_at</code> vs <code>last_read_at</code>) and surfaced through thread metadata — no client-side unread store.
+        </p>
+      </section>
+
+      <!-- 6 · NOTIFICATIONS & LIVE STREAMING ------------------------------ -->
+      <section id="notifications">
+        <h2><span class="n">6</span>Notifications &amp; live streaming</h2>
+        <p class="lead">Parallel background conversations across assistants, with real-time indicators pushed over Backstage Signals — and an in-memory resumable stream so you can rejoin a generation you stepped away from.</p>
+        <div class="cols">
+          <div class="frame">
+            <table>
+              <tr><th>Conversation state</th><th>Indicator</th><th>When</th></tr>
+              <tr><td class="k">idle / read</td><td>—</td><td>no activity, already seen</td></tr>
+              <tr><td class="k">generating</td><td><span class="tag cfg">pulsing dot</span></td><td>a reply is in flight and you're not watching this one</td></tr>
+              <tr><td class="k">unread</td><td><span class="tag user">red dot</span></td><td>a reply finished while you weren't looking</td></tr>
+            </table>
+          </div>
+          <div class="frame">
+            <table>
+              <tr><th>Signal (per-user channel)</th><th>Effect</th></tr>
+              <tr><td class="k">turn-started</td><td>add thread to the live <i>generating</i> set</td></tr>
+              <tr><td class="k">turn-finished</td><td>clear generating; mark <i>unread</i> if not viewing</td></tr>
+            </table>
+          </div>
+        </div>
+        <p class="note">
+          <b>States are mutually exclusive</b> per conversation and roll up: an assistant shows generating if any of its conversations is, else unread; the plugin's nav icon shows the same roll-up across all assistants (red dot for unread, subtle pulse while generating). The active conversation you're watching shows no indicator — you see the stream itself.
+          <br/><b>Push, not poll.</b> The backend emits <code>turn-started</code>/<code>turn-finished</code> via <code>SignalsService</code> targeted at the calling user; the frontend subscribes with <code>useSignal</code>. <i>Generating</i> is ephemeral live state (an in-memory set on the backend, reconciled on load via <code>GET /threads/active</code>); <i>unread</i> stays server-authoritative in the DB.
+          <br/><b>Live resume.</b> <code>/chat</code> tees its stream into an in-memory buffer keyed by an <code>x-resumable-stream-id</code>; returning to a still-generating conversation reconnects via <code>GET /chat/resume/:id</code> and replays buffered + live chunks (assistant-ui's <code>AssistantChatTransport</code> resumable option drives the client). In-memory ⇒ single backend replica; a completed turn is always durable in the DB regardless.
+        </p>
+      </section>
+
     </main>
 
     <script>
-      // Per-box detail — id matches the Mermaid node id; shown as a hover tooltip.
-      const BOXES = [
-        { id: 'UI', label: 'assistant-ui — Chat UI',
-          body: `The chat surface in the browser: assistant-ui's prebuilt <code>Thread</code> (composer, markdown, reasoning, tool rendering) on a multi-conversation runtime, sitting on the AI SDK's <code>useChat</code>. Conversations persist locally.` },
-        { id: 'Loop', label: 'AI SDK — Model + tool loop',
-          body: `Runs the user's chosen model with the assistant's system prompt, looping over tool calls until the answer is done, then streams it back (<code>streamText</code>, bounded by <code>maxSteps</code>).` },
-        { id: 'Prov', label: 'AI SDK — LLM providers',
-          body: `The model connection — OpenAI / Anthropic / Azure. The specific model is the user's pick from the configured pool.` },
-        { id: 'Gate', label: 'Backstage — Permission check',
-          body: `Before any model runs, the backend verifies the caller's Backstage identity (<code>httpAuth</code> / <code>userInfo</code>) and checks the assistant's access policy (allow-authenticated / specific users / groups). Deny by default.` },
-        { id: 'Actions', label: 'Backstage — Actions registry',
-          body: `Backstage's registry of org tools (catalog, search, TechDocs, and more). The backend exposes only the assistant's allowlisted actions to the model and invokes them with the caller's credentials — see the connections below.` },
-        { id: 'Data', label: 'Backstage — Catalog · TechDocs · Search',
-          body: `The data the tools read, returned scoped to what the user is allowed to see — never a service account's view.` },
-      ];
-
-      const tip = document.createElement('div');
-      tip.className = 'nodetip';
-      document.body.appendChild(tip);
-      function moveTip(x, y) {
-        tip.style.left = Math.min(x + 14, window.innerWidth - 346) + 'px';
-        tip.style.top = (y + 16) + 'px';
-      }
-      function showTip(box, x, y) { tip.innerHTML = `<b>${box.label}</b>${box.body}`; tip.style.opacity = '1'; moveTip(x, y); }
-      function hideTip() { tip.style.opacity = '0'; }
-
-      function attachTips() {
-        document.querySelectorAll('.mermaid g.node').forEach(node => {
-          const idAttr = node.id || '';
-          const box = BOXES.find(b => idAttr.includes('-' + b.id + '-')) ||
-                      BOXES.find(b => idAttr.includes(b.id));
-          if (!box) return;
-          node.addEventListener('mouseenter', e => showTip(box, e.clientX, e.clientY));
-          node.addEventListener('mousemove', e => moveTip(e.clientX, e.clientY));
-          node.addEventListener('mouseleave', hideTip);
-        });
-      }
-
-      mermaid.initialize({ startOnLoad: false, theme: 'neutral', flowchart: { htmlLabels: true, curve: 'basis' } });
-      const run = mermaid.run();
-      if (run && run.then) run.then(attachTips); else setTimeout(attachTips, 400);
+      mermaid.initialize({
+        startOnLoad:true, theme:'neutral',
+        flowchart:{ htmlLabels:true, curve:'basis', nodeSpacing:42, rankSpacing:46 },
+        sequence:{ showSequenceNumbers:true, mirrorActors:false }
+      });
     </script>
   </body>
 </html>

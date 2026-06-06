@@ -314,7 +314,7 @@ export function registerCoreActions(deps: CoreActionsDeps): void {
  * wrapped with the AI SDK `jsonSchema()` helper. Each tool's `execute` closes
  * over the {@link ActionsService} and the **caller's** credentials and invokes
  * by the action's `id` — so the tool runs with the user's permissions, exactly
- * as `actions.list` was scoped (ADR 0003). `ActionsServiceAction` itself has no
+ * as `actions.list` was scoped. `ActionsServiceAction` itself has no
  * execute method; execution goes through `actions.invoke` on the service.
  *
  * A denied or failed invoke is caught and returned as a structured tool result
@@ -341,7 +341,7 @@ export function actionsToTools(
             return result.output;
           } catch (error) {
             // Structured error result, not a throw — the model can explain it
-            // and the multi-step loop continues (ADR 0003).
+            // and the multi-step loop continues.
             return {
               error: true,
               message: error instanceof Error ? error.message : String(error),

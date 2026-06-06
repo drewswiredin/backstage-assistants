@@ -13,7 +13,6 @@ import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { AssistantDetailDialog } from './AssistantDetailDialog';
-import { hasUnread, useUnreadVersion } from './unreadStore';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -53,6 +52,14 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.secondary,
     transition: theme.transitions.create('opacity'),
   },
+  '@keyframes auiPulse': {
+    '0%': { transform: 'scale(1)', opacity: 1 },
+    '50%': { transform: 'scale(1.5)', opacity: 0.45 },
+    '100%': { transform: 'scale(1)', opacity: 1 },
+  },
+  pulseDot: {
+    animation: '$auiPulse 1.2s ease-in-out infinite',
+  },
 }));
 
 /**
@@ -68,9 +75,18 @@ export const AssistantsList: FC<{
   assistants: AssistantSummary[];
   activeId: string;
   onSelect: (id: string) => void;
-}> = ({ assistants, activeId, onSelect }) => {
+  /** Assistant ids with at least one unread conversation (server-computed). */
+  unreadAssistantIds?: ReadonlySet<string>;
+  /** Assistant ids with at least one in-flight (generating) reply. */
+  generatingAssistantIds?: ReadonlySet<string>;
+}> = ({
+  assistants,
+  activeId,
+  onSelect,
+  unreadAssistantIds,
+  generatingAssistantIds,
+}) => {
   const classes = useStyles();
-  useUnreadVersion(); // re-render when unread state changes
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const openDetail = (e: MouseEvent<HTMLElement>, id: string) => {
@@ -95,10 +111,18 @@ export const AssistantsList: FC<{
           >
             <ListItemIcon className={classes.icon}>
               <Badge
-                color="error"
+                color={generatingAssistantIds?.has(a.id) ? 'primary' : 'error'}
                 variant="dot"
                 overlap="circular"
-                invisible={!hasUnread(a.id)}
+                invisible={
+                  !generatingAssistantIds?.has(a.id) &&
+                  !unreadAssistantIds?.has(a.id)
+                }
+                classes={
+                  generatingAssistantIds?.has(a.id)
+                    ? { dot: classes.pulseDot }
+                    : undefined
+                }
               >
                 <AssistantAvatar color={a.color} size={22} />
               </Badge>

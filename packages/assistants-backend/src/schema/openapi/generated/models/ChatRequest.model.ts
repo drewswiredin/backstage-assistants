@@ -18,6 +18,10 @@ export interface ChatRequest {
    */
   modelId: string;
   /**
+   * The conversation (thread) this turn belongs to. Sent by `/chat` so the backend can persist the completed turn server-side. Optional; omitted by `/title` and by the first turn of a not-yet-created thread.
+   */
+  threadId?: string;
+  /**
    * The conversation as a non-empty array of UI messages. The internal shape of each message is intentionally not over-constrained here.
    */
   messages: Array<any>;

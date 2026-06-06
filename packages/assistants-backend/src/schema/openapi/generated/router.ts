@@ -174,6 +174,12 @@ export const spec = {
             minLength: 1,
             description: "The `provider:model` id to use for this turn.",
           },
+          threadId: {
+            type: "string",
+            minLength: 1,
+            description:
+              "The conversation (thread) this turn belongs to. Sent by `/chat` so the backend can persist the completed turn server-side. Optional; omitted by `/title` and by the first turn of a not-yet-created thread.",
+          },
           messages: {
             type: "array",
             minItems: 1,

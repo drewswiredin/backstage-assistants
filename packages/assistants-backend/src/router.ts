@@ -8,7 +8,7 @@ import {
 } from '@backstage/backend-plugin-api';
 import { ActionsService } from '@backstage/backend-plugin-api/alpha';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { InputError, NotAllowedError } from '@backstage/errors';
+import { InputError, NotAllowedError, NotFoundError } from '@backstage/errors';
 import { randomUUID } from 'crypto';
 import {
   streamText,
@@ -33,6 +33,11 @@ import {
   type ResolvedMcpSelection,
 } from './mcp';
 import { createOpenApiRouter } from './schema/openapi';
+import type { ThreadService } from './threads';
+import type { SignalsService } from '@backstage/plugin-signals-node';
+
+/** Signals channel for per-user conversation notifications (generating / unread). */
+const NOTIFY_CHANNEL = 'assistants:threads';
 
 /**
  * Dependencies for the AI Assistants router. Kept explicit so the router stays
@@ -46,6 +51,10 @@ export interface RouterOptions {
   /** Actions service used to LIST + INVOKE the assistant's tool allowlist. */
   actions: ActionsService;
   assistants: AssistantsConfig;
+  /** Server-side conversation persistence. */
+  threadService: ThreadService;
+  /** Real-time push for generating / unread indicators (per user). */
+  signals: SignalsService;
 }
 
 /**
@@ -131,6 +140,12 @@ function buildTitleExcerpt(messages: TitleMessage[]): string {
     .join('\n');
 }
 
+/** System prompt for conversation title generation (shared by `/title` and auto-titling). */
+const TITLE_SYSTEM_PROMPT =
+  'Generate a short conversation title (4-6 words, no quotes, no trailing ' +
+  'punctuation) describing what the conversation is about. Reply with ONLY ' +
+  'the title, nothing else.';
+
 /**
  * Anthropic tool-args sanitizer.
  *
@@ -187,7 +202,7 @@ function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
  *
  * Request validation for `/status` and `/title` is delegated to the typed
  * OpenAPI router ({@link createOpenApiRouter}, generated from
- * `src/schema/openapi.yaml`) per ADR 0002. `/chat` is a hand-written streaming
+ * `src/schema/openapi.yaml`). `/chat` is a hand-written streaming
  * route whose body is validated against the same `ChatRequest` schema by the
  * router; its RESPONSE is a UI message stream piped via
  * `pipeUIMessageStreamToResponse` and is intentionally NOT response-validated.
@@ -195,7 +210,51 @@ function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
  * @public
  */
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { logger, config, httpAuth, userInfo, actions, assistants } = options;
+  const {
+    logger,
+    config,
+    httpAuth,
+    userInfo,
+    actions,
+    assistants,
+    threadService,
+    signals,
+  } = options;
+
+  // Live, per-user set of in-flight generations: userRef -> (threadId -> assistantId).
+  // Ephemeral (single backend replica); reconciled by the client via GET /threads/active.
+  const inFlight = new Map<string, Map<string, string>>();
+
+  function noteStarted(userRef: string, threadId: string, assistantId: string) {
+    let m = inFlight.get(userRef);
+    if (!m) {
+      m = new Map();
+      inFlight.set(userRef, m);
+    }
+    m.set(threadId, assistantId);
+    void signals
+      .publish({
+        recipients: { type: 'user', entityRef: userRef },
+        channel: NOTIFY_CHANNEL,
+        message: { type: 'turn-started', threadId, assistantId },
+      })
+      .catch(() => {});
+  }
+
+  function noteFinished(userRef: string, threadId: string, assistantId: string) {
+    const m = inFlight.get(userRef);
+    if (m) {
+      m.delete(threadId);
+      if (m.size === 0) inFlight.delete(userRef);
+    }
+    void signals
+      .publish({
+        recipients: { type: 'user', entityRef: userRef },
+        channel: NOTIFY_CHANNEL,
+        message: { type: 'turn-finished', threadId, assistantId },
+      })
+      .catch(() => {});
+  }
 
   // The OpenAPI router validates every incoming request body/params against the
   // spec and parses JSON itself (no separate `express.json()` needed).
@@ -293,9 +352,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 2. The request body shape (assistantId/modelId present + non-empty,
     //    messages a non-empty array) is already validated by the OpenAPI router
     //    against `src/schema/openapi.yaml`, so no hand-checks are needed here.
-    const { assistantId, modelId, messages } = req.body as {
+    const { assistantId, modelId, threadId, messages } = req.body as {
       assistantId: string;
       modelId: string;
+      threadId?: string;
       messages: unknown[];
     };
 
@@ -326,7 +386,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //    keep only the actions named in the assistant's allowlist (gate 1;
     //    unknown names are logged and skipped — non-fatal) and adapt them to AI
     //    SDK tools whose `execute` invokes with the SAME caller credentials
-    //    (runs as the user; fine-grained perms enforced at invoke — ADR 0003).
+    //    (runs as the user; fine-grained perms enforced at invoke).
     const { actions: available } = await actions.list({ credentials });
     const selected = selectAssistantActions(available, assistant.actions, logger);
 
@@ -383,6 +443,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       },
       onError: ({ error }) => {
         void mcp.close();
+        if (threadId) noteFinished(user.userEntityRef, threadId, assistantId);
         logger.error('chat turn errored', {
           requestId,
           assistantId,
@@ -392,15 +453,82 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       },
     });
 
+    if (threadId) noteStarted(user.userEntityRef, threadId, assistantId);
+
     logger.info('chat turn started', {
       requestId,
       assistantId,
       modelId,
+      threadId,
       messageCount: messages.length,
     });
 
-    // 10. Pipe the UI message stream to the Express response.
+    // 10. Drive the stream to completion server-side even if the client
+    //     disconnects, so the turn is always persisted (no data loss on
+    //     navigation). The server is the single writer of message rows.
+    void result.consumeStream();
+
+    // 11. Pipe the UI message stream to the response. On finish, persist the
+    //     completed conversation to the thread (scoped to this user). The
+    //     frontend never writes message rows — `originalMessages` +
+    //     `generateMessageId` put the SDK in persistence mode.
     result.pipeUIMessageStreamToResponse(res, {
+      originalMessages: messages as UIMessage[],
+      generateMessageId: () => `msg-${randomUUID()}`,
+      onFinish: async ({ messages: finalMessages }) => {
+        if (!threadId) return;
+        try {
+          const saved = await threadService.replaceMessages(
+            user.userEntityRef,
+            threadId,
+            finalMessages,
+            modelId,
+          );
+          if (!saved) {
+            logger.warn('chat turn not persisted: thread not found or not owned', {
+              requestId,
+              threadId,
+            });
+            return;
+          }
+          // Auto-title the conversation on its first completed turn, server-side
+          // (single source of truth). Best-effort: failures leave 'New Chat'.
+          const thread = await threadService.getThread(user.userEntityRef, threadId);
+          if (thread && thread.title === 'New Chat') {
+            try {
+              const titled = await generateText({
+                model,
+                system: TITLE_SYSTEM_PROMPT,
+                prompt: buildTitleExcerpt(finalMessages as unknown as TitleMessage[]),
+                maxRetries: 1,
+              });
+              const title = titled.text.trim().replace(/["']+/g, '').slice(0, 80);
+              if (title) {
+                await threadService.updateThread(user.userEntityRef, threadId, {
+                  title,
+                });
+              }
+            } catch (titleError) {
+              logger.warn('auto-title failed', {
+                requestId,
+                threadId,
+                error:
+                  titleError instanceof Error
+                    ? titleError.message
+                    : String(titleError),
+              });
+            }
+          }
+        } catch (error) {
+          logger.error('failed to persist chat turn', {
+            requestId,
+            threadId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          noteFinished(user.userEntityRef, threadId, assistantId);
+        }
+      },
       sendReasoning: true,
       headers: { 'Cache-Control': 'no-cache, no-transform' },
     });
@@ -459,10 +587,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const result = await generateText({
         model,
-        system:
-          'Generate a short conversation title (4-6 words, no quotes, no ' +
-          'trailing punctuation) describing what the conversation is about. ' +
-          'Reply with ONLY the title, nothing else.',
+        system: TITLE_SYSTEM_PROMPT,
         prompt: excerpt,
         maxRetries: 1,
       });
@@ -478,6 +603,132 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       res.json({ title: 'New Chat' });
     }
   }
+
+  // ---- Thread persistence routes (server-side conversation storage) --------
+  // A plain Express sub-router. These are REST endpoints intentionally OUTSIDE
+  // the OpenAPI JSON contract (which covers only /status + /title); they back
+  // assistant-ui's remote thread-list + history adapters. Every route is scoped
+  // to the calling user — there is no path to another user's threads or
+  // messages. Message rows are written ONLY by /chat (onFinish), never here.
+  async function resolveUserRef(req: express.Request): Promise<string> {
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    const user = await userInfo.getUserInfo(credentials);
+    return user.userEntityRef;
+  }
+
+  const threads = express.Router();
+  threads.use(express.json({ limit: '1mb' }));
+
+  // List this user's threads for an assistant (with server-computed unread).
+  threads.get('/', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const assistantId = req.query.assistantId;
+      if (typeof assistantId !== 'string' || !assistantId) {
+        throw new InputError('assistantId query parameter is required');
+      }
+      res.json({ threads: await threadService.listThreads(userRef, assistantId) });
+    })().catch(next);
+  });
+
+  // Create a thread.
+  threads.post('/', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const { assistantId, model } = req.body ?? {};
+      if (typeof assistantId !== 'string' || !assistantId) {
+        throw new InputError('assistantId is required');
+      }
+      const thread = await threadService.createThread(
+        userRef,
+        assistantId,
+        typeof model === 'string' ? model : undefined,
+      );
+      res.status(201).json(thread);
+    })().catch(next);
+  });
+
+  // Cross-assistant unread: which assistants have any unread thread for this
+  // user. Drives the rail's per-assistant unread dots. MUST be registered before
+  // `/:id` so 'unread' isn't matched as a thread id.
+  threads.get('/unread', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      res.json({ assistantIds: await threadService.unreadAssistantIds(userRef) });
+    })().catch(next);
+  });
+
+  // Currently-generating threads for this user (the live in-flight set). Lets the
+  // client reconcile "generating" indicators on load, since that state is
+  // ephemeral (signals only push transitions). MUST precede `/:id`.
+  threads.get('/active', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const m = inFlight.get(userRef);
+      const active = m
+        ? [...m.entries()].map(([threadId, assistantId]) => ({ threadId, assistantId }))
+        : [];
+      res.json({ active });
+    })().catch(next);
+  });
+
+  // Fetch one thread.
+  threads.get('/:id', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const thread = await threadService.getThread(userRef, req.params.id);
+      if (!thread) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      res.json(thread);
+    })().catch(next);
+  });
+
+  // Rename / set model / pin / archive.
+  threads.patch('/:id', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const { title, model, pinned, archived } = req.body ?? {};
+      const thread = await threadService.updateThread(userRef, req.params.id, {
+        title,
+        model,
+        pinned,
+        archived,
+      });
+      if (!thread) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      res.json(thread);
+    })().catch(next);
+  });
+
+  // Delete a thread and its messages.
+  threads.delete('/:id', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const deleted = await threadService.deleteThread(userRef, req.params.id);
+      if (!deleted) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      res.status(204).end();
+    })().catch(next);
+  });
+
+  // Mark a thread read (clears its unread flag).
+  threads.post('/:id/read', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const ok = await threadService.markRead(userRef, req.params.id);
+      if (!ok) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      res.status(204).end();
+    })().catch(next);
+  });
+
+  // Load a thread's messages (the ThreadHistoryAdapter's only call — load-only).
+  threads.get('/:id/messages', (req, res, next) => {
+    (async () => {
+      const userRef = await resolveUserRef(req);
+      const messages = await threadService.getMessages(userRef, req.params.id);
+      if (!messages) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      res.json({ messages });
+    })().catch(next);
+  });
+
+  router.use('/threads', threads);
 
   // Standard Backstage error envelope. Mounted LAST so thrown @backstage/errors
   // types are serialized to { error: { name, message }, request, response }.

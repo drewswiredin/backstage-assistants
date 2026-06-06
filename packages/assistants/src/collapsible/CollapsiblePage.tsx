@@ -27,32 +27,32 @@ import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import CheckIcon from '@material-ui/icons/Check';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import StarIcon from '@material-ui/icons/Star';
-import { AssistantRuntimeProvider, useThread } from '@assistant-ui/react';
-import { useChatRuntime } from '@assistant-ui/react-ai-sdk';
-import { DefaultChatTransport } from 'ai';
-import type { UIMessage } from 'ai';
+import {
+  AssistantRuntimeProvider,
+  useAssistantRuntime,
+  useRemoteThreadListRuntime,
+  type ThreadListState,
+} from '@assistant-ui/react';
 import type {
   AssistantSummary,
   ModelId,
   ModelOption,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
-import { assistantsApiRef } from '../api';
+import { assistantsApiRef, type AssistantsApi } from '../api';
 import { ConversationSurface } from './surface';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
 import {
-  persistConversationMessages,
-  useConversations,
-} from './useConversations';
-import {
-  clearUnread,
-  hasUnread,
-  isConversationUnread,
-  markUnread,
-  useUnreadVersion,
-} from './unreadStore';
+  createThreadListAdapter,
+  markThreadRead,
+  patchThread,
+  type ThreadCustomMetadata,
+  type ThreadSummary,
+} from './threadListAdapter';
+import { makeRuntimeHook } from './useAssistantRuntime';
+import { useThreadNotifications } from './useThreadNotifications';
 
 const SIDEPANE_COLLAPSED_KEY = 'ai-chat-sidepane-collapsed';
 
@@ -65,8 +65,6 @@ function loadSidePaneCollapsed() {
 }
 
 const useStyles = makeStyles(theme => ({
-  // Flex-column fill inside the measured FullHeightRegion (mirrors the native
-  // page): lets the shell own the remaining height without a nested <Page>.
   content: {
     flex: 1,
     minHeight: 0,
@@ -79,10 +77,6 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     overflow: 'hidden',
     backgroundColor: theme.palette.background.default,
-    // No top gutter so the card tucks flush under the page header (reclaims the
-    // gap there); 8px right/bottom keep it enclosed on those sides, 0 left since
-    // it abuts the sidebar. Composer breathing room lives on the Thread's own
-    // footer (see ConversationSurface) — same bg, no seam.
     paddingTop: 0,
     paddingRight: theme.spacing(1),
     paddingBottom: theme.spacing(1),
@@ -169,7 +163,6 @@ const useStyles = makeStyles(theme => ({
     boxShadow: theme.shadows[1],
     overflow: 'hidden',
   },
-  // Slim, solid header.
   threadHeader: {
     display: 'flex',
     alignItems: 'center',
@@ -226,11 +219,6 @@ const useStyles = makeStyles(theme => ({
       right: theme.spacing(0.5),
     },
   },
-  // Trigger label: vendor in muted text, model name emphasized.
-  modelTriggerVendor: {
-    color: theme.palette.text.hint,
-    marginRight: theme.spacing(0.5),
-  },
   modelGroupLabel: {
     lineHeight: 2,
     fontSize: theme.typography.caption.fontSize,
@@ -258,38 +246,23 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
-    // NOTE: no paddingBottom here — the Thread fills this box with its own
-    // --aui-background; padding would expose the card's paper bg and create a
-    // two-tone seam. Composer breathing room lives on .aui-thread-viewport-footer
-    // (same bg) in ConversationSurface.
   },
-  // Background thread: kept mounted (stream alive) but out of view/layout.
-  threadPaneHidden: {
-    display: 'none',
+  // The "generating" indicator: a pulsing dot, distinct from the solid unread dot.
+  '@keyframes auiPulse': {
+    '0%': { transform: 'scale(1)', opacity: 1 },
+    '50%': { transform: 'scale(1.5)', opacity: 0.45 },
+    '100%': { transform: 'scale(1)', opacity: 1 },
+  },
+  pulseDot: {
+    animation: '$auiPulse 1.2s ease-in-out infinite',
   },
 }));
 
 /**
- * Bridges the active thread runtime's running state up to the live-thread
- * manager. Rendered inside {@link ChatThread}'s `AssistantRuntimeProvider`.
- */
-function RunningReporter({
-  onRunningChange,
-}: {
-  onRunningChange?: (running: boolean) => void;
-}) {
-  const isRunning = useThread(t => t.isRunning);
-  useEffect(() => {
-    onRunningChange?.(isRunning);
-  }, [isRunning, onRunningChange]);
-  return null;
-}
-
-/**
  * Split a model id into a display vendor + name. Our models route through one
  * provider (e.g. `openrouter`) but the meaningful family is the vendor prefix in
- * the model name (`google/gemini-2.5-flash` -> {vendor: "google", name:
- * "gemini-2.5-flash"}). Falls back to the provider / raw id when there's no `/`.
+ * the model name (`google/gemini-2.5-flash`). Falls back to the provider / raw
+ * id when there's no `/`.
  */
 function splitModel(
   id: ModelId,
@@ -309,316 +282,239 @@ function modelLabel(id: ModelId, pool: ModelOption[]): string {
   return splitModel(id, pool).name;
 }
 
-interface ChatThreadProps {
-  /** Backend base URL (`.../api/assistants`); the transport posts to `/chat`. */
-  baseUrl: string;
-  /** Authenticated fetch from the assistants API client. */
-  authFetch: typeof fetch;
-  /** Assistant the turn is sent to. */
-  assistantId: string;
-  /** Selected `provider:model` id. */
-  modelId: ModelId;
-  /** Header title (the active conversation's title). */
-  title: string;
-  /** The active assistant's display name (shown in the header identity). */
-  assistantName: string;
-  initialMessages?: UIMessage[];
-  onFinish?: (messages: UIMessage[]) => void;
-  /** Composer placeholder from the assistant's `ui`. */
-  composerPlaceholder?: string;
-  /** Starter prompts from the assistant's `ui`. */
-  suggestions?: Array<{ title: string; prompt: string }>;
-  /** The assistant's avatar color (tints the assistant message + welcome). */
-  assistantColor?: string;
-  /** Thread header content rendered to the right of the title. */
-  headerRight?: React.ReactNode;
-  /**
-   * Render but visually hide the thread (kept mounted so a background stream
-   * keeps running). The live-thread manager shows exactly one thread at a time.
-   */
-  hidden?: boolean;
-  /** Notified when this thread starts/stops streaming (drives keep-alive). */
-  onRunningChange?: (running: boolean) => void;
-}
+// ---------------------------------------------------------------------------
+// Page entry
+// ---------------------------------------------------------------------------
 
 /**
- * A single chat thread: owns its `useChatRuntime` (AI SDK
- * `DefaultChatTransport`) and renders the {@link ConversationSurface}. Mounted
- * with `key={activeId}` by the page so a fresh runtime is created per
- * conversation, seeded with that conversation's `initialMessages`.
+ * The collapsible AI chat page. Reads the target assistant from
+ * `?assistant=<id>` (the assistant rail lives in the Backstage nav), loads
+ * `/status`, and renders the conversation experience for the chosen assistant.
+ * Conversations persist server-side (see ADR-free architecture: docs/architecture.html).
+ *
+ * @public
  */
-function ChatThread({
-  baseUrl,
-  authFetch,
-  assistantId,
-  modelId,
-  title,
-  assistantName,
-  initialMessages,
-  onFinish,
-  composerPlaceholder,
-  suggestions,
-  assistantColor,
-  headerRight,
-  hidden,
-  onRunningChange,
-}: ChatThreadProps) {
-  const classes = useStyles();
+export function CollapsiblePage() {
+  const api = useApi(assistantsApiRef);
+  const [searchParams] = useSearchParams();
+  const requestedAssistant = searchParams.get('assistant');
 
-  // Keep the assistant/model selection current without remounting the runtime:
-  // the transport reads them from a ref via the function-form `body`.
-  const selectionRef = useRef({ assistantId, modelId });
-  selectionRef.current = { assistantId, modelId };
+  const status = useAsync(() => api.getStatus(), [api]);
 
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: `${baseUrl}/chat`,
-        fetch: authFetch,
-        body: () => ({
-          assistantId: selectionRef.current.assistantId,
-          modelId: selectionRef.current.modelId,
-        }),
-      }),
-    [authFetch, baseUrl],
+  if (status.loading) {
+    return <Progress />;
+  }
+  if (status.error) {
+    return <ResponseErrorPanel error={status.error} />;
+  }
+  if (!status.value) {
+    return null;
+  }
+  const assistants = status.value.assistants;
+  if (assistants.length === 0) {
+    return (
+      <ResponseErrorPanel
+        error={new Error('No assistants are available to you.')}
+      />
+    );
+  }
+  const assistant =
+    assistants.find(a => a.id === requestedAssistant) ?? assistants[0];
+  // Keyed by assistant.id: a fresh server-backed runtime per assistant. Switching
+  // never loses an in-flight reply — the backend persists it on finish.
+  return (
+    <CollapsibleChat key={assistant.id} status={status.value} assistant={assistant} />
   );
+}
 
-  // Keep onFinish ref stable so useChatRuntime doesn't remount mid-stream.
-  const onFinishRef = useRef(onFinish);
-  onFinishRef.current = onFinish;
+// ---------------------------------------------------------------------------
+// Resolve the backend base URL, then build the runtime
+// ---------------------------------------------------------------------------
 
-  const stableOnFinish = useCallback(({ messages }: { messages: UIMessage[] }) => {
-    onFinishRef.current?.(messages);
-  }, []);
+function CollapsibleChat({
+  status,
+  assistant,
+}: {
+  status: StatusResponse;
+  assistant: AssistantSummary;
+}) {
+  const api = useApi(assistantsApiRef);
+  const baseUrl = useAsync(() => api.getBaseUrl(), [api]);
 
-  const runtime = useChatRuntime({
-    transport,
-    messages: initialMessages,
-    onFinish: stableOnFinish,
-  });
+  if (baseUrl.loading) {
+    return <Progress />;
+  }
+  if (baseUrl.error || !baseUrl.value) {
+    return (
+      <ResponseErrorPanel
+        error={baseUrl.error ?? new Error('Failed to resolve backend URL')}
+      />
+    );
+  }
+  return (
+    <ChatRuntime
+      status={status}
+      assistant={assistant}
+      api={api}
+      baseUrl={baseUrl.value}
+    />
+  );
+}
+
+function ChatRuntime({
+  status,
+  assistant,
+  api,
+  baseUrl,
+}: {
+  status: StatusResponse;
+  assistant: AssistantSummary;
+  api: AssistantsApi;
+  baseUrl: string;
+}) {
+  const defaultModel = assistant.defaultModel ?? status.defaultModel;
+  // Drives the transport body; updated by the model picker + on thread switch.
+  const modelIdRef = useRef<ModelId>(defaultModel);
+
+  const adapter = useMemo(
+    () => createThreadListAdapter(api, assistant.id),
+    [api, assistant.id],
+  );
+  const runtimeHook = useMemo(
+    () => makeRuntimeHook({ api, baseUrl, assistantId: assistant.id, modelIdRef }),
+    [api, baseUrl, assistant.id],
+  );
+  const runtime = useRemoteThreadListRuntime({ adapter, runtimeHook });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <RunningReporter onRunningChange={onRunningChange} />
-      <main
-        className={
-          hidden ? `${classes.threadPane} ${classes.threadPaneHidden}` : classes.threadPane
-        }
-        aria-label="AI chat thread"
-        aria-hidden={hidden}
-      >
-        <div className={classes.threadHeader}>
-          <div className={classes.threadIdentity}>
-            <AssistantAvatar color={assistantColor} size={22} />
-            <Typography variant="subtitle2" className={classes.assistantName}>
-              {assistantName}
-            </Typography>
-            {title && (
-              <Typography
-                variant="body2"
-                className={classes.threadTitle}
-                title={title}
-              >
-                · {title}
-              </Typography>
-            )}
-          </div>
-          {headerRight}
-        </div>
-        <div className={classes.threadBody}>
-          <ConversationSurface
-            composerPlaceholder={composerPlaceholder}
-            suggestions={suggestions}
-            assistantColor={assistantColor}
-          />
-        </div>
-      </main>
+      <ChatChrome
+        status={status}
+        assistant={assistant}
+        api={api}
+        modelIdRef={modelIdRef}
+        defaultModel={defaultModel}
+      />
     </AssistantRuntimeProvider>
   );
 }
 
-/**
- * Everything the live-thread manager needs to mount a {@link ChatThread}
- * independently of which assistant is currently on screen. Captured (snapshot)
- * when a conversation first becomes active, so a thread can keep streaming in the
- * background after the user switches conversation or assistant.
- */
-interface ThreadDescriptor {
-  convId: string;
-  agentId: string;
-  assistantTitle: string;
-  assistantColor?: string;
-  modelId: ModelId;
-  initialMessages?: UIMessage[];
-  composerPlaceholder?: string;
-  suggestions?: Array<{ title: string; prompt: string }>;
-}
+// ---------------------------------------------------------------------------
+// Chrome (inside the runtime provider) — pure view of server thread state
+// ---------------------------------------------------------------------------
 
-/**
- * Keeps a {@link ChatThread} mounted while it is the active conversation OR still
- * streaming, so navigating away doesn't abort an in-flight reply. Returns the set
- * of descriptors to render (active + any still-running background threads) and a
- * callback to report each thread's running state.
- *
- * Reconciliation runs in an effect (not during render) so the discarded render
- * that React performs when `useConversations` re-seeds on an assistant switch
- * can't capture a half-updated descriptor.
- */
-function useLiveThreads(active: ThreadDescriptor | null) {
-  const [mounted, setMounted] = useState<ThreadDescriptor[]>([]);
-  const [running, setRunning] = useState<ReadonlySet<string>>(
-    () => new Set<string>(),
-  );
-  const activeRef = useRef(active);
-  activeRef.current = active;
-
-  useEffect(() => {
-    const a = activeRef.current;
-    setMounted(prev => {
-      const byId = new Map(prev.map(d => [d.convId, d] as const));
-      // Snapshot the active descriptor the first time it mounts; never overwrite
-      // an already-mounted (live) thread.
-      if (a && !byId.has(a.convId)) {
-        byId.set(a.convId, a);
-      }
-      const keep = new Set<string>(running);
-      if (a) {
-        keep.add(a.convId);
-      }
-      const next: ThreadDescriptor[] = [];
-      for (const d of prev) {
-        if (keep.has(d.convId)) {
-          next.push(byId.get(d.convId) ?? d);
-          keep.delete(d.convId);
-        }
-      }
-      for (const id of keep) {
-        const d = byId.get(id);
-        if (d) {
-          next.push(d);
-        }
-      }
-      const unchanged =
-        next.length === prev.length &&
-        next.every((d, i) => d.convId === prev[i].convId);
-      return unchanged ? prev : next;
-    });
-  }, [active?.convId, running]);
-
-  const setThreadRunning = useCallback((convId: string, isRunning: boolean) => {
-    setRunning(prev => {
-      const has = prev.has(convId);
-      if (isRunning === has) {
-        return prev;
-      }
-      const next = new Set(prev);
-      if (isRunning) {
-        next.add(convId);
-      } else {
-        next.delete(convId);
-      }
-      return next;
-    });
-  }, []);
-
-  // Always render the active thread immediately, even before the effect folds it
-  // into `mounted` (avoids a one-frame empty pane on open / switch).
-  const threads =
-    active && !mounted.some(d => d.convId === active.convId)
-      ? [...mounted, active]
-      : mounted;
-
-  return { threads, setThreadRunning };
-}
-
-interface CollapsibleChatProps {
+function ChatChrome({
+  status,
+  assistant,
+  api,
+  modelIdRef,
+  defaultModel,
+}: {
   status: StatusResponse;
   assistant: AssistantSummary;
-}
-
-/**
- * The conversation experience for the resolved assistant: the collapsible left
- * rail, the per-assistant conversation set, the model picker, and the live
- * threads. NOT remounted on assistant switch — `useConversations` re-seeds from
- * the new namespace, and the {@link useLiveThreads} manager keeps background
- * threads streaming across the switch.
- */
-function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
+  api: AssistantsApi;
+  modelIdRef: React.MutableRefObject<ModelId>;
+  defaultModel: ModelId;
+}) {
   const classes = useStyles();
-  const api = useApi(assistantsApiRef);
-  useUnreadVersion(); // re-render the rail's unread dots on change
-
-  // Switching assistant drives `?assistant=<id>`; the page re-resolves and
-  // remounts this component (keyed by assistant.id) onto that assistant's
-  // siloed conversation set.
+  const runtime = useAssistantRuntime();
   const [, setSearchParams] = useSearchParams();
-  const handleSelectAssistant = useCallback(
-    (id: string) => {
-      if (id !== assistant.id) {
-        setSearchParams({ assistant: id });
-      }
-    },
-    [assistant.id, setSearchParams],
+  const notifications = useThreadNotifications(api);
+
+  // Reactive snapshot of the server-backed thread list.
+  const [threadList, setThreadList] = useState<ThreadListState>(() =>
+    runtime.threads.getState(),
+  );
+  useEffect(() => {
+    setThreadList(runtime.threads.getState());
+    return runtime.threads.subscribe(() =>
+      setThreadList(runtime.threads.getState()),
+    );
+  }, [runtime]);
+
+  const activeId = threadList.mainThreadId;
+  const activeItem = threadList.threadItems[activeId];
+  const activeRemoteId = activeItem?.remoteId;
+  const activeTitle = activeItem?.title ?? '';
+
+  const { generatingThreadIds } = notifications;
+  const conversations = useMemo<ThreadSummary[]>(
+    () =>
+      threadList.threadIds.map(id => {
+        const item = threadList.threadItems[id];
+        const custom = item?.custom as Partial<ThreadCustomMetadata> | undefined;
+        const generating =
+          !!item?.remoteId && generatingThreadIds.has(item.remoteId) && id !== activeId;
+        return {
+          id,
+          remoteId: item?.remoteId,
+          title: item?.title ?? 'New Chat',
+          pinned: custom?.pinned ?? false,
+          // generating and unread are mutually exclusive; generating wins.
+          unread: !generating && (custom?.unread ?? false) && id !== activeId,
+          generating,
+        };
+      }),
+    [threadList, activeId, generatingThreadIds],
   );
 
-  const baseUrl = useAsync(() => api.getBaseUrl(), [api]);
+  // A turn finished somewhere — refresh the thread list so the sidebar picks up
+  // new titles / unread state for background conversations.
+  useEffect(() => {
+    if (notifications.finishedTick > 0) {
+      void runtime.threads.reload();
+    }
+  }, [notifications.finishedTick, runtime]);
 
-  // Model picker: limited to the assistant's allowlist (else the global pool),
-  // defaulting to the assistant's default (else the global default).
+  // Model picker: limited to the assistant's allowlist (else the global pool).
   const allowedModels = useMemo<ModelId[]>(
     () => assistant.models ?? status.models.map(m => m.id),
     [assistant.models, status.models],
   );
-  // The model marked with a default star in the menu.
-  const defaultModel = assistant.defaultModel ?? status.defaultModel;
-  // Group allowed models by vendor (the prefix in the model name) for the menu.
   const modelGroups = useMemo<Array<[string, ModelId[]]>>(() => {
     const byVendor = new Map<string, ModelId[]>();
     for (const id of allowedModels) {
       const { vendor } = splitModel(id, status.models);
       const list = byVendor.get(vendor);
-      if (list) {
-        list.push(id);
-      } else {
-        byVendor.set(vendor, [id]);
-      }
+      if (list) list.push(id);
+      else byVendor.set(vendor, [id]);
     }
     return [...byVendor.entries()];
   }, [allowedModels, status.models]);
-  const convState = useConversations(assistant.id);
-
-  // Per-conversation model memory. Seed from the active conversation's saved
-  // model, validated against this assistant's allowlist; fall back to the
-  // assistant default when absent or no longer available.
   const resolveModel = useCallback(
-    (stored: ModelId | undefined) =>
+    (stored: string | null | undefined): ModelId =>
       stored && allowedModels.includes(stored) ? stored : defaultModel,
     [allowedModels, defaultModel],
   );
+
   const [modelId, setModelId] = useState<ModelId>(() =>
-    resolveModel(convState.activeConversation?.model),
-  );
-  // Adopt the active conversation's saved model when switching conversations.
-  // Keyed on activeId only (not the conversation object, whose identity changes
-  // on every streamed message) so an in-flight chat can't clobber the pick.
-  useEffect(() => {
-    setModelId(resolveModel(convState.activeConversation?.model));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [convState.activeId]);
-  // Persist the user's pick onto the active conversation.
-  const handleModelChange = useCallback(
-    (next: ModelId) => {
-      setModelId(next);
-      if (convState.activeId) {
-        convState.setConversationModel(convState.activeId, next);
-      }
-    },
-    [convState],
+    resolveModel((activeItem?.custom as Partial<ThreadCustomMetadata> | undefined)?.model),
   );
 
-  const [sidePaneCollapsed, setSidePaneCollapsed] = useState(
-    loadSidePaneCollapsed,
-  );
+  // Adopt the active thread's saved model on switch (keyed on the active id only).
+  useEffect(() => {
+    const stored = (
+      threadList.threadItems[activeId]?.custom as
+        | Partial<ThreadCustomMetadata>
+        | undefined
+    )?.model;
+    const next = resolveModel(stored);
+    setModelId(next);
+    modelIdRef.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  // Viewing a thread clears its unread flag (server-side), then refresh the list.
+  useEffect(() => {
+    if (activeRemoteId) {
+      markThreadRead(api, activeRemoteId)
+        .then(() => runtime.threads.reload())
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRemoteId]);
+
+  const [sidePaneCollapsed, setSidePaneCollapsed] = useState(loadSidePaneCollapsed);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEPANE_COLLAPSED_KEY, String(sidePaneCollapsed));
@@ -627,98 +523,65 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
     }
   }, [sidePaneCollapsed]);
 
-  const handleNew = useCallback(() => {
-    convState.createConversation();
-  }, [convState]);
-
-  // A turn finished — possibly in a background thread (different conversation or
-  // even a different assistant than the one on screen).
-  const handleThreadFinish = useCallback(
-    (descriptor: ThreadDescriptor, messages: UIMessage[]) => {
-      const sameAgent = descriptor.agentId === assistant.id;
-      const viewing = sameAgent && descriptor.convId === convState.activeId;
-
-      // Persist: reactively for the on-screen assistant, directly to storage for
-      // any other assistant (whose conversation state isn't mounted here).
-      if (sameAgent) {
-        convState.updateMessages(descriptor.convId, messages);
-      } else {
-        persistConversationMessages(
-          descriptor.agentId,
-          descriptor.convId,
-          messages,
-        );
-      }
-
-      // Unread dot if the reply landed somewhere the user isn't looking.
-      if (!viewing) {
-        markUnread(descriptor.agentId, descriptor.convId);
-      }
-
-      // Best-effort title for brand-new chats of the on-screen assistant (its
-      // conversation state is mounted, so the rename is reactive).
-      if (sameAgent) {
-        const conv = convState.conversations.find(
-          c => c.id === descriptor.convId,
-        );
-        const shouldTitle =
-          conv?.title === 'New Chat' &&
-          messages.some(m => m.role === 'user') &&
-          messages.some(m => m.role === 'assistant');
-        if (shouldTitle) {
-          api
-            .getTitle({
-              assistantId: descriptor.agentId,
-              modelId: descriptor.modelId,
-              messages,
-            })
-            .then(generated => {
-              if (generated && generated !== 'New Chat') {
-                convState.renameConversation(descriptor.convId, generated);
-              }
-            })
-            .catch(() => {
-              // Title generation is best-effort only.
-            });
-        }
-      }
+  const handleSelectAssistant = useCallback(
+    (id: string) => {
+      if (id !== assistant.id) setSearchParams({ assistant: id });
     },
-    [api, assistant.id, convState],
+    [assistant.id, setSearchParams],
   );
 
-  // Auto-create a conversation on first load if none active.
-  useEffect(() => {
-    if (!convState.activeId) {
-      convState.createConversation();
-    }
-    // Only on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleNew = useCallback(() => {
+    void runtime.threads.switchToNewThread();
+  }, [runtime]);
 
-  // Viewing a conversation clears its unread dot (and does so on assistant
-  // switch, since the active conversation changes with it).
-  useEffect(() => {
-    if (convState.activeId) {
-      clearUnread(assistant.id, convState.activeId);
-    }
-  }, [assistant.id, convState.activeId]);
+  const handleSelect = useCallback(
+    (id: string | null) => {
+      if (id) void runtime.threads.switchToThread(id);
+    },
+    [runtime],
+  );
 
-  // The active conversation, as a descriptor, plus any background threads still
-  // streaming. The manager keeps them mounted across conversation/assistant
-  // switches so their replies finish and persist.
-  const activeDescriptor: ThreadDescriptor | null = convState.activeId
-    ? {
-        convId: convState.activeId,
-        agentId: assistant.id,
-        assistantTitle: assistant.title,
-        assistantColor: assistant.color,
-        modelId,
-        initialMessages: convState.activeConversation?.messages,
-        composerPlaceholder: assistant.ui?.composer?.placeholder,
-        suggestions: assistant.ui?.suggestions,
+  const handleRename = useCallback(
+    (id: string, title: string) => {
+      void runtime.threads.getItemById(id).rename(title);
+    },
+    [runtime],
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      void runtime.threads.getItemById(id).delete();
+    },
+    [runtime],
+  );
+
+  const handlePin = useCallback(
+    async (id: string) => {
+      const item = threadList.threadItems[id];
+      if (!item?.remoteId) return;
+      const pinned =
+        (item.custom as Partial<ThreadCustomMetadata> | undefined)?.pinned ??
+        false;
+      try {
+        await patchThread(api, item.remoteId, { pinned: !pinned });
+        await runtime.threads.reload();
+      } catch {
+        // best-effort
       }
-    : null;
-  const { threads, setThreadRunning } = useLiveThreads(activeDescriptor);
+    },
+    [api, runtime, threadList],
+  );
+
+  const handleModelChange = useCallback(
+    (next: ModelId) => {
+      setModelId(next);
+      modelIdRef.current = next;
+      if (activeRemoteId) {
+        void patchThread(api, activeRemoteId, { model: next });
+      }
+    },
+    [api, activeRemoteId, modelIdRef],
+  );
 
   const modelPicker = (
     <FormControl>
@@ -748,9 +611,7 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
               <ListItemIcon className={classes.modelItemCheck}>
                 {id === modelId ? <CheckIcon fontSize="small" /> : null}
               </ListItemIcon>
-              <span style={{ flexGrow: 1 }}>
-                {modelLabel(id, status.models)}
-              </span>
+              <span style={{ flexGrow: 1 }}>{modelLabel(id, status.models)}</span>
               {id === defaultModel && (
                 <Tooltip title="Assistant default">
                   <StarIcon
@@ -766,204 +627,166 @@ function CollapsibleChat({ status, assistant }: CollapsibleChatProps) {
     </FormControl>
   );
 
-  if (baseUrl.loading) {
-    return <Progress />;
-  }
-  if (baseUrl.error || !baseUrl.value) {
-    return (
-      <ResponseErrorPanel
-        error={baseUrl.error ?? new Error('Failed to resolve backend URL')}
-      />
-    );
-  }
-
   return (
     <FullHeightRegion>
       <Content noPadding className={classes.content}>
         <div className={classes.shell}>
-      {sidePaneCollapsed ? (
-        <aside
-          className={classes.sidePaneRail}
-          aria-label="AI chat sidebar collapsed"
-        >
-          <div className={classes.sidePaneRailHeader}>
-            <Tooltip title="Expand" placement="right">
-              <IconButton
-                size="small"
-                className={classes.sidePaneRailButton}
-                aria-label="Expand AI chat sidebar"
-                onClick={() => setSidePaneCollapsed(false)}
-              >
-                <ChevronRightIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </div>
-          <nav
-            className={classes.sidePaneRailAssistants}
-            aria-label="Assistants"
-          >
-            {status.assistants.map(a => (
-              <Tooltip key={a.id} title={a.title} placement="right">
-                <IconButton
-                  size="small"
-                  className={`${classes.sidePaneRailButton} ${
-                    a.id === assistant.id
-                      ? classes.sidePaneRailButtonActive
-                      : ''
-                  }`}
-                  aria-label={a.title}
-                  onClick={() => handleSelectAssistant(a.id)}
-                >
-                  <Badge
-                    color="error"
-                    variant="dot"
-                    overlap="circular"
-                    invisible={!hasUnread(a.id)}
+          {sidePaneCollapsed ? (
+            <aside
+              className={classes.sidePaneRail}
+              aria-label="AI chat sidebar collapsed"
+            >
+              <div className={classes.sidePaneRailHeader}>
+                <Tooltip title="Expand" placement="right">
+                  <IconButton
+                    size="small"
+                    className={classes.sidePaneRailButton}
+                    aria-label="Expand AI chat sidebar"
+                    onClick={() => setSidePaneCollapsed(false)}
                   >
-                    <AssistantAvatar color={a.color} size={24} />
-                  </Badge>
-                </IconButton>
-              </Tooltip>
-            ))}
-          </nav>
-          <div className={classes.sidePaneRailDivider} />
-          <div className={classes.sidePaneRailControls}>
-            <Tooltip title="New Chat" placement="right">
-              <IconButton
-                size="small"
-                className={classes.sidePaneRailButton}
-                aria-label="New Chat"
-                onClick={handleNew}
-              >
-                <AddIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </div>
-          <nav
-            className={classes.sidePaneRailChats}
-            aria-label="AI chat conversations"
-          >
-            {convState.conversations.map(conversation => (
-              <Tooltip
-                key={conversation.id}
-                title={conversation.title}
-                placement="right"
-              >
-                <IconButton
-                  size="small"
-                  className={`${classes.sidePaneRailButton} ${
-                    conversation.id === convState.activeId
-                      ? classes.sidePaneRailButtonActive
-                      : ''
-                  }`}
-                  aria-label={conversation.title}
-                  onClick={() => convState.selectConversation(conversation.id)}
-                >
-                  <Badge
-                    color="error"
-                    variant="dot"
-                    overlap="circular"
-                    invisible={
-                      conversation.id === convState.activeId ||
-                      !isConversationUnread(assistant.id, conversation.id)
-                    }
+                    <ChevronRightIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </div>
+              <nav className={classes.sidePaneRailAssistants} aria-label="Assistants">
+                {status.assistants.map(a => (
+                  <Tooltip key={a.id} title={a.title} placement="right">
+                    <IconButton
+                      size="small"
+                      className={`${classes.sidePaneRailButton} ${
+                        a.id === assistant.id
+                          ? classes.sidePaneRailButtonActive
+                          : ''
+                      }`}
+                      aria-label={a.title}
+                      onClick={() => handleSelectAssistant(a.id)}
+                    >
+                      <Badge
+                        color={
+                          notifications.generatingAssistantIds.has(a.id)
+                            ? 'primary'
+                            : 'error'
+                        }
+                        variant="dot"
+                        overlap="circular"
+                        invisible={
+                          !notifications.generatingAssistantIds.has(a.id) &&
+                          !notifications.unreadAssistantIds.has(a.id)
+                        }
+                        classes={
+                          notifications.generatingAssistantIds.has(a.id)
+                            ? { dot: classes.pulseDot }
+                            : undefined
+                        }
+                      >
+                        <AssistantAvatar color={a.color} size={24} />
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+                ))}
+              </nav>
+              <div className={classes.sidePaneRailDivider} />
+              <div className={classes.sidePaneRailControls}>
+                <Tooltip title="New Chat" placement="right">
+                  <IconButton
+                    size="small"
+                    className={classes.sidePaneRailButton}
+                    aria-label="New Chat"
+                    onClick={handleNew}
                   >
-                    <ChatBubbleOutlineIcon fontSize="small" />
-                  </Badge>
-                </IconButton>
-              </Tooltip>
-            ))}
-          </nav>
-        </aside>
-      ) : (
-        <aside className={classes.sidePane} aria-label="AI chat sidepane">
-          <SidePane
-            assistants={status.assistants}
-            activeAssistantId={assistant.id}
-            onSelectAssistant={handleSelectAssistant}
-            conversations={convState.conversations}
-            activeId={convState.activeId}
-            onNew={handleNew}
-            onSelect={convState.selectConversation}
-            onRename={convState.renameConversation}
-            onPin={convState.pinConversation}
-            onDelete={convState.deleteConversation}
-            onCollapse={() => setSidePaneCollapsed(true)}
-          />
-        </aside>
-      )}
-      {threads.map(d => {
-        const isActive =
-          d.agentId === assistant.id && d.convId === convState.activeId;
-        return (
-          <ChatThread
-            key={d.convId}
-            hidden={!isActive}
-            baseUrl={baseUrl.value}
-            authFetch={api.fetch}
-            assistantId={d.agentId}
-            modelId={isActive ? modelId : d.modelId}
-            title={isActive ? convState.activeConversation?.title ?? '' : ''}
-            assistantName={isActive ? assistant.title : d.assistantTitle}
-            initialMessages={d.initialMessages}
-            onFinish={messages => handleThreadFinish(d, messages)}
-            onRunningChange={running => setThreadRunning(d.convId, running)}
-            composerPlaceholder={d.composerPlaceholder}
-            suggestions={d.suggestions}
-            assistantColor={isActive ? assistant.color : d.assistantColor}
-            headerRight={isActive ? modelPicker : undefined}
-          />
-        );
-      })}
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </div>
+              <nav
+                className={classes.sidePaneRailChats}
+                aria-label="AI chat conversations"
+              >
+                {conversations.map(conversation => (
+                  <Tooltip
+                    key={conversation.id}
+                    title={conversation.title}
+                    placement="right"
+                  >
+                    <IconButton
+                      size="small"
+                      className={`${classes.sidePaneRailButton} ${
+                        conversation.id === activeId
+                          ? classes.sidePaneRailButtonActive
+                          : ''
+                      }`}
+                      aria-label={conversation.title}
+                      onClick={() => handleSelect(conversation.id)}
+                    >
+                      <Badge
+                        color={conversation.generating ? 'primary' : 'error'}
+                        variant="dot"
+                        overlap="circular"
+                        invisible={
+                          !conversation.generating && !conversation.unread
+                        }
+                        classes={
+                          conversation.generating
+                            ? { dot: classes.pulseDot }
+                            : undefined
+                        }
+                      >
+                        <ChatBubbleOutlineIcon fontSize="small" />
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+                ))}
+              </nav>
+            </aside>
+          ) : (
+            <aside className={classes.sidePane} aria-label="AI chat sidepane">
+              <SidePane
+                assistants={status.assistants}
+                activeAssistantId={assistant.id}
+                onSelectAssistant={handleSelectAssistant}
+                unreadAssistantIds={notifications.unreadAssistantIds}
+                generatingAssistantIds={notifications.generatingAssistantIds}
+                conversations={conversations}
+                activeId={activeId}
+                onNew={handleNew}
+                onSelect={handleSelect}
+                onRename={handleRename}
+                onPin={handlePin}
+                onDelete={handleDelete}
+                onCollapse={() => setSidePaneCollapsed(true)}
+              />
+            </aside>
+          )}
+
+          <main className={classes.threadPane} aria-label="AI chat thread">
+            <div className={classes.threadHeader}>
+              <div className={classes.threadIdentity}>
+                <AssistantAvatar color={assistant.color} size={22} />
+                <Typography variant="subtitle2" className={classes.assistantName}>
+                  {assistant.title}
+                </Typography>
+                {activeTitle && (
+                  <Typography
+                    variant="body2"
+                    className={classes.threadTitle}
+                    title={activeTitle}
+                  >
+                    · {activeTitle}
+                  </Typography>
+                )}
+              </div>
+              {modelPicker}
+            </div>
+            <div className={classes.threadBody}>
+              <ConversationSurface
+                composerPlaceholder={assistant.ui?.composer?.placeholder}
+                suggestions={assistant.ui?.suggestions}
+                assistantColor={assistant.color}
+              />
+            </div>
+          </main>
         </div>
       </Content>
     </FullHeightRegion>
   );
-}
-
-/**
- * Implementation 1's collapsible AI chat page, faithfully reproduced as a
- * fully self-contained Backstage page module.
- *
- * Reads the target assistant from `?assistant=<id>` (the assistant rail lives
- * in the Backstage nav), loads `/status`, and renders the collapsible
- * conversation experience for the chosen assistant (or the first accessible
- * one). Backend wiring goes through `assistantsApiRef` — never `config`.
- *
- * @public
- */
-export function CollapsiblePage() {
-  const api = useApi(assistantsApiRef);
-  const [searchParams] = useSearchParams();
-  const requestedAssistant = searchParams.get('assistant');
-
-  const status = useAsync(() => api.getStatus(), [api]);
-
-  // No <Page> wrapper: the new frontend system already renders this extension
-  // inside the app's page chrome (header/breadcrumb). A nested <Page> adds its
-  // own min-height and pushes the layout past the viewport (outer scrollbar).
-  // The chat fills the viewport via FullHeightRegion inside CollapsibleChat.
-  if (status.loading) {
-    return <Progress />;
-  }
-  if (status.error) {
-    return <ResponseErrorPanel error={status.error} />;
-  }
-  if (!status.value) {
-    return null;
-  }
-  const assistants = status.value.assistants;
-  if (assistants.length === 0) {
-    return (
-      <ResponseErrorPanel
-        error={new Error('No assistants are available to you.')}
-      />
-    );
-  }
-  const assistant =
-    assistants.find(a => a.id === requestedAssistant) ?? assistants[0];
-  // Intentionally NOT keyed by assistant.id: the page persists across assistant
-  // switches so background chat threads keep streaming. useConversations
-  // re-seeds itself from the new assistant's namespace.
-  return <CollapsibleChat status={status.value} assistant={assistant} />;
 }

@@ -6,9 +6,11 @@ import {
   actionsRegistryServiceRef,
   actionsServiceRef,
 } from '@backstage/backend-plugin-api/alpha';
+import { signalsServiceRef } from '@backstage/plugin-signals-node';
 import { readConfig } from './config';
 import { createRouter } from './router';
 import { registerCoreActions } from './actions';
+import { ThreadService } from './threads';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -30,6 +32,7 @@ export const assistantsPlugin = createBackendPlugin({
       deps: {
         logger: coreServices.logger,
         config: coreServices.rootConfig,
+        database: coreServices.database,
         httpRouter: coreServices.httpRouter,
         httpAuth: coreServices.httpAuth,
         userInfo: coreServices.userInfo,
@@ -40,10 +43,12 @@ export const assistantsPlugin = createBackendPlugin({
         // `@backstage/backend-plugin-api/alpha`.
         actionsRegistry: actionsRegistryServiceRef,
         actions: actionsServiceRef,
+        signals: signalsServiceRef,
       },
       async init({
         logger,
         config,
+        database,
         httpRouter,
         httpAuth,
         userInfo,
@@ -51,6 +56,7 @@ export const assistantsPlugin = createBackendPlugin({
         discovery,
         actionsRegistry,
         actions,
+        signals,
       }) {
         const assistants = readConfig(config);
 
@@ -61,6 +67,12 @@ export const assistantsPlugin = createBackendPlugin({
           registerCoreActions({ actionsRegistry, discovery, auth });
         }
 
+        // Conversation persistence: the plugin owns its own tables in Backstage's
+        // standard `backend.database` (SQLite dev / Postgres prod). Migrations are
+        // idempotent and run on every boot.
+        const threadService = new ThreadService(await database.getClient());
+        await threadService.runMigrations();
+
         const router = await createRouter({
           logger,
           config,
@@ -68,6 +80,8 @@ export const assistantsPlugin = createBackendPlugin({
           userInfo,
           actions,
           assistants,
+          threadService,
+          signals,
         });
 
         httpRouter.use(router);

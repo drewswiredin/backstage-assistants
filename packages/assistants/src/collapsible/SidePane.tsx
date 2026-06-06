@@ -5,7 +5,7 @@ import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantsList } from './AssistantsList';
 import { ConversationsPanel } from './ConversationsPanel';
-import type { Conversation } from './useConversations';
+import type { ThreadSummary } from './threadListAdapter';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -46,7 +46,11 @@ export interface SidePaneProps {
   activeAssistantId: string;
   /** Switch assistant (drives `?assistant=<id>`). */
   onSelectAssistant: (id: string) => void;
-  conversations: Conversation[];
+  /** Assistant ids with at least one unread conversation (server-computed). */
+  unreadAssistantIds?: ReadonlySet<string>;
+  /** Assistant ids with at least one in-flight (generating) reply. */
+  generatingAssistantIds?: ReadonlySet<string>;
+  conversations: ThreadSummary[];
   activeId: string | null;
   onNew: () => void;
   onSelect: (id: string | null) => void;
@@ -69,6 +73,8 @@ export function SidePane(props: SidePaneProps) {
     assistants,
     activeAssistantId,
     onSelectAssistant,
+    unreadAssistantIds,
+    generatingAssistantIds,
     conversations,
     activeId,
     onNew,
@@ -98,6 +104,8 @@ export function SidePane(props: SidePaneProps) {
         assistants={assistants}
         activeId={activeAssistantId}
         onSelect={onSelectAssistant}
+        unreadAssistantIds={unreadAssistantIds}
+        generatingAssistantIds={generatingAssistantIds}
       />
 
       <div className={classes.divider} />
@@ -113,7 +121,6 @@ export function SidePane(props: SidePaneProps) {
         </Tooltip>
       </div>
       <ConversationsPanel
-        assistantId={activeAssistantId}
         conversations={conversations}
         activeId={activeId}
         onSelect={onSelect}

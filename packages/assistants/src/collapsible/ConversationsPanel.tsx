@@ -1,3 +1,5 @@
+/* eslint-disable jsx-a11y/no-autofocus -- the inline rename field appears on a
+   deliberate user action (Rename) and should take focus immediately. */
 import { MouseEvent, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import {
@@ -17,8 +19,7 @@ import {
 import BookmarkIcon from '@material-ui/icons/Bookmark';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import type { Conversation } from './useConversations';
-import { isConversationUnread, useUnreadVersion } from './unreadStore';
+import type { ThreadSummary } from './threadListAdapter';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -71,6 +72,14 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(3, 2),
     textAlign: 'center',
   },
+  '@keyframes auiPulse': {
+    '0%': { transform: 'scale(1)', opacity: 1 },
+    '50%': { transform: 'scale(1.5)', opacity: 0.45 },
+    '100%': { transform: 'scale(1)', opacity: 1 },
+  },
+  pulseDot: {
+    animation: '$auiPulse 1.2s ease-in-out infinite',
+  },
 }));
 
 /**
@@ -79,9 +88,7 @@ const useStyles = makeStyles(theme => ({
  * @public
  */
 export interface ConversationsPanelProps {
-  /** The assistant these conversations belong to (for unread lookups). */
-  assistantId: string;
-  conversations: Conversation[];
+  conversations: ThreadSummary[];
   activeId: string | null;
   onSelect: (id: string | null) => void;
   onRename: (id: string, title: string) => void;
@@ -98,7 +105,6 @@ export interface ConversationsPanelProps {
  * @public
  */
 export function ConversationsPanel({
-  assistantId,
   conversations,
   activeId,
   onSelect,
@@ -107,7 +113,6 @@ export function ConversationsPanel({
   onDelete,
 }: ConversationsPanelProps) {
   const classes = useStyles();
-  useUnreadVersion(); // re-render when unread state changes
   const [menuAnchor, setMenuAnchor] = useState<{
     el: HTMLElement;
     id: string;
@@ -122,7 +127,7 @@ export function ConversationsPanel({
 
   const handleMenuClose = () => setMenuAnchor(null);
 
-  const handleRenameStart = (conv: Conversation) => {
+  const handleRenameStart = (conv: ThreadSummary) => {
     setRenamingId(conv.id);
     setRenameValue(conv.title);
     handleMenuClose();
@@ -157,13 +162,13 @@ export function ConversationsPanel({
             >
               <ListItemIcon style={{ minWidth: 32 }}>
                 <Badge
-                  color="error"
+                  color={conv.generating ? 'primary' : 'error'}
                   variant="dot"
                   overlap="circular"
                   invisible={
-                    conv.id === activeId ||
-                    !isConversationUnread(assistantId, conv.id)
+                    conv.id === activeId || (!conv.generating && !conv.unread)
                   }
+                  classes={conv.generating ? { dot: classes.pulseDot } : undefined}
                 >
                   <ChatBubbleOutlineIcon fontSize="small" />
                 </Badge>

@@ -33,7 +33,7 @@ What the model actually receives for a request = `Allowlist ∩ actions the call
 The two independent authorization checks. (1) The Assistant **Allowlist** — what this Assistant may offer. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every tool runs as the user.
 
 **Conversation**:
-A single chat session with one Assistant — its ordered messages. The user-facing term. Owned by exactly one Assistant; ownership is immutable (a conversation can never move to another Assistant). Persists in the browser, not the server (ADR 0001), in a per-Assistant list keyed by `assistantId`. Lists are strictly siloed per Assistant — no unified cross-Assistant view. User scoping is implicit (the browser is the user boundary; nothing is user-keyed).
+A single chat session with one Assistant — its ordered messages. The user-facing term. Owned by exactly one Assistant; ownership is immutable (a conversation can never move to another Assistant). Persists server-side in the plugin's own database, scoped to the owning user, and reaches the browser only through assistant-ui's remote thread-list + history adapters — the frontend is a pure view, holding no conversation state of its own. Lists are siloed per Assistant — no unified cross-Assistant view.
 _Avoid_: Chat, Session (as a noun for stored history)
 
 **Thread**:
@@ -50,17 +50,17 @@ A `<providerId>:<model>` string (e.g. `myAzure:gpt-4o`, `openrouter:anthropic/cl
 The union of every Provider's `models[]`. The global set of selectable models; an Assistant's `models[]` allowlist is a subset of it.
 
 **Conversation surface**:
-The inner chat component — message list, composer, tool-call rendering, and (later) generative UI. It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its **own** surface in-repo (seeded from the assistant-ui registry template); gen-ui owns a parallel one. They are kept swappable by the **surface seam**, not a shared dependency (ADR 0005). Distinct from the **chrome**.
+The inner chat component — message list, composer, tool-call rendering, and (later) generative UI. It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its **own** surface in-repo (seeded from the assistant-ui registry template); gen-ui owns a parallel one. They are kept swappable by the **surface seam**, not a shared dependency. Distinct from the **chrome**.
 _Avoid_: chat window (ambiguous — say "surface" for the replaceable unit, "chrome" for the frame)
 
 **Surface seam**:
-The single component boundary at which a conversation surface plugs in: a BYO-runtime `ConversationSurface: FC<ConversationSurfaceProps>` rendered inside the host's `AssistantRuntimeProvider`. The host owns runtime/transport/auth/chrome; the surface owns only presentation and reads the ambient runtime. Props are a thin, forward-compatible presentational bag (`composerPlaceholder`, `suggestions`, `welcome`, `className`). Routed through a `surface/` indirection module so swapping the plugin's in-repo surface for gen-ui's is one import (ADR 0005). This is assistant-ui's native runtime/surface split — not a custom abstraction.
+The single component boundary at which a conversation surface plugs in: a BYO-runtime `ConversationSurface: FC<ConversationSurfaceProps>` rendered inside the host's `AssistantRuntimeProvider`. The host owns runtime/transport/auth/chrome; the surface owns only presentation and reads the ambient runtime. Props are a thin, forward-compatible presentational bag (`composerPlaceholder`, `suggestions`, `welcome`, `className`). Routed through a `surface/` indirection module so swapping the plugin's in-repo surface for gen-ui's is one import. This is assistant-ui's native runtime/surface split — not a custom abstraction.
 
 **Chrome**:
 The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model picker. Owned by the `backstage-assistants` plugin, not the gen-ui library.
 
 **gen-ui library** (`@drewswiredin/gen-ui`):
-The standalone, publishable library that owns *its* Conversation surface + generative-UI machinery (iframe artifacts, OpenUI, mermaid, trusted-component allowlist). BYO-runtime core + a minimal OpenAI-compatible/OpenRouter wrapper. Agent-agnostic — no Mastra. Consumed by its own demo app. **Not a dependency of the plugin** (ADR 0005): the two share only a copy-paste starting point and the **surface seam**, so a matured gen-ui can drop in via one import without ever being a build-time coupling.
+The standalone, publishable library that owns *its* Conversation surface + generative-UI machinery (iframe artifacts, OpenUI, mermaid, trusted-component allowlist). BYO-runtime core + a minimal OpenAI-compatible/OpenRouter wrapper. Agent-agnostic — no Mastra. Consumed by its own demo app. **Not a dependency of the plugin**: the two share only a copy-paste starting point and the **surface seam**, so a matured gen-ui can drop in via one import without ever being a build-time coupling.
 
 **Access policy**:
 The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`). Deny by default. Distinct from per-tool permissions.

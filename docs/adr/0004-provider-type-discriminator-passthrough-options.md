@@ -1,7 +1,0 @@
-# Provider config: type discriminator + passthrough options bag
-
-Each configured provider (`assistants.providers.{id}`) carries a `type` (`openai` | `anthropic` | `azure` | `openai-compatible`) that selects which AI-SDK factory to instantiate, a top-level `apiKey` (kept top-level so it retains `@visibility secret`), an `options` object spread verbatim into that factory, and `models[]`. The plugin wires these four `@ai-sdk/*` factories into a `createProviderRegistry`; model ids are `<providerId>:<model>`. We do not implement any provider — the AI-SDK package is the connection layer.
-
-Connection options are an untyped passthrough **bag**, not enumerated as typed fields, deliberately. The operator wants each provider's *full* native connection surface exposed, and the AI-SDK provider APIs drift between releases (the ai-sdk skill's standing warning is that memorized API shapes are stale). A passthrough bag exposes everything each factory accepts — including future options — with zero schema maintenance and no drift. The accepted cost: `options` is not field-validated by Backstage's config schema. This is recorded so the bag isn't later "improved" into a typed union that would have to chase every SDK change. Adding a provider (Google, Bedrock) later is one more `type` value + factory `case`.
-
-Rejected: flattening all providers to a single OpenAI-compatible factory — it would hide native Anthropic/Azure capabilities, which is the opposite of the intent.
