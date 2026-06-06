@@ -432,6 +432,27 @@ function ChatChrome({
     );
   }, [runtime]);
 
+  // Always-one: when the thread list has loaded and contains no persisted
+  // (remote) threads, create one server-side immediately so the conversation
+  // list is never empty and the chat pane has a focused, initialized thread.
+  const hasRemoteThreads = threadList.threadIds.some(
+    id => threadList.threadItems[id]?.remoteId,
+  );
+  useEffect(() => {
+    if (!threadList.isLoading && !hasRemoteThreads) {
+      void (async () => {
+        await runtime.threads.switchToNewThread();
+        // Force server-side initialization so the thread appears in the list.
+        try {
+          await runtime.threads.mainItem.initialize();
+          await runtime.threads.reload();
+        } catch {
+          // initialize may fail if already initialized; safe to ignore.
+        }
+      })();
+    }
+  }, [threadList.isLoading, hasRemoteThreads, runtime]);
+
   const activeId = threadList.mainThreadId;
   const activeItem = threadList.threadItems[activeId];
   const activeRemoteId = activeItem?.remoteId;
@@ -531,7 +552,15 @@ function ChatChrome({
   );
 
   const handleNew = useCallback(() => {
-    void runtime.threads.switchToNewThread();
+    void (async () => {
+      await runtime.threads.switchToNewThread();
+      try {
+        await runtime.threads.mainItem.initialize();
+        await runtime.threads.reload();
+      } catch {
+        // already initialized; safe to ignore
+      }
+    })();
   }, [runtime]);
 
   const handleSelect = useCallback(
@@ -543,7 +572,10 @@ function ChatChrome({
 
   const handleRename = useCallback(
     (id: string, title: string) => {
-      void runtime.threads.getItemById(id).rename(title);
+      void (async () => {
+        await runtime.threads.getItemById(id).rename(title);
+        await runtime.threads.reload();
+      })();
     },
     [runtime],
   );

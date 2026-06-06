@@ -142,13 +142,7 @@ export function ConversationsPanel({
 
   return (
     <div className={classes.root}>
-      {conversations.length === 0 ? (
-        <div className={classes.emptyState}>
-          <Typography variant="caption" color="textSecondary">
-            No conversations yet
-          </Typography>
-        </div>
-      ) : (
+      {conversations.length === 0 ? null : (
         <List disablePadding dense>
           {conversations.map(conv => (
             <ListItem
