@@ -458,9 +458,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return server ? { server, tools: sel.tools } : undefined;
       })
       .filter((s): s is ResolvedMcpSelection => Boolean(s));
-    const mcp = await buildMcpTools(mcpSelections, logger);
+    const mcp = await buildMcpTools(
+      mcpSelections,
+      logger,
+      assistants.toolResultMaxChars,
+    );
     const tools = {
-      ...actionsToTools(selected, actions, credentials),
+      ...actionsToTools(
+        selected,
+        actions,
+        credentials,
+        assistants.toolResultMaxChars,
+      ),
       ...mcp.tools,
     };
 

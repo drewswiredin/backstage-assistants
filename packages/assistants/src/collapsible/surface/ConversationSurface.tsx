@@ -27,7 +27,12 @@ import {
   UserMessage,
 } from '@assistant-ui/react-ui';
 import { MarkdownText } from './MarkdownText';
-import { ReasoningPart, ThinkingMessage, ToolFallback } from './parts';
+import {
+  MessageError,
+  ReasoningPart,
+  ThinkingMessage,
+  ToolFallback,
+} from './parts';
 
 const DEFAULT_WELCOME_SUBTITLE =
   'Ask me about services, APIs, teams, TechDocs, or anything in the catalog.';
@@ -187,6 +192,7 @@ function AssistantMessageWithAvatar() {
     <AssistantMessage.Root>
       <AssistantBotAvatar />
       <AssistantMessage.Content components={{ Reasoning: ReasoningPart }} />
+      <MessageError />
       <BranchPicker />
       <AssistantActionBar />
     </AssistantMessage.Root>

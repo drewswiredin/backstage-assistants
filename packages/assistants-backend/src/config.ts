@@ -138,6 +138,13 @@ export interface AssistantsConfig {
   defaultModel: ModelId;
   /** Maximum number of tool-call steps per turn. */
   maxSteps: number;
+  /**
+   * Maximum characters of a single tool result passed to the model (and
+   * persisted). Oversized results are truncated head+tail with an elision
+   * marker so one huge tool output can't overflow the context window. `0`
+   * disables truncation. Default `30000`.
+   */
+  toolResultMaxChars: number;
   /** Express body-parser size limit for `/chat` and `/title` (default `'10mb'`). */
   requestBodyLimit: string;
   /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
@@ -497,6 +504,8 @@ export function readConfig(config: Config): AssistantsConfig {
   }
 
   const maxSteps = root.getOptionalNumber('maxSteps') ?? 10;
+  const toolResultMaxChars =
+    root.getOptionalNumber('toolResultMaxChars') ?? 30000;
   const requestBodyLimit = root.getOptionalString('requestBodyLimit') ?? '10mb';
   const registerCoreActions =
     root.getOptionalBoolean('registerCoreActions') ?? false;
@@ -508,6 +517,7 @@ export function readConfig(config: Config): AssistantsConfig {
     models,
     defaultModel,
     maxSteps,
+    toolResultMaxChars,
     requestBodyLimit,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),

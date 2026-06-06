@@ -6,6 +6,7 @@ import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
+import { useAuiState } from '@assistant-ui/react';
 import type {
   EmptyMessagePartProps,
   ReasoningMessagePartProps,
@@ -238,8 +239,9 @@ export function ToolFallback({
 
 /**
  * Rendered in place of an empty assistant message: a "Reasoning…" spinner while
- * the model is thinking, or an error notice if the message completed with no
- * content (typically a stream/API failure).
+ * the model is thinking. A failed turn is surfaced by {@link MessageError} at the
+ * message level (which covers both empty and mid-stream failures), so there is
+ * no placeholder for a non-running empty message here.
  */
 export function ThinkingMessage({ status }: EmptyMessagePartProps) {
   const classes = useStyles();
@@ -255,19 +257,57 @@ export function ThinkingMessage({ status }: EmptyMessagePartProps) {
     );
   }
 
-  // Message completed with no content — likely a stream/API error
-  if (status.type === 'complete' || status.type === 'incomplete') {
-    return (
-      <Box className={classes.errorMessage} aria-live="polite">
-        <ErrorOutlineIcon fontSize="small" />
-        <Typography variant="body2" component="span">
-          Something went wrong. Please try again.
-        </Typography>
-      </Box>
-    );
+  return null;
+}
+
+/** Coerce an assistant-message error value into readable text. */
+function errorToText(error: unknown): string {
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+/**
+ * Reads the real failure reason off the current assistant message's status (set
+ * by the runtime when a turn errors — e.g. the model rejecting an over-long
+ * prompt) and renders it. Returns nothing for a healthy message.
+ *
+ * Surfacing it at the message level — rather than only in the empty-message
+ * placeholder — means it shows whether the turn failed before any tokens
+ * streamed OR mid-stream after partial output. Mirrors assistant-ui's internal
+ * `useMessageError` via the public `useAuiState` selector.
+ */
+export function MessageError() {
+  const classes = useStyles();
+  const error = useAuiState(s =>
+    s.message.status?.type === 'incomplete' && s.message.status.reason === 'error'
+      ? errorToText(s.message.status.error ?? 'An error occurred')
+      : undefined,
+  );
+
+  if (!error) {
+    return null;
   }
 
-  return null;
+  return (
+    <Box className={classes.errorMessage} role="alert">
+      <ErrorOutlineIcon fontSize="small" />
+      <Typography variant="body2" component="span">
+        {error}
+      </Typography>
+    </Box>
+  );
 }
 
 /** Collapsible renderer for an assistant message's reasoning (thinking) part. */

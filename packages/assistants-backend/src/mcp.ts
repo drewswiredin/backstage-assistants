@@ -10,6 +10,7 @@ import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { ToolSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { McpServerConfig } from './config';
+import { truncateToolResult } from './truncateToolResult';
 
 /**
  * MCP (Model Context Protocol) integration. External MCP servers' tools are
@@ -178,6 +179,7 @@ export interface LiveMcpTools {
 export async function buildMcpTools(
   selections: ResolvedMcpSelection[],
   logger: LoggerService,
+  toolResultMaxChars: number,
 ): Promise<LiveMcpTools> {
   const clients: Client[] = [];
   const tools: Record<string, Tool> = {};
@@ -212,19 +214,24 @@ export async function buildMcpTools(
                 );
                 return {
                   _error: true,
-                  message: detail,
+                  message: truncateToolResult(detail, toolResultMaxChars),
                 };
               }
-              return result.structuredContent ?? result.content;
+              return truncateToolResult(
+                result.structuredContent ?? result.content,
+                toolResultMaxChars,
+              );
             } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               logger.error(
                 `MCP tool '${server.id}/${t.name}' threw: ${message}`,
               );
+              // Cap the message too — a tool error can embed an upstream body
+              // large enough to overflow the context window (see Issue #2).
               return {
                 _error: true,
-                message,
+                message: truncateToolResult(message, toolResultMaxChars),
               };
             }
           },

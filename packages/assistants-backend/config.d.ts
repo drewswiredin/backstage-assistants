@@ -33,6 +33,16 @@ export interface Config {
     maxSteps?: number;
 
     /**
+     * Maximum characters of a single tool result passed to the model (and
+     * persisted in the conversation). Oversized results (e.g. a multi-MB code
+     * search) are truncated to the head + tail with an elision marker so one
+     * huge tool output can't overflow the model's context window or bloat the
+     * stored history. Set to `0` to disable truncation. Defaults to 30000
+     * (~7.5k tokens).
+     */
+    toolResultMaxChars?: number;
+
+    /**
      * Register the built-in catalog/search/TechDocs actions under the
      * `assistants` source. Defaults to false.
      */

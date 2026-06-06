@@ -40,6 +40,7 @@ import { SearchResultSet } from '@backstage/plugin-search-common';
 import { tool, jsonSchema, type Tool } from 'ai';
 import { parse } from 'node-html-parser';
 import TurndownService from 'turndown';
+import { truncateToolResult } from './truncateToolResult';
 
 /**
  * Dependencies needed to register the built-in core actions. Each action runs
@@ -319,11 +320,16 @@ export function registerCoreActions(deps: CoreActionsDeps): void {
  *
  * A denied or failed invoke is caught and returned as a structured tool result
  * the model can explain — not thrown — so the turn continues.
+ *
+ * An oversized successful result is truncated to `toolResultMaxChars` (head+tail
+ * with an elision marker) so one huge output can't overflow the model's context
+ * window or bloat the persisted conversation. See {@link truncateToolResult}.
  */
 export function actionsToTools(
   actions: ActionsServiceAction[],
   actionsService: ActionsService,
   credentials: BackstageCredentials,
+  toolResultMaxChars: number,
 ): Record<string, Tool> {
   return Object.fromEntries(
     actions.map(a => [
@@ -338,13 +344,18 @@ export function actionsToTools(
               input: input as JsonObject,
               credentials,
             });
-            return result.output;
+            return truncateToolResult(result.output, toolResultMaxChars);
           } catch (error) {
             // Structured error result, not a throw — the model can explain it
-            // and the multi-step loop continues.
+            // and the multi-step loop continues. Cap the message too: an action
+            // error can embed a full upstream response body, so the error path
+            // is just as capable of overflowing the context window as success.
             return {
               error: true,
-              message: error instanceof Error ? error.message : String(error),
+              message: truncateToolResult(
+                error instanceof Error ? error.message : String(error),
+                toolResultMaxChars,
+              ),
             };
           }
         },
