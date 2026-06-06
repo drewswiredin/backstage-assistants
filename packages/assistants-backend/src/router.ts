@@ -15,6 +15,7 @@ import {
   generateText,
   convertToModelMessages,
   stepCountIs,
+  UI_MESSAGE_STREAM_HEADERS,
   type ModelMessage,
   type UIMessage,
 } from 'ai';
@@ -34,6 +35,7 @@ import {
 } from './mcp';
 import { createOpenApiRouter } from './schema/openapi';
 import type { ThreadService } from './threads';
+import { ResumableStreamRegistry } from './resumableStreams';
 import type { SignalsService } from '@backstage/plugin-signals-node';
 
 /** Signals channel for per-user conversation notifications (generating / unread). */
@@ -222,8 +224,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   } = options;
 
   // Live, per-user set of in-flight generations: userRef -> (threadId -> assistantId).
-  // Ephemeral (single backend replica); reconciled by the client via GET /threads/active.
+  // Ephemeral (single backend replica); surfaced to the client via GET /threads/status.
   const inFlight = new Map<string, Map<string, string>>();
+
+  // In-memory buffers of in-flight /chat SSE streams, for mid-flight resume.
+  const resumables = new ResumableStreamRegistry();
 
   function noteStarted(userRef: string, threadId: string, assistantId: string) {
     let m = inFlight.get(userRef);
@@ -289,6 +294,43 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.post('/title', (req, res, next) => {
     handleTitle(req, res).catch(next);
   });
+
+  // Reconnect to an in-flight (or just-finished) /chat stream and replay it.
+  // The client (AssistantChatTransport's resumable adapter) calls this on remount
+  // when it has a stored stream id, to rejoin a generation it stepped away from.
+  // A plain Express sub-router — the typed OpenAPI router only allows spec paths.
+  const streamRouter = express.Router();
+  streamRouter.get('/chat/resume/:streamId', (req, res, next) => {
+    (async () => {
+      const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      const user = await userInfo.getUserInfo(credentials);
+      const sub = resumables.subscribe(
+        req.params.streamId,
+        user.userEntityRef,
+        chunk => (chunk === null ? res.end() : res.write(chunk)),
+      );
+      // Unknown / expired / not owned → nothing to resume.
+      if (!sub) {
+        res.status(204).end();
+        return;
+      }
+      // Match the UI message stream content type so the client parser accepts it.
+      res.status(200);
+      for (const [key, value] of Object.entries(UI_MESSAGE_STREAM_HEADERS)) {
+        res.setHeader(key, String(value));
+      }
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.flushHeaders();
+      // Replay everything buffered so far; the live tail arrives via the listener.
+      for (const chunk of sub.buffered) res.write(chunk);
+      if (sub.done) {
+        res.end();
+        return;
+      }
+      req.on('close', () => sub.unsubscribe());
+    })().catch(next);
+  });
+  router.use(streamRouter);
 
   /**
    * `GET /status` — the single page-load endpoint. Returns the browser-safe
@@ -484,6 +526,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     navigation). The server is the single writer of message rows.
     void result.consumeStream();
 
+    // Id under which a copy of this SSE stream is buffered for mid-flight resume.
+    const resumableId = randomUUID();
+
     // 11. Pipe the UI message stream to the response. On finish, persist the
     //     completed conversation to the thread (scoped to this user). The
     //     frontend never writes message rows — `originalMessages` +
@@ -547,8 +592,17 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           }
         })();
       },
+      // Buffer a tee'd copy of the SSE so a client returning mid-flight can
+      // rejoin via GET /chat/resume/:id (in-memory; single replica).
+      consumeSseStream: ({ stream }) => {
+        resumables.start(resumableId, user.userEntityRef, stream);
+      },
       sendReasoning: true,
-      headers: { 'Cache-Control': 'no-cache, no-transform' },
+      headers: {
+        'Cache-Control': 'no-cache, no-transform',
+        // AssistantChatTransport reads this to learn the resume id to store.
+        'x-resumable-stream-id': resumableId,
+      },
     });
   }
 

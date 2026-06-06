@@ -9,9 +9,13 @@
  * request as `id`. A thin fetch wrapper adds `assistantId` + `modelId` and maps
  * `id -> threadId`, which is all the backend `/chat` needs to persist the turn.
  */
-import { useMemo, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { useAISDKRuntime, AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
+import {
+  useAISDKRuntime,
+  AssistantChatTransport,
+  createResumableSessionStorage,
+} from '@assistant-ui/react-ai-sdk';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
@@ -74,11 +78,19 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
         new AssistantChatTransport({
           api: `${baseUrl}/chat`,
           fetch: createInjectingFetch(api.fetch, assistantId, modelIdRef),
+          // Mid-flight resume: the transport stores the response's
+          // x-resumable-stream-id (per thread) and, on remount with one stored,
+          // reconnects via /chat/resume/:id. Cleared when it sees the finish event.
+          resumable: {
+            storage: createResumableSessionStorage({
+              key: `aui-resume:${assistantId}:${threadChatId}`,
+            }),
+            resumeApi: (streamId: string) => `${baseUrl}/chat/resume/${streamId}`,
+          },
         }),
-      // api.fetch / baseUrl / assistantId / modelIdRef are stable for the
-      // adapter's lifetime; the transport should be created once per thread.
+      // Stable per thread instance (threadChatId is fixed within it).
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [],
+      [threadChatId],
     );
 
     const chat = useChat({ id: threadChatId, transport });
@@ -90,6 +102,16 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     transport.__internal_setGetThreadListItem(() =>
       aui.threadListItem.source ? aui.threadListItem() : undefined,
     );
+
+    // On (re)mount, if a stream was left in flight for this thread, rejoin it.
+    const resumeFired = useRef(false);
+    useEffect(() => {
+      if (resumeFired.current) return;
+      const adapter = transport.getResumableAdapter();
+      if (!adapter?.storage.getStreamId()) return;
+      resumeFired.current = true;
+      chat.resumeStream().catch(() => adapter.storage.clear());
+    }, [transport, chat]);
 
     return runtime;
   };
