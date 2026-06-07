@@ -307,11 +307,18 @@ export function readConfig(config: Config): AssistantsConfig {
     registryProviders[providerId] = buildProvider(type, providerConfig);
 
     const modelNames = providerConfig.getStringArray('models');
+    // Optional per-model context windows, read as a raw object so model names
+    // containing '.' (e.g. `gpt-4.5`) aren't misread as nested config keys.
+    const contextWindows = providerConfig.getOptional('contextWindows') as
+      | Record<string, number>
+      | undefined;
     for (const model of modelNames) {
+      const contextWindow = contextWindows?.[model];
       models.push({
         id: `${providerId}:${model}`,
         provider: providerId,
         model,
+        ...(typeof contextWindow === 'number' ? { contextWindow } : {}),
       });
     }
   }

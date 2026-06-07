@@ -7,6 +7,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
 } from 'react';
@@ -22,11 +23,13 @@ import {
   AssistantActionBar,
   AssistantMessage,
   BranchPicker,
+  Composer,
   Thread,
   ThreadWelcome,
   UserMessage,
 } from '@assistant-ui/react-ui';
 import { MarkdownText } from './MarkdownText';
+import { ContextGauge } from './ContextGauge';
 import {
   MessageError,
   MessageInterrupted,
@@ -42,6 +45,16 @@ const DEFAULT_WELCOME_SUBTITLE =
 // message components (passed to <Thread> by reference, so they can't take props)
 // read it from context. Falls back to DEFAULT_AVATAR_COLOR.
 const AvatarColorContext = createContext<string | undefined>(undefined);
+
+// The active model's context window + the current turn's token usage, provided by
+// ConversationSurface so the composer's gauge + over-limit warning can render.
+// <Thread> passes no props to a custom Composer, so this rides context instead of
+// prop-drilling. Usage is server-derived (from /threads/status), not read off the
+// message — assistant-ui's transport drops the AI-SDK usage metadata.
+const ComposerInfoContext = createContext<{
+  contextWindow?: number;
+  used?: number;
+}>({});
 
 const useStyles = makeStyles(theme => ({
   threadHost: {
@@ -169,7 +182,118 @@ const useStyles = makeStyles(theme => ({
     textTransform: 'none',
     borderRadius: 999,
   },
+  // Two-level composer: full-width input on top; a second row with attachments
+  // on the left and the context gauge + send/stop on the right. Keeps the stock
+  // `aui-composer-root` border + focus glow (withDefaults merges classNames).
+  composerRoot: {
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+  },
+  composerInput: {
+    // A touch taller so the input reads as a full first row.
+    minHeight: 44,
+    paddingTop: theme.spacing(1.25),
+    paddingBottom: theme.spacing(1),
+  },
+  composerRow2: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    // Full-width separator between the two rows: pull out to the box edges
+    // (cancel the root's 0.625rem side padding) for the border, then re-indent
+    // the row content.
+    marginLeft: '-0.625rem',
+    marginRight: '-0.625rem',
+    paddingLeft: '0.625rem',
+    paddingRight: '0.625rem',
+    paddingTop: theme.spacing(0.75),
+    paddingBottom: theme.spacing(0.75),
+    borderTop: `1px solid ${theme.palette.divider}`,
+    // The stock attach/send/cancel buttons carry vertical margins for the
+    // single-row layout; drop them so the second row stays compact.
+    '& .aui-composer-attach, & .aui-composer-send, & .aui-composer-cancel': {
+      margin: 0,
+    },
+  },
+  composerRow2Spacer: {
+    flex: 1,
+  },
+  // A little breathing room between the usage gauge and the send/stop button.
+  gaugeSlot: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    marginRight: theme.spacing(1),
+  },
+  overWarning: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    color: theme.palette.error.main,
+    whiteSpace: 'nowrap',
+  },
 }));
+
+/**
+ * The stock composer with a context-usage gauge (and over-limit warning) mounted
+ * just above the input. Token usage comes from the official
+ * `useThreadTokenUsage()` hook; the model's context window comes from
+ * {@link ContextWindowContext}. assistant-ui renders this via
+ * `components.Composer`, so it takes no props.
+ */
+function ComposerWithGauge() {
+  const classes = useStyles();
+  const { contextWindow, used } = useContext(ComposerInfoContext);
+  const color = useContext(AvatarColorContext) ?? DEFAULT_AVATAR_COLOR;
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const over =
+    typeof contextWindow === 'number' &&
+    typeof used === 'number' &&
+    used > contextWindow;
+
+  return (
+    <Composer.Root
+      className={classes.composerRoot}
+      // Click anywhere on the composer (incl. the second row / empty space) to
+      // focus the input — except on the actual controls. mousedown + preventDefault
+      // keeps focus from landing elsewhere first.
+      onMouseDown={e => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(
+            'button, a, textarea, input, select, [role="button"], [contenteditable="true"]',
+          )
+        ) {
+          return;
+        }
+        e.preventDefault();
+        inputRef.current?.focus();
+      }}
+    >
+      <Composer.Attachments />
+      {/* Stock Composer.Input keeps its default autoFocus; we only restyle it. */}
+      <Composer.Input ref={inputRef} className={classes.composerInput} />
+      <div className={classes.composerRow2}>
+        <Composer.AddAttachment />
+        {over && (
+          <Typography
+            variant="caption"
+            component="span"
+            className={classes.overWarning}
+            role="alert"
+          >
+            ⚠ Context exceeded for the chosen model
+          </Typography>
+        )}
+        <span className={classes.composerRow2Spacer} />
+        <span className={classes.gaugeSlot}>
+          <ContextGauge used={used} max={contextWindow} color={color} />
+        </span>
+        <Composer.Action />
+      </div>
+    </Composer.Root>
+  );
+}
 
 /** A circular MUI-styled bot avatar (no host asset dependency). */
 function AssistantBotAvatar() {
@@ -264,6 +388,16 @@ export interface ConversationSurfaceProps {
   welcome?: { title?: string; subtitle?: string };
   /** The active assistant's avatar tint (hex); defaults to Backstage teal. */
   assistantColor?: string;
+  /**
+   * The active model's context window (max tokens). Drives the composer's usage
+   * gauge + over-limit warning; omit to show the token count without a limit.
+   */
+  contextWindow?: number;
+  /**
+   * The active conversation's last-turn token total (input + output), from
+   * /threads/status. Drives the gauge's fill + readout.
+   */
+  usedTokens?: number;
   /** Host layout escape hatch (applied alongside the themed thread host). */
   className?: string;
 }
@@ -281,8 +415,15 @@ export interface ConversationSurfaceProps {
  * @public
  */
 export function ConversationSurface(props: ConversationSurfaceProps) {
-  const { composerPlaceholder, suggestions, welcome, assistantColor, className } =
-    props;
+  const {
+    composerPlaceholder,
+    suggestions,
+    welcome,
+    assistantColor,
+    contextWindow,
+    usedTokens,
+    className,
+  } = props;
   const classes = useStyles();
   const theme = useTheme();
   // One mode-appropriate shade for every place the agent color appears here
@@ -340,35 +481,38 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   }
 
   return (
-    <AvatarColorContext.Provider value={resolvedColor}>
-      <div
-        className={`${classes.threadHost} ${className ?? ''}`}
-        style={
-          {
-            '--aui-composer-focus': resolvedColor,
-          } as CSSProperties
-        }
-      >
-        <Thread
-          strings={
-          composerPlaceholder
-            ? { composer: { input: { placeholder: composerPlaceholder } } }
-            : undefined
-        }
-        components={{
-          AssistantMessage: AssistantMessageWithAvatar,
-          ThreadWelcome: EmptyThreadWelcome,
-          UserMessage: UserMessageWithAvatar,
-        }}
-          assistantMessage={{
-            components: {
-              Text: MarkdownText,
-              Empty: ThinkingMessage,
-              ToolFallback,
-            },
-          }}
-        />
-      </div>
-    </AvatarColorContext.Provider>
+    <ComposerInfoContext.Provider value={{ contextWindow, used: usedTokens }}>
+      <AvatarColorContext.Provider value={resolvedColor}>
+        <div
+          className={`${classes.threadHost} ${className ?? ''}`}
+          style={
+            {
+              '--aui-composer-focus': resolvedColor,
+            } as CSSProperties
+          }
+        >
+          <Thread
+            strings={
+              composerPlaceholder
+                ? { composer: { input: { placeholder: composerPlaceholder } } }
+                : undefined
+            }
+            components={{
+              AssistantMessage: AssistantMessageWithAvatar,
+              ThreadWelcome: EmptyThreadWelcome,
+              UserMessage: UserMessageWithAvatar,
+              Composer: ComposerWithGauge,
+            }}
+            assistantMessage={{
+              components: {
+                Text: MarkdownText,
+                Empty: ThinkingMessage,
+                ToolFallback,
+              },
+            }}
+          />
+        </div>
+      </AvatarColorContext.Provider>
+    </ComposerInfoContext.Provider>
   );
 }

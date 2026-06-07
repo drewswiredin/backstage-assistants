@@ -88,7 +88,7 @@ flowchart LR
   subgraph SRC["app-config.yaml — assistants:"]
     direction TB
     G["global<br/>defaultModel · maxSteps · toolResultMaxChars<br/>requestBodyLimit · registerCoreActions"]
-    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options · models[]"]
+    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options · models[] · contextWindows"]
     MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*"]
     UIG["ui (global defaults)<br/>composer.placeholder · suggestions[]"]
     PROF["profiles.{id} — many<br/>title · description · color · prompt* · access*<br/>actions[] · mcpServers[] · models[] · defaultModel · ui"]
@@ -166,6 +166,8 @@ assistants:
       baseUrl: https://api.openai.com/v1
       options: {}                       <span class="c"># passthrough, spread verbatim into the factory</span>
       models: [gpt-5.5, gpt-4o-mini]    <span class="c"># model ids namespaced as openai:&lt;model&gt;</span>
+      contextWindows:                   <span class="c"># optional per-model max input tokens — drives the composer gauge</span>
+        gpt-5.5: 400000                 <span class="c"># omit a model = gauge shows the count without a limit</span>
 
   <span class="c"># ---- external MCP servers (optional) ----</span>
   mcp:
@@ -237,6 +239,7 @@ assistants:
             <tr><td class="k">profiles.*.color</td><td><span class="tag safe">browser</span></td><td>assistant avatar tint (cosmetic)</td></tr>
             <tr><td class="k">models (pool + per-profile allowlist)</td><td><span class="tag safe">browser</span></td><td>model picker (filtered per profile)</td></tr>
             <tr><td class="k">defaultModel (global + per-profile)</td><td><span class="tag safe">browser</span></td><td>model picker default</td></tr>
+            <tr><td class="k">providers.*.contextWindows</td><td><span class="tag safe">browser</span></td><td>per-model max input tokens on <code>models[].contextWindow</code> — composer context-usage gauge</td></tr>
             <tr><td class="k">ui (resolved)</td><td><span class="tag safe">browser</span></td><td>composer placeholder + suggestions</td></tr>
             <tr><td class="k">tools (resolved summaries)</td><td><span class="tag safe">browser</span></td><td>tool list / detail — name · description · source, for both Actions and MCP</td></tr>
           </table>
@@ -252,7 +255,7 @@ assistants:
             <li><b>Block shape</b> — <code>assistants.profiles.{id}</code>: global settings + a named map of profiles, one per assistant.</li>
             <li><b>Providers</b> — a <code>type</code> discriminator selects the <code>@ai-sdk/*</code> factory; <code>options</code> is spread verbatim; the union of all <code>models</code> is the pool; a model id is <code>&lt;providerId&gt;:&lt;model&gt;</code>.</li>
             <li><b>MCP</b> — <code>assistants.mcp.servers.{id}</code> defines connections; profiles opt in via <code>mcpServers: [{ server, tools? }]</code>. Each server uses one static credential (<code>headers</code> / <code>env</code>) — a shared identity, not run-as-user.</li>
-            <li><b>Models</b> — global pool + optional per-profile <code>models</code> allowlist (subset of pool; omit = all) + per-profile <code>defaultModel</code>. A profile's effective default must lie within its allowlist.</li>
+            <li><b>Models</b> — global pool + optional per-profile <code>models</code> allowlist (subset of pool; omit = all) + per-profile <code>defaultModel</code>. A profile's effective default must lie within its allowlist. Optional per-provider <code>contextWindows: { &lt;model&gt;: tokens }</code> rides through to <code>models[].contextWindow</code> (browser-safe) to drive the composer's context-usage gauge; omit a model to leave its limit unknown.</li>
             <li><b>UI merge</b> — <code>deepMerge(global ui, profile.ui)</code>: objects deep-merge, arrays replace (so a profile can clear inherited values). Welcome text is derived from <code>title</code> / <code>description</code>.</li>
             <li><b>Theme</b> — one built-in palette that follows Backstage light/dark automatically. Not configurable, by design.</li>
             <li><b>Persistence</b> — conversations are stored server-side via Backstage's <code>backend.database</code>; no new config key (see <a href="architecture.html#persistence">architecture §5</a>).</li>

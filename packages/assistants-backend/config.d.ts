@@ -122,6 +122,14 @@ export interface Config {
 
         /** Models exposed by this provider, e.g. `["gpt-5.5", "gpt-4o-mini"]`. */
         models: string[];
+
+        /**
+         * Optional per-model context-window sizes (max input tokens), keyed by
+         * the model name as it appears in `models`. Surfaced to the UI to render
+         * a context-usage gauge. Omit a model to leave its limit unknown.
+         * e.g. `{ "gpt-5.5": 400000 }`.
+         */
+        contextWindows?: { [modelName: string]: number };
       };
     };
 

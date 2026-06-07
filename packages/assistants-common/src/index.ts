@@ -113,6 +113,12 @@ export interface ModelOption {
   provider: string;
   /** Model name, e.g. `"claude-sonnet-4"`. */
   model: string;
+  /**
+   * Context-window size in tokens (max input), if known from config. Drives the
+   * composer's context-usage gauge; absent means the limit is unknown (the gauge
+   * shows the token count without a percentage).
+   */
+  contextWindow?: number;
 }
 
 /**

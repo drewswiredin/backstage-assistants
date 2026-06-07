@@ -510,8 +510,9 @@ function ChatChrome({
   // instead of a chat box — removing the ambiguous "type to start" path.
   const isBlankDraft = activeId === threadList.newThreadId && !activeRemoteId;
 
-  // Single source of truth for read/working/unread, derived from server + signals.
-  const { statusOf, agentStatus } = useThreadStatus(api, activeRemoteId);
+  // Single source of truth for read/working/unread + token usage, derived from
+  // server + signals.
+  const { statusOf, agentStatus, usageOf } = useThreadStatus(api, activeRemoteId);
 
   // On first load for this agent (the component is keyed by assistant.id), land
   // on the agent's MOST RECENT conversation. The runtime defaults the main thread
@@ -915,6 +916,10 @@ function ChatChrome({
                   composerPlaceholder={assistant.ui?.composer?.placeholder}
                   suggestions={assistant.ui?.suggestions}
                   assistantColor={assistant.color}
+                  contextWindow={
+                    status.models.find(m => m.id === modelId)?.contextWindow
+                  }
+                  usedTokens={usageOf(activeRemoteId)}
                 />
               )}
             </div>

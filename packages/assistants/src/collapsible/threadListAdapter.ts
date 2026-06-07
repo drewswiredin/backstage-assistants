@@ -266,6 +266,8 @@ export interface ConversationStatusRow {
   assistantId: string;
   unread: boolean;
   working: boolean;
+  /** Last completed turn's total tokens (input + output) — drives the gauge. */
+  tokens?: number;
 }
 
 /**

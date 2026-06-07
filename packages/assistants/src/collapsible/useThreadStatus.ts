@@ -40,6 +40,8 @@ export interface ThreadStatusStore {
   overallStatus: ConvStatus;
   /** True while a turn is in flight for this conversation. */
   isWorking: (remoteId: string | undefined) => boolean;
+  /** Last turn's total tokens for a conversation (input + output), if known. */
+  usageOf: (remoteId: string | undefined) => number | undefined;
   /** Bumps on each refresh — consumers reload the thread list to refresh titles. */
   tick: number;
 }
@@ -114,6 +116,12 @@ export function useThreadStatus(
     [rows],
   );
 
+  const usageOf = useCallback(
+    (remoteId: string | undefined): number | undefined =>
+      remoteId ? rows.find(x => x.threadId === remoteId)?.tokens : undefined,
+    [rows],
+  );
+
   const agentStatus = useCallback(
     (assistantId: string): ConvStatus => {
       let unread = false;
@@ -136,5 +144,5 @@ export function useThreadStatus(
     return unread ? 'unread' : 'read';
   }, [rows, focusedId]);
 
-  return { statusOf, agentStatus, overallStatus, isWorking, tick };
+  return { statusOf, agentStatus, overallStatus, isWorking, usageOf, tick };
 }
