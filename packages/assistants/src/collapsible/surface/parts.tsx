@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
 import { Box, CircularProgress, Collapse, Typography } from '@material-ui/core';
+import BlockIcon from '@material-ui/icons/Block';
 import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
 import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
 import { useAuiState } from '@assistant-ui/react';
 import type {
   EmptyMessagePartProps,
   ReasoningMessagePartProps,
   ToolCallMessagePartProps,
 } from '@assistant-ui/react';
+import { useTurnInterrupted } from '../interruptedTurns';
 
 const useStyles = makeStyles(theme => ({
   thinkingMessage: {
@@ -32,6 +33,14 @@ const useStyles = makeStyles(theme => ({
         ? 'rgba(244,67,54,0.1)'
         : 'rgba(244,67,54,0.06)',
     color: theme.palette.error.main,
+  },
+  // Neutral (not error) note that the user stopped this turn.
+  interruptedMessage: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    margin: theme.spacing(0.5, 0),
+    color: theme.palette.text.secondary,
   },
   reasoningToggle: {
     display: 'inline-flex',
@@ -162,9 +171,17 @@ export function getToolStatus(status: ToolCallMessagePartProps['status'], theme:
     case 'running':
       return { label: 'Running', icon: <CircularProgress size={16} color="inherit" /> };
     default:
+      // No result and the turn is no longer running ('requires-action' / unknown):
+      // the call never returned because the turn was stopped or disconnected.
+      // Show it as canceled rather than a perpetual "pending" hourglass.
       return {
-        label: 'Pending',
-        icon: <HourglassEmptyIcon fontSize="small" htmlColor={theme.palette.warning?.main ?? '#ff9800'} />,
+        label: 'Canceled',
+        icon: (
+          <BlockIcon
+            fontSize="small"
+            htmlColor={theme.palette.text.secondary as string}
+          />
+        ),
       };
   }
 }
@@ -312,6 +329,40 @@ export function MessageError() {
       <ErrorOutlineIcon fontSize="small" />
       <Typography variant="body2" component="span">
         {error}
+      </Typography>
+    </Box>
+  );
+}
+
+/**
+ * A neutral "Request interrupted" note shown when the user stopped this turn —
+ * one clear entry per interrupted exchange. Two sources, same indicator:
+ *   - durable: the backend stamps `metadata.canceled` on the persisted reply,
+ *     which round-trips through history load, so it shows on any client / reload.
+ *   - live: the tab that clicked Stop records the turn in {@link useTurnInterrupted}
+ *     (the streamed message never carries the server flag), so it shows instantly.
+ * Distinct from {@link MessageError}: an interruption is user-initiated, not a
+ * failure.
+ */
+export function MessageInterrupted() {
+  const classes = useStyles();
+  const messageId = useAuiState(s => s.message.id);
+  const flagged = useAuiState(
+    s =>
+      (s.message.metadata as Record<string, unknown> | undefined)?.canceled ===
+      true,
+  );
+  const liveInterrupted = useTurnInterrupted(messageId);
+
+  if (!flagged && !liveInterrupted) {
+    return null;
+  }
+
+  return (
+    <Box className={classes.interruptedMessage}>
+      <BlockIcon fontSize="small" />
+      <Typography variant="body2" component="span">
+        Request interrupted
       </Typography>
     </Box>
   );

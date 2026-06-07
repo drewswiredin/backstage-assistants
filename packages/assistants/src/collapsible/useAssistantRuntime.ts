@@ -23,6 +23,7 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 import { fetchThreadStatus } from './threadListAdapter';
+import { markTurnInterrupted } from './interruptedTurns';
 
 /** Verbose resume tracing for local debugging (open the browser console). */
 const DEBUG = false;
@@ -49,6 +50,7 @@ interface RuntimeHookOptions {
  */
 function createInjectingFetch(
   baseFetch: typeof fetch,
+  baseUrl: string,
   getAssistantId: () => AssistantId,
   modelIdRef: RefObject<ModelId>,
 ): typeof fetch {
@@ -61,6 +63,22 @@ function createInjectingFetch(
         body.modelId = modelIdRef.current;
         if (typeof body.id === 'string' && body.threadId === undefined) {
           body.threadId = body.id;
+        }
+        // The composer Stop aborts THIS request's signal (only on stop — not on
+        // navigate-away/reload/unmount). Tell the backend to abort the
+        // server-side turn, so Stop actually cancels generation instead of just
+        // disconnecting (which would otherwise keep running + persist the full turn).
+        const threadId = body.threadId;
+        if (typeof threadId === 'string' && init.signal) {
+          init.signal.addEventListener(
+            'abort',
+            () => {
+              void baseFetch(`${baseUrl}/chat/cancel/${threadId}`, {
+                method: 'POST',
+              }).catch(() => {});
+            },
+            { once: true },
+          );
         }
         nextInit = { ...init, body: JSON.stringify(body) };
       } catch {
@@ -110,6 +128,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
           api: `${baseUrl}/chat`,
           fetch: createInjectingFetch(
             api.fetch,
+            baseUrl,
             () => assistantIdRef.current,
             modelIdRef,
           ),
@@ -131,7 +150,17 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       [],
     );
 
-    const chat = useChat({ id: threadChatId, transport });
+    const chat = useChat({
+      id: threadChatId,
+      transport,
+      // When the user clicks Stop, the AI SDK reports the aborted turn here.
+      // Record it by the message's stable id so this tab shows "Request
+      // interrupted" immediately; the backend independently stamps the persisted
+      // reply, which drives the same indicator for any client after a reload.
+      onFinish: ({ message, isAbort }) => {
+        if (isAbort && message) markTurnInterrupted(message.id);
+      },
+    });
     const runtime = useAISDKRuntime(chat);
 
     // Wire the transport to the runtime + this thread's list item so it can

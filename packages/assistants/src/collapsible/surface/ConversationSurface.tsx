@@ -29,6 +29,7 @@ import {
 import { MarkdownText } from './MarkdownText';
 import {
   MessageError,
+  MessageInterrupted,
   ReasoningPart,
   ThinkingMessage,
   ToolFallback,
@@ -193,6 +194,7 @@ function AssistantMessageWithAvatar() {
       <AssistantBotAvatar />
       <AssistantMessage.Content components={{ Reasoning: ReasoningPart }} />
       <MessageError />
+      <MessageInterrupted />
       <BranchPicker />
       <AssistantActionBar />
     </AssistantMessage.Root>

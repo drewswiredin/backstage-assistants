@@ -230,6 +230,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // In-memory buffers of in-flight /chat SSE streams, for mid-flight resume.
   const resumables = new ResumableStreamRegistry();
 
+  // Per-thread AbortController for the in-flight turn, so an explicit Stop
+  // (POST /chat/cancel/:threadId) can abort the server-side generation. A bare
+  // disconnect must NOT abort — that means "navigate away / reload" and the turn
+  // keeps running so it can be resumed.
+  const turnAborts = new Map<string, AbortController>();
+
   function noteStarted(userRef: string, threadId: string, assistantId: string) {
     let m = inFlight.get(userRef);
     if (!m) {
@@ -330,6 +336,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       req.on('close', () => sub.unsubscribe());
     })().catch(next);
   });
+
+  // Abort an in-flight turn — the composer Stop button. A bare connection close
+  // means "navigate away / reload" (the turn keeps running so it can be resumed),
+  // so the client signals an EXPLICIT stop here. Scoped to the caller's own
+  // in-flight turn (checked against the per-user in-flight set).
+  streamRouter.post('/chat/cancel/:threadId', (req, res, next) => {
+    (async () => {
+      const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      const user = await userInfo.getUserInfo(credentials);
+      const threadId = req.params.threadId;
+      if (inFlight.get(user.userEntityRef)?.has(threadId)) {
+        turnAborts.get(threadId)?.abort();
+      }
+      res.status(204).end();
+    })().catch(next);
+  });
+
   router.use(streamRouter);
 
   /**
@@ -488,15 +511,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 9. Stream the turn. Provider defaults are used (no explicit
     //    thinking/reasoning tuning). The multi-step tool loop is bounded by
     //    maxSteps.
+    // Abort handle for this turn, registered so the Stop button (via
+    // POST /chat/cancel/:threadId) can stop the server-side generation. Cleared
+    // on finish / abort / error.
+    const turnAbort = new AbortController();
+    if (threadId) turnAborts.set(threadId, turnAbort);
+
     const result = streamText({
       model,
       system: assistant.prompt,
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(assistants.maxSteps),
+      abortSignal: turnAbort.signal,
       onFinish: ({ finishReason, usage, steps }) => {
         // Release MCP connections now the turn (incl. tool calls) is done.
         void mcp.close();
+        if (threadId) turnAborts.delete(threadId);
         // Non-blocking completion log.
         logger.info('chat turn finished', {
           requestId,
@@ -508,9 +539,27 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           outputTokens: usage.outputTokens ?? 0,
         });
       },
+      onAbort: () => {
+        // Explicit Stop: the model has stopped generating. Release MCP, clear the
+        // working indicator, and drop the abort handle. The user message stays
+        // persisted (turn start); the partial reply is not persisted.
+        void mcp.close();
+        if (threadId) {
+          turnAborts.delete(threadId);
+          noteFinished(user.userEntityRef, threadId, assistantId);
+        }
+        logger.info('chat turn aborted (stop)', {
+          requestId,
+          assistantId,
+          threadId,
+        });
+      },
       onError: ({ error }) => {
         void mcp.close();
-        if (threadId) noteFinished(user.userEntityRef, threadId, assistantId);
+        if (threadId) {
+          turnAborts.delete(threadId);
+          noteFinished(user.userEntityRef, threadId, assistantId);
+        }
         logger.error('chat turn errored', {
           requestId,
           assistantId,
@@ -547,7 +596,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 10. Drive the stream to completion server-side even if the client
     //     disconnects, so the turn is always persisted (no data loss on
     //     navigation). The server is the single writer of message rows.
-    void result.consumeStream();
+    void result.consumeStream().catch(() => {});
 
     // Buffer the SSE under the THREAD id, so a client returning to this thread
     // can rejoin by an id it already knows (GET /chat/resume/:threadId) — there
@@ -563,6 +612,21 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       generateMessageId: () => `msg-${randomUUID()}`,
       onFinish: async ({ messages: finalMessages }) => {
         if (!threadId) return;
+        // If this turn was aborted via Stop, mark the (partial) assistant reply
+        // so ANY client that loads it later shows a "Canceled" indicator instead
+        // of an ambiguous half-finished turn. The flag rides in the message's
+        // metadata, which round-trips through assistant-ui's history load. This
+        // is distinct from an error (which sets an `incomplete/error` status):
+        // the signal is aborted ONLY when the cancel route fired.
+        if (turnAbort.signal.aborted && finalMessages.length > 0) {
+          const last = finalMessages[finalMessages.length - 1];
+          if (last.role === 'assistant') {
+            last.metadata = {
+              ...(last.metadata as Record<string, unknown> | undefined),
+              canceled: true,
+            };
+          }
+        }
         try {
           const saved = await threadService.replaceMessages(
             user.userEntityRef,
