@@ -1,167 +1,140 @@
 /**
- * The single source of truth for conversation status on the client.
+ * Conversation status, derived entirely from the server snapshot — no client
+ * state machine.
  *
- * Holds one status per conversation — `read | working | unread` (mutually
- * exclusive) — keyed by server thread id, seeded from `GET /threads/status` and
- * kept live by Backstage Signals (`turn-started` / `turn-finished`) plus focus
- * (viewing a conversation marks it read). EVERY indicator is derived from this
- * one map: the conversation dots, the per-agent rail rollup, and (later) the nav
- * icon — so they can never disagree.
- *
- * Why a server-seeded store and not pure client state: `working` and `unread`
- * are server truths (a generation runs server-side; a background reply finishing
- * is durable), so the client mirrors them — live via signals, reconciled on
- * window focus.
+ * The single source of truth is `GET /threads/status`: per conversation
+ * `{ working, unread }` (+ `assistantId`). We refetch it on any Signals message
+ * (delivered even while the tab is backgrounded) and when the tab becomes
+ * visible — never on window focus. Every indicator is a pure derivation:
+ *   - `working` (in-flight) shows ALWAYS, even for the focused conversation
+ *   - `unread` shows until you FOCUS the conversation (focusing marks it read)
+ *   - rollups (agent, nav, tab): `working` wins over `unread`
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { signalApiRef } from '@backstage/plugin-signals-react';
-import type { JsonObject } from '@backstage/types';
 import type { AssistantsApi } from '../api';
-import { fetchThreadStatus, markThreadRead } from './threadListAdapter';
+import {
+  fetchThreadStatus,
+  markThreadRead,
+  type ConversationStatusRow,
+} from './threadListAdapter';
 
 const NOTIFY_CHANNEL = 'assistants:threads';
 
 export type ConvStatus = 'read' | 'working' | 'unread';
 
-interface Entry {
-  assistantId: string;
-  status: ConvStatus;
+/** Collapse working/unread flags into the single status (working wins). */
+export function toConvStatus(working: boolean, unread: boolean): ConvStatus {
+  if (working) return 'working';
+  if (unread) return 'unread';
+  return 'read';
 }
 
 export interface ThreadStatusStore {
-  /** Status of one conversation (by server thread id). Unknown → 'read'. */
+  /** Status of one conversation (by server thread id). */
   statusOf: (remoteId: string | undefined) => ConvStatus;
-  /** Rollup status for an assistant — excludes the focused conversation. */
+  /** Rollup for an assistant: working if any conv working, else unread if any unread. */
   agentStatus: (assistantId: string) => ConvStatus;
   /** Global rollup across every conversation (working wins, then unread). */
   overallStatus: ConvStatus;
-  /** Mark a conversation read locally + on the server (call when it's focused). */
-  markRead: (remoteId: string) => void;
-  /** Increments on every `turn-finished`; consumers reload the list to refresh titles. */
-  finishedTick: number;
+  /** True while a turn is in flight for this conversation. */
+  isWorking: (remoteId: string | undefined) => boolean;
+  /** Bumps on each refresh — consumers reload the thread list to refresh titles. */
+  tick: number;
 }
 
 export function useThreadStatus(
   api: AssistantsApi,
-  activeConversationId: string | undefined,
+  focusedId: string | undefined,
 ): ThreadStatusStore {
   const signals = useApi(signalApiRef);
-  const [map, setMap] = useState<ReadonlyMap<string, Entry>>(() => new Map());
-  const [finishedTick, setFinishedTick] = useState(0);
-  // Latest focused conversation, readable inside the signal handler.
-  const activeRef = useRef(activeConversationId);
-  activeRef.current = activeConversationId;
+  const [rows, setRows] = useState<ConversationStatusRow[]>([]);
+  const [tick, setTick] = useState(0);
+  const focusedRef = useRef(focusedId);
+  focusedRef.current = focusedId;
 
-  const reconcile = useCallback(async () => {
-    const rows = await fetchThreadStatus(api);
-    setMap(() => {
-      const next = new Map<string, Entry>();
-      for (const r of rows) {
-        let status: ConvStatus = 'read';
-        if (r.working) status = 'working';
-        else if (r.unread && r.threadId !== activeRef.current) status = 'unread';
-        next.set(r.threadId, { assistantId: r.assistantId, status });
-      }
-      return next;
-    });
+  const refresh = useCallback(async () => {
+    const next = await fetchThreadStatus(api);
+    setRows(next);
+    setTick(t => t + 1);
+    // Focus is the only "read" action: converge the focused conversation on the
+    // server so the rollups / nav / other tabs clear it too.
+    const fid = focusedRef.current;
+    if (fid && next.find(r => r.threadId === fid)?.unread) {
+      void markThreadRead(api, fid);
+    }
   }, [api]);
 
+  // Signal-driven (delivered even while backgrounded), debounced, plus a refetch
+  // when the tab becomes visible. No window-focus reconcile.
   useEffect(() => {
-    void reconcile();
-
-    const sub = signals.subscribe(NOTIFY_CHANNEL, (msg: JsonObject) => {
-      const { type, threadId, assistantId } = msg as {
-        type?: string;
-        threadId?: string;
-        assistantId?: string;
-      };
-      if (!threadId || !assistantId) return;
-
-      if (type === 'turn-started') {
-        setMap(prev => {
-          const next = new Map(prev);
-          next.set(threadId, { assistantId, status: 'working' });
-          return next;
-        });
-      } else if (type === 'turn-finished') {
-        const isActive = threadId === activeRef.current;
-        setMap(prev => {
-          const next = new Map(prev);
-          // If you're watching it, it's read; otherwise it's now unread.
-          next.set(threadId, { assistantId, status: isActive ? 'read' : 'unread' });
-          return next;
-        });
-        setFinishedTick(t => t + 1);
-        // Persist the read for the conversation you're watching so OTHER views
-        // (the nav icon, other tabs) converge via the 'read' signal below.
-        if (isActive) void markThreadRead(api, threadId);
-      } else if (type === 'read') {
-        setMap(prev => {
-          const next = new Map(prev);
-          const cur = next.get(threadId);
-          next.set(threadId, {
-            assistantId: cur?.assistantId ?? assistantId,
-            status: 'read',
-          });
-          return next;
-        });
-      } else if (type === 'updated') {
-        // Metadata-only change (e.g. a new title); refresh the list, no status change.
-        setFinishedTick(t => t + 1);
-      }
-    });
-
-    // Self-heal any missed transitions (e.g. signal dropped while tab hidden).
-    const onFocus = () => void reconcile();
-    window.addEventListener('focus', onFocus);
-    return () => {
-      sub.unsubscribe();
-      window.removeEventListener('focus', onFocus);
+    void refresh();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void refresh(), 120);
     };
-  }, [signals, reconcile, api]);
+    const sub = signals.subscribe(NOTIFY_CHANNEL, () => schedule());
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      if (timer) clearTimeout(timer);
+      sub.unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [signals, refresh]);
 
-  const markRead = useCallback(
-    (remoteId: string) => {
-      setMap(prev => {
-        const cur = prev.get(remoteId);
-        if (!cur || cur.status === 'read') return prev;
-        const next = new Map(prev);
-        next.set(remoteId, { assistantId: cur.assistantId, status: 'read' });
-        return next;
-      });
-      void markThreadRead(api, remoteId);
-    },
-    [api],
-  );
+  // Focusing a conversation marks it read (optimistically + on the server).
+  useEffect(() => {
+    if (!focusedId) return;
+    setRows(prev =>
+      prev.map(r => (r.threadId === focusedId ? { ...r, unread: false } : r)),
+    );
+    void markThreadRead(api, focusedId);
+  }, [focusedId, api]);
 
   const statusOf = useCallback(
-    (remoteId: string | undefined): ConvStatus =>
-      remoteId ? map.get(remoteId)?.status ?? 'read' : 'read',
-    [map],
+    (remoteId: string | undefined): ConvStatus => {
+      if (!remoteId) return 'read';
+      const r = rows.find(x => x.threadId === remoteId);
+      if (!r) return 'read';
+      if (r.working) return 'working'; // in-flight shows even when focused
+      if (remoteId === focusedId) return 'read'; // focused → not unread
+      return r.unread ? 'unread' : 'read';
+    },
+    [rows, focusedId],
+  );
+
+  const isWorking = useCallback(
+    (remoteId: string | undefined): boolean =>
+      !!remoteId && !!rows.find(x => x.threadId === remoteId)?.working,
+    [rows],
   );
 
   const agentStatus = useCallback(
     (assistantId: string): ConvStatus => {
       let unread = false;
-      for (const [tid, e] of map) {
-        if (e.assistantId !== assistantId || tid === activeRef.current) continue;
-        if (e.status === 'working') return 'working';
-        if (e.status === 'unread') unread = true;
+      for (const r of rows) {
+        if (r.assistantId !== assistantId) continue;
+        if (r.working) return 'working';
+        if (r.unread && r.threadId !== focusedId) unread = true;
       }
       return unread ? 'unread' : 'read';
     },
-    [map],
+    [rows, focusedId],
   );
 
   const overallStatus = useMemo<ConvStatus>(() => {
     let unread = false;
-    for (const e of map.values()) {
-      if (e.status === 'working') return 'working';
-      if (e.status === 'unread') unread = true;
+    for (const r of rows) {
+      if (r.working) return 'working';
+      if (r.unread && r.threadId !== focusedId) unread = true;
     }
     return unread ? 'unread' : 'read';
-  }, [map]);
+  }, [rows, focusedId]);
 
-  return { statusOf, agentStatus, overallStatus, markRead, finishedTick };
+  return { statusOf, agentStatus, overallStatus, isWorking, tick };
 }

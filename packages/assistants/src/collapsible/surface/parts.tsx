@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
 import { Box, CircularProgress, Collapse, Typography } from '@material-ui/core';
 import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
@@ -174,6 +174,7 @@ export function getToolStatus(status: ToolCallMessagePartProps['status'], theme:
  * toggle with the tool's status, expanding to reveal the input args and result.
  */
 export function ToolFallback({
+  toolCallId,
   toolName,
   args,
   result,
@@ -182,6 +183,12 @@ export function ToolFallback({
   const classes = useStyles();
   const theme = useTheme();
   const [open, setOpen] = useState(false);
+  // Reset expand state when this slot is reused for a different tool call —
+  // switching conversations reuses the component instance at the same position,
+  // which would otherwise carry the open state across conversations.
+  useEffect(() => {
+    setOpen(false);
+  }, [toolCallId]);
   const { icon } = getToolStatus(status, theme, result);
   const hasArgs = args !== undefined && args !== null;
   const hasResult = result !== undefined && result !== null;

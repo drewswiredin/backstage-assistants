@@ -6,13 +6,13 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
 import IconButton from '@material-ui/core/IconButton';
-import Badge from '@material-ui/core/Badge';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { AssistantDetailDialog } from './AssistantDetailDialog';
+import { StatusDot } from './StatusDot';
 import type { ConvStatus } from './useThreadStatus';
 
 const useStyles = makeStyles(theme => ({
@@ -103,19 +103,9 @@ export const AssistantsList: FC<{
             onClick={() => onSelect(a.id)}
           >
             <ListItemIcon className={classes.icon}>
-              <Badge
-                color={agentStatus?.(a.id) === 'working' ? 'primary' : 'error'}
-                variant="dot"
-                overlap="circular"
-                invisible={(agentStatus?.(a.id) ?? 'read') === 'read'}
-                classes={
-                  agentStatus?.(a.id) === 'working'
-                    ? { dot: classes.pulseDot }
-                    : undefined
-                }
-              >
+              <StatusDot status={agentStatus?.(a.id) ?? 'read'}>
                 <AssistantAvatar color={a.color} size={22} />
-              </Badge>
+              </StatusDot>
             </ListItemIcon>
             <ListItemText
               primary={a.title}

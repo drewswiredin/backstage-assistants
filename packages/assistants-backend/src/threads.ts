@@ -58,14 +58,23 @@ export class ThreadService {
 
   // ---- Threads --------------------------------------------------------------
 
-  /** This user's non-archived threads for an assistant, newest first, with unread. */
-  async listThreads(userRef: string, assistantId: string): Promise<Thread[]> {
-    const rows = await this.db('threads')
-      .where({ user_ref: userRef, assistant_id: assistantId, archived: false })
-      .orderBy([
-        { column: 'pinned', order: 'desc' },
-        { column: 'updated_at', order: 'desc' },
-      ]);
+  /**
+   * This user's non-archived threads, newest first, with unread. Scoped to one
+   * assistant when `assistantId` is given, else ALL the user's threads (the
+   * caller is responsible for filtering to currently-accessible assistants).
+   */
+  async listThreads(userRef: string, assistantId?: string): Promise<Thread[]> {
+    const query = this.db('threads').where({
+      user_ref: userRef,
+      archived: false,
+    });
+    if (assistantId) {
+      query.where({ assistant_id: assistantId });
+    }
+    const rows = await query.orderBy([
+      { column: 'pinned', order: 'desc' },
+      { column: 'updated_at', order: 'desc' },
+    ]);
     return rows.map(toThread);
   }
 

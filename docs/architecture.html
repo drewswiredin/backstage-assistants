@@ -90,7 +90,7 @@
             <tr>
               <td class="k">Chat UI</td>
               <td class="k">@assistant-ui/react · -ai-sdk · -markdown · -ui</td>
-              <td>Prebuilt thread, composer, markdown, reasoning &amp; tool-call rendering, Mermaid. Owns the multi-conversation runtime.</td>
+              <td>Prebuilt thread, composer, markdown, reasoning &amp; tool-call rendering, Mermaid. Owns the one multi-conversation, multi-agent runtime.</td>
             </tr>
             <tr>
               <td class="k">Model loop</td>
@@ -124,7 +124,7 @@
       <!-- 2 · COMPONENTS -------------------------------------------------- -->
       <section id="components">
         <h2><span class="n">2</span>Components &amp; wiring</h2>
-        <p class="lead">Two packages we own (teal) talking to external systems across a trust boundary (dashed). The frontend holds no conversation state — it is a view of the server.</p>
+        <p class="lead">Two packages we own (teal) talking to external systems across a trust boundary (dashed). One runtime carries every conversation across all agents — switching agent or conversation never remounts it, so in-flight streams keep running. The frontend holds no conversation state of its own; it is a view of the server.</p>
         <div class="frame">
           <div class="diagram">
             <pre class="mermaid">
@@ -134,17 +134,17 @@ flowchart TB
     direction TB
     CHROME["Backstage chrome<br/>assistant rail · conversation list · model picker"]
     SURF["assistant-ui surface<br/>Thread: composer · markdown · tool calls · mermaid"]
-    RUNTIME["Runtime<br/>useRemoteThreadListRuntime<br/>RemoteThreadListAdapter · ThreadHistoryAdapter (load-only)<br/>per-thread: useChat + useAISDKRuntime · AssistantChatTransport (resumable)"]
+    RUNTIME["Runtime — ONE per tab, all agents &amp; conversations<br/>useRemoteThreadListRuntime (no remount on agent/convo switch)<br/>RemoteThreadListAdapter · ThreadHistoryAdapter (load-only)<br/>per-thread: useChat + useAISDKRuntime · resumable transport"]
     CHROME --> SURF --> RUNTIME
   end
 
   subgraph BE["Backend plugin · packages/assistants-backend"]
     direction TB
-    ROUTER["Router<br/>GET /status · POST /chat · POST /title (OpenAPI)<br/>GET /chat/resume/:id (SSE)<br/>/threads (REST) · GET /threads/status"]
+    ROUTER["Router<br/>GET /status · POST /chat · POST /title (OpenAPI)<br/>GET /chat/resume/:threadId (SSE)<br/>/threads (REST, all agents · access-filtered) · GET /threads/status"]
     GATE{"Identity + access<br/>httpAuth · userInfo · access policy"}
     CONFIG["readConfig()<br/>providers · profiles · mcp · ui"]
     ASM["Tool assembly<br/>Actions ∩ user · MCP allowlist"]
-    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps<br/>cap tool results · consumeStream · persist on finish"]
+    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps<br/>cap tool results · consumeStream · persist on start + finish"]
     THREADS["ThreadService<br/>Knex over DatabaseService"]
     RESUME["Resumable buffer<br/>in-memory · live resume"]
     ROUTER --> GATE --> ASM --> LOOP
@@ -207,7 +207,7 @@ flowchart TB
       <!-- 3 · CHAT TURN --------------------------------------------------- -->
       <section id="chat">
         <h2><span class="n">3</span>Chat turn</h2>
-        <p class="lead">A single <code>/chat</code> request. The server is the only writer of message rows: it persists the completed turn on finish, so a reply is never lost if the browser navigates away mid-stream.</p>
+        <p class="lead">A single <code>/chat</code> request. The server is the only writer of message rows: it persists the user's message at the START of the turn and the completed turn on finish — so the conversation is durable the instant it's sent and a reply is never lost if the browser navigates away mid-stream.</p>
         <div class="frame">
           <div class="diagram">
             <pre class="mermaid">
@@ -227,6 +227,7 @@ sequenceDiagram
   G-->>R: identity + groups — deny by default
   R->>A: actions.list(credentials) ∩ allowlist + MCP allowlist
   A-->>L: tools — Actions (as user) · MCP (as configured)
+  R->>D: persist the user's message — durable immediately
   loop reasoning, up to maxSteps
     L->>P: messages + tool schemas
     P-->>L: text or tool call
@@ -243,7 +244,7 @@ sequenceDiagram
             </pre>
           </div>
         </div>
-        <p class="note"><b>Thread lifecycle (separate from a turn).</b> On mount the runtime loads the list (<code>GET /threads</code>) and the active thread's messages (<code>GET /threads/:id/messages</code>); selecting a thread marks it read (<code>POST /threads/:id/read</code>). Create / rename / archive / delete are REST calls through the <code>RemoteThreadListAdapter</code>. The browser keeps no conversation state of its own.</p>
+        <p class="note"><b>Thread lifecycle (separate from a turn).</b> On mount the runtime loads the list (<code>GET /threads</code> — every conversation across all agents, filtered to ones the caller can access) and the active thread's messages (<code>GET /threads/:id/messages</code>); selecting a thread marks it read (<code>POST /threads/:id/read</code>). Create / rename / archive / delete are REST calls through the <code>RemoteThreadListAdapter</code>. <b>New conversations are created only via "+"</b> (typing never forks) — a bare agent with no conversation shows an empty state; deleting the active conversation lands on the agent's most-recent remaining chat, else that empty state. The browser keeps no conversation state of its own.</p>
         <p class="note"><b>Oversized tool results are capped.</b> A tool result longer than <code>toolResultMaxChars</code> (default 30000) is truncated head+tail with an elision marker at the tool boundary — on both the success and error paths — so one huge result can't overflow the context window or bloat the stored turn; the model is told it was truncated and can refine. <b>Failures surface.</b> When a turn errors (e.g. an over-long prompt), the AI SDK streams the real message as an error part and the UI shows it — not a generic notice.</p>
       </section>
 
@@ -304,7 +305,7 @@ sequenceDiagram
           </div>
         </div>
         <p class="note">
-          <b>Adapters (the only glue).</b> <code>RemoteThreadListAdapter</code> backs the thread list (list / create / rename / archive / delete / title) over <code>/threads</code>; <code>ThreadHistoryAdapter</code> loads a thread's messages over <code>/threads/:id/messages</code>. Message <i>writes</i> are not a client concern — the loop persists them on finish (§3). <code>useRemoteThreadListRuntime</code> provides the switcher, active-thread state, and (de)serialization for free.
+          <b>Adapters (the only glue).</b> <code>RemoteThreadListAdapter</code> backs the thread list (list / create / rename / archive / delete / title) over <code>/threads</code>; <code>ThreadHistoryAdapter</code> loads a thread's messages over <code>/threads/:id/messages</code>. Message <i>writes</i> are not a client concern — the server persists the user message at turn start and the full turn on finish (§3). <code>useRemoteThreadListRuntime</code> provides the switcher, active-thread state, and (de)serialization for free.
           <br/><b>Unread</b> is server-computed (<code>updated_at</code> vs <code>last_read_at</code>) and surfaced through thread metadata — no client-side unread store.
         </p>
       </section>
@@ -312,30 +313,30 @@ sequenceDiagram
       <!-- 6 · NOTIFICATIONS & LIVE STREAMING ------------------------------ -->
       <section id="notifications">
         <h2><span class="n">6</span>Notifications &amp; live streaming</h2>
-        <p class="lead">Parallel background conversations across assistants, with real-time indicators pushed over Backstage Signals — and an in-memory resumable stream so you can rejoin a generation you stepped away from.</p>
+        <p class="lead">Parallel background conversations across assistants. Every indicator is a pure derivation of one server snapshot (<code>GET /threads/status</code>); Signals just invalidate it. An in-memory, thread-keyed resumable stream lets you rejoin a generation you stepped away from.</p>
         <div class="cols">
           <div class="frame">
             <table>
               <tr><th>Status (<code>ConvStatus</code>)</th><th>Indicator</th><th>When</th></tr>
-              <tr><td class="k">read</td><td>—</td><td>no activity, already seen (and the one you're viewing)</td></tr>
-              <tr><td class="k">working</td><td><span class="tag cfg">pulsing dot</span></td><td>a reply is generating and you're not watching this one</td></tr>
-              <tr><td class="k">unread</td><td><span class="tag user">red dot</span></td><td>a reply finished while you weren't looking</td></tr>
+              <tr><td class="k">read</td><td>—</td><td>no activity, already seen</td></tr>
+              <tr><td class="k">working</td><td><span class="tag cfg">amber pulse</span></td><td>a reply is in flight — shown even for the conversation you're viewing</td></tr>
+              <tr><td class="k">unread</td><td><span class="tag user">red dot</span></td><td>a reply finished while unfocused — clears when you focus it</td></tr>
             </table>
           </div>
           <div class="frame">
             <table>
-              <tr><th>Signal · channel <code>assistants:threads</code></th><th>Effect</th></tr>
-              <tr><td class="k">turn-started</td><td>set the conversation <i>working</i> (add to the live set)</td></tr>
-              <tr><td class="k">turn-finished</td><td>clear working; mark <i>unread</i> if not viewing</td></tr>
-              <tr><td class="k">updated</td><td>thread metadata changed (e.g. auto-title) — refresh the list</td></tr>
-              <tr><td class="k">read</td><td>thread marked read elsewhere — clear its indicator (cross-view sync)</td></tr>
+              <tr><th>Signal · channel <code>assistants:threads</code></th><th>Meaning (client just refetches the snapshot)</th></tr>
+              <tr><td class="k">turn-started</td><td>a turn began for a conversation (now <i>working</i>)</td></tr>
+              <tr><td class="k">turn-finished</td><td>a turn ended (now <i>unread</i> unless you're viewing it)</td></tr>
+              <tr><td class="k">updated</td><td>thread metadata changed (e.g. auto-title) — also reloads the list</td></tr>
+              <tr><td class="k">read</td><td>a thread was marked read (cross-view sync)</td></tr>
             </table>
           </div>
         </div>
         <p class="note">
-          <b>States are mutually exclusive</b> per conversation and roll up: an assistant shows <i>working</i> if any of its conversations is, else <i>unread</i> — working has authority; the plugin's nav icon shows the same roll-up across all assistants (red dot for unread, subtle pulse while working). The active conversation you're watching is always <i>read</i> — you see the stream itself.
-          <br/><b>Push, not poll.</b> The backend emits the four signals on the per-user <code>assistants:threads</code> channel via <code>SignalsService</code>; the frontend subscribes with <code>useSignal</code>. The status store is seeded from <code>GET /threads/status</code> on mount and reconciled on window focus. <i>Working</i> is ephemeral live state (an in-memory set on the backend); <i>unread</i> stays server-authoritative in the DB (<code>updated_at</code> vs <code>last_read_at</code>).
-          <br/><b>Live resume.</b> <code>/chat</code> tees its stream into an in-memory buffer keyed by an <code>x-resumable-stream-id</code>; returning to a still-generating conversation reconnects via <code>GET /chat/resume/:id</code> and replays buffered + live chunks (assistant-ui's <code>AssistantChatTransport</code> resumable option drives the client). In-memory ⇒ single backend replica; a completed turn is always durable in the DB regardless.
+          <b>One derived source, no client state machine.</b> Every dot is computed from the single <code>GET /threads/status</code> snapshot (per conversation: <code>working</code> + <code>unread</code>). Rollups: an assistant shows <i>working</i> if any of its conversations is, else <i>unread</i> (working wins); the nav icon rolls the same up across all agents. <i>working</i> shows even for the conversation you're viewing; <i>unread</i> is suppressed for it (focusing marks it read). One <code>StatusDot</code> renders every indicator (amber = working, red = unread).
+          <br/><b>Signals invalidate; they don't drive state.</b> The backend emits the four signals on the per-user <code>assistants:threads</code> channel; the client simply <i>refetches</i> the snapshot (debounced) — plus on tab-visible, never on window focus, so indicators stay live while the tab is backgrounded. <i>working</i> is the backend's in-flight set; <i>unread</i> is server-authoritative in the DB (<code>updated_at</code> vs <code>last_read_at</code>). <b>Access-filtered:</b> the snapshot only includes agents the caller can access — remove an agent or revoke access and its conversations and unread vanish.
+          <br/><b>Live resume, keyed by thread.</b> Each <code>/chat</code> turn buffers its SSE under the <i>thread id</i>. On entering a thread the client checks the server <code>working</code> flag and, if a turn is in flight, rejoins via <code>GET /chat/resume/:threadId</code> — replaying buffered + live chunks — with no fragile per-turn id to capture. Because the user message is persisted at turn start, re-entry always shows the conversation even mid-flight. In-memory buffer ⇒ single backend replica; the completed turn is durable in the DB regardless.
         </p>
       </section>
 

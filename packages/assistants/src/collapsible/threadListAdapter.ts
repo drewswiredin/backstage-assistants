@@ -31,6 +31,7 @@ import type { AssistantsApi } from '../api';
 /** Browser-side mirror of the backend `Thread` row (see assistants-backend/threads.ts). */
 interface ServerThread {
   id: string;
+  assistantId: string;
   title: string;
   archived: boolean;
   pinned: boolean;
@@ -42,6 +43,8 @@ interface ServerThread {
 
 /** Server metadata carried through `RemoteThreadMetadata.custom` to the UI. */
 export interface ThreadCustomMetadata {
+  /** Owning assistant — lets one runtime span all agents (UI filters by it). */
+  assistantId: string;
   unread: boolean;
   pinned: boolean;
   updatedAt: string;
@@ -93,7 +96,7 @@ function createApiHelper(api: AssistantsApi) {
 
 export function createThreadListAdapter(
   api: AssistantsApi,
-  assistantId: AssistantId,
+  getActiveAssistantId: () => AssistantId,
 ): RemoteThreadListAdapter {
   const h = createApiHelper(api);
 
@@ -102,6 +105,7 @@ export function createThreadListAdapter(
     remoteId: t.id,
     title: t.title,
     custom: {
+      assistantId: t.assistantId,
       unread: t.unread,
       pinned: t.pinned,
       updatedAt: t.updatedAt,
@@ -112,16 +116,19 @@ export function createThreadListAdapter(
 
   return {
     async list() {
-      const data = await h.json<{ threads: ServerThread[] }>(
-        `/threads?assistantId=${encodeURIComponent(assistantId)}`,
-      );
+      // ALL the user's threads across agents (the server filters to ones the
+      // caller can currently access); the UI filters by the active agent. One
+      // runtime spans the whole tab, so switching agent/conversation never
+      // mounts/unmounts a runtime.
+      const data = await h.json<{ threads: ServerThread[] }>(`/threads`);
       return { threads: (data.threads ?? []).map(toMetadata) };
     },
 
     async initialize(_threadId) {
+      // A new thread is created under whichever agent is active right now.
       const thread = await h.json<ServerThread>(`/threads`, {
         method: 'POST',
-        body: JSON.stringify({ assistantId }),
+        body: JSON.stringify({ assistantId: getActiveAssistantId() }),
       });
       return { remoteId: thread.id, externalId: undefined };
     },
@@ -214,14 +221,15 @@ export function createHistoryAdapter(
   }
 
   return {
-    // assistant-ui consumes history through the `withFormat` adapter below;
-    // these base methods are required by the type but not exercised by that path.
+    // assistant-ui consumes history through the `withFormat` adapter below; these
+    // base methods are required by the type but not exercised by that path. Loads
+    // only — the server is the single writer (persisted by /chat at turn start +
+    // onFinish), so the user message is durable the instant a turn is sent and
+    // re-entry loads it even mid-flight.
     async load(): Promise<ExportedMessageRepository> {
       return { messages: [] };
     },
-    async append() {
-      // No-op: messages are persisted server-side on /chat onFinish.
-    },
+    async append() {},
     withFormat<TMessage, TStorageFormat extends Record<string, unknown>>(
       _format: MessageFormatAdapter<TMessage, TStorageFormat>,
     ): GenericThreadHistoryAdapter<TMessage> {
@@ -229,9 +237,7 @@ export function createHistoryAdapter(
         async load(): Promise<MessageFormatRepository<TMessage>> {
           return { messages: await loadItems<TMessage>() };
         },
-        async append() {
-          // No-op: the server is the single writer (see backend /chat onFinish).
-        },
+        async append() {},
       };
     },
   };

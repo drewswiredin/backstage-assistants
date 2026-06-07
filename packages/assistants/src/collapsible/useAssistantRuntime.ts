@@ -4,29 +4,38 @@
  * adapter rather than Assistant Cloud — so the frontend is a pure view of the
  * plugin's database.
  *
- * `AssistantChatTransport` awaits the thread-list adapter's `initialize()` before
- * the first send (creating the server thread) and puts its `remoteId` on the
- * request as `id`. A thin fetch wrapper adds `assistantId` + `modelId` and maps
- * `id -> threadId`, which is all the backend `/chat` needs to persist the turn.
+ * Recovery is entirely server-driven, keyed by the stable thread id:
+ *   - History (incl. the user message, persisted by the backend at turn START)
+ *     loads on mount via the thread-list adapter's load-only ThreadHistoryAdapter.
+ *   - If the server reports a turn is in flight for this thread (the `working`
+ *     status), we rejoin its live stream by the thread id — GET /chat/resume/:id,
+ *     which the backend buffers per thread. No fragile per-turn id is captured.
+ * So a remount (switching conversation/agent, route change, reload) recovers the
+ * same way every time, and a backgrounded tab simply keeps streaming.
  */
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useChat } from '@ai-sdk/react';
-import {
-  useAISDKRuntime,
-  AssistantChatTransport,
-  createResumableSessionStorage,
-} from '@assistant-ui/react-ai-sdk';
+import { useAISDKRuntime, AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
   ModelId,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
+import { fetchThreadStatus } from './threadListAdapter';
+
+/** Verbose resume tracing for local debugging (open the browser console). */
+const DEBUG = false;
+const dbg = (...a: unknown[]) => {
+  // eslint-disable-next-line no-console
+  if (DEBUG) console.info('[aui-resume]', ...a);
+};
 
 interface RuntimeHookOptions {
   api: AssistantsApi;
   baseUrl: string;
-  assistantId: AssistantId;
+  /** The active agent — tags a brand-new thread before it has server metadata. */
+  getActiveAssistantId: () => AssistantId;
   /** The currently selected model id (kept in a ref so the transport reads it live). */
   modelIdRef: RefObject<ModelId>;
 }
@@ -35,10 +44,12 @@ interface RuntimeHookOptions {
  * Wraps the authed fetch to inject the per-turn fields the backend `/chat`
  * expects. `AssistantChatTransport` builds the body (with the thread's `id` and
  * `messages`); we add `assistantId` + `modelId` and copy `id -> threadId`.
+ * `getAssistantId` is read per request so each thread targets its OWN agent (one
+ * runtime spans all agents).
  */
 function createInjectingFetch(
   baseFetch: typeof fetch,
-  assistantId: AssistantId,
+  getAssistantId: () => AssistantId,
   modelIdRef: RefObject<ModelId>,
 ): typeof fetch {
   return async (input, init) => {
@@ -46,7 +57,7 @@ function createInjectingFetch(
     if (init && typeof init.body === 'string') {
       try {
         const body = JSON.parse(init.body) as Record<string, unknown>;
-        body.assistantId = assistantId;
+        body.assistantId = getAssistantId();
         body.modelId = modelIdRef.current;
         if (typeof body.id === 'string' && body.threadId === undefined) {
           body.threadId = body.id;
@@ -63,34 +74,61 @@ function createInjectingFetch(
 /**
  * Returns the `runtimeHook` for `useRemoteThreadListRuntime`. Called once per
  * active thread; builds a `useChat` + `useAISDKRuntime` runtime whose transport
- * targets the backend `/chat`. History persistence is server-side (the history
- * adapter is load-only, injected via the thread-list adapter's `unstable_Provider`).
+ * targets the backend `/chat`, and rejoins an in-flight stream by thread id when
+ * the server says the thread is working.
  */
 export function makeRuntimeHook(options: RuntimeHookOptions) {
-  const { api, baseUrl, assistantId, modelIdRef } = options;
+  const { api, baseUrl, getActiveAssistantId, modelIdRef } = options;
 
   return function useRuntimeHook() {
     const threadChatId = useAuiState(state => state.threadListItem.id);
+    const remoteId = useAuiState(state => state.threadListItem.remoteId) as
+      | string
+      | undefined;
+    const threadAssistantId = useAuiState(
+      state =>
+        (state.threadListItem.custom as { assistantId?: string } | undefined)
+          ?.assistantId,
+    ) as AssistantId | undefined;
     const aui = useAui();
+
+    // The resume target is the stable thread id, read live (local ids churn).
+    const remoteIdRef = useRef<string | undefined>(remoteId);
+    remoteIdRef.current = remoteId;
+
+    // This thread's agent: its own metadata once known, else the active agent
+    // (a brand-new draft). Read live by the transport so /chat always targets
+    // the right assistant even though one runtime spans every agent.
+    const assistantIdRef = useRef<AssistantId>(
+      threadAssistantId ?? getActiveAssistantId(),
+    );
+    assistantIdRef.current = threadAssistantId ?? getActiveAssistantId();
 
     const transport = useMemo(
       () =>
         new AssistantChatTransport({
           api: `${baseUrl}/chat`,
-          fetch: createInjectingFetch(api.fetch, assistantId, modelIdRef),
-          // Mid-flight resume: the transport stores the response's
-          // x-resumable-stream-id (per thread) and, on remount with one stored,
-          // reconnects via /chat/resume/:id. Cleared when it sees the finish event.
+          fetch: createInjectingFetch(
+            api.fetch,
+            () => assistantIdRef.current,
+            modelIdRef,
+          ),
           resumable: {
-            storage: createResumableSessionStorage({
-              key: `aui-resume:${assistantId}:${threadChatId}`,
-            }),
-            resumeApi: (streamId: string) => `${baseUrl}/chat/resume/${streamId}`,
+            // Reconnect by the THREAD id — the backend buffers the in-flight SSE
+            // per thread. We don't capture/store a per-turn id: getStreamId just
+            // yields the thread id so resumeStream() targets /chat/resume/:id;
+            // WHETHER to resume is decided by the server `working` flag below.
+            storage: {
+              getStreamId: () => remoteIdRef.current ?? null,
+              setStreamId: () => {},
+              clear: () => {},
+            },
+            resumeApi: (id: string) => `${baseUrl}/chat/resume/${id}`,
           },
         }),
-      // Stable per thread instance (threadChatId is fixed within it).
+      // Stable for the life of this thread instance; storage reads remoteId live.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [threadChatId],
+      [],
     );
 
     const chat = useChat({ id: threadChatId, transport });
@@ -103,15 +141,34 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       aui.threadListItem.source ? aui.threadListItem() : undefined,
     );
 
-    // On (re)mount, if a stream was left in flight for this thread, rejoin it.
-    const resumeFired = useRef(false);
+    // When the server reports an in-flight turn for this thread, rejoin its live
+    // stream. History is loaded separately by the thread-list adapter. Runs once
+    // per remoteId; never fights a turn already streaming locally.
+    const chatRef = useRef(chat);
+    chatRef.current = chat;
+    const resumedFor = useRef<string | undefined>(undefined);
     useEffect(() => {
-      if (resumeFired.current) return;
-      const adapter = transport.getResumableAdapter();
-      if (!adapter?.storage.getStreamId()) return;
-      resumeFired.current = true;
-      chat.resumeStream().catch(() => adapter.storage.clear());
-    }, [transport, chat]);
+      if (!remoteId || resumedFor.current === remoteId) return;
+      if (chatRef.current.status === 'streaming' || chatRef.current.status === 'submitted') {
+        resumedFor.current = remoteId; // a local turn already owns the stream
+        return;
+      }
+      resumedFor.current = remoteId;
+      void (async () => {
+        try {
+          const rows = await fetchThreadStatus(api);
+          const working = rows.find(r => r.threadId === remoteId)?.working ?? false;
+          dbg('resume check', { remoteId, working });
+          if (working) {
+            await chatRef.current.resumeStream();
+            dbg('resumed', { remoteId });
+          }
+        } catch (e) {
+          dbg('resume error', e);
+        }
+      })();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [remoteId]);
 
     return runtime;
   };

@@ -3,7 +3,6 @@
 import { MouseEvent, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import {
-  Badge,
   IconButton,
   List,
   ListItem,
@@ -18,6 +17,8 @@ import {
 import BookmarkIcon from '@material-ui/icons/Bookmark';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
+import { StatusDot } from './StatusDot';
+import { toConvStatus } from './useThreadStatus';
 import type { ThreadSummary } from './threadListAdapter';
 
 const useStyles = makeStyles(theme => ({
@@ -154,17 +155,9 @@ export function ConversationsPanel({
               onClick={() => onSelect(conv.id)}
             >
               <ListItemIcon style={{ minWidth: 32 }}>
-                <Badge
-                  color={conv.working ? 'primary' : 'error'}
-                  variant="dot"
-                  overlap="circular"
-                  invisible={
-                    conv.id === activeId || (!conv.working && !conv.unread)
-                  }
-                  classes={conv.working ? { dot: classes.pulseDot } : undefined}
-                >
+                <StatusDot status={toConvStatus(conv.working, conv.unread)}>
                   <ChatBubbleOutlineIcon fontSize="small" />
-                </Badge>
+                </StatusDot>
               </ListItemIcon>
               {renamingId === conv.id ? (
                 <TextField

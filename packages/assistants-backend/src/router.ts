@@ -300,12 +300,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // when it has a stored stream id, to rejoin a generation it stepped away from.
   // A plain Express sub-router — the typed OpenAPI router only allows spec paths.
   const streamRouter = express.Router();
-  streamRouter.get('/chat/resume/:streamId', (req, res, next) => {
+  streamRouter.get('/chat/resume/:threadId', (req, res, next) => {
     (async () => {
       const credentials = await httpAuth.credentials(req, { allow: ['user'] });
       const user = await userInfo.getUserInfo(credentials);
       const sub = resumables.subscribe(
-        req.params.streamId,
+        req.params.threadId,
         user.userEntityRef,
         chunk => (chunk === null ? res.end() : res.write(chunk)),
       );
@@ -520,6 +520,20 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       },
     });
 
+    // Persist the user's turn immediately — before streaming — so the
+    // conversation is durable the instant it's sent. A client that returns to
+    // this thread mid-flight always has the question + prior history to show;
+    // onFinish then replaces with the full turn (incl. the assistant reply).
+    // Full replace is idempotent, so start + finish compose cleanly.
+    if (threadId) {
+      await threadService.replaceMessages(
+        user.userEntityRef,
+        threadId,
+        messages as UIMessage[],
+        modelId,
+      );
+    }
+
     if (threadId) noteStarted(user.userEntityRef, threadId, assistantId);
 
     logger.info('chat turn started', {
@@ -535,8 +549,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     navigation). The server is the single writer of message rows.
     void result.consumeStream();
 
-    // Id under which a copy of this SSE stream is buffered for mid-flight resume.
-    const resumableId = randomUUID();
+    // Buffer the SSE under the THREAD id, so a client returning to this thread
+    // can rejoin by an id it already knows (GET /chat/resume/:threadId) — there
+    // is no fragile per-turn id to capture. One in-flight stream per thread.
+    const resumableId = threadId ?? randomUUID();
 
     // 11. Pipe the UI message stream to the response. On finish, persist the
     //     completed conversation to the thread (scoped to this user). The
@@ -697,28 +713,53 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     return user.userEntityRef;
   }
 
+  // Resolve the caller plus the set of assistant ids they may CURRENTLY access.
+  // Thread lists/status are filtered to this set so a conversation for an agent
+  // the user can no longer use (removed from config, or access revoked) never
+  // surfaces — no orphaned rows, no unread dots for an unavailable agent.
+  async function resolveAccess(
+    req: express.Request,
+  ): Promise<{ userRef: string; accessibleIds: Set<string> }> {
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    const user = await userInfo.getUserInfo(credentials);
+    const accessibleIds = new Set<string>();
+    for (const [id, def] of assistants.assistants) {
+      if (isAssistantAccessible(def, user)) accessibleIds.add(id);
+    }
+    return { userRef: user.userEntityRef, accessibleIds };
+  }
+
   const threads = express.Router();
   threads.use(express.json({ limit: '1mb' }));
 
-  // List this user's threads for an assistant (with server-computed unread).
+  // List this user's threads — ALL of them by default (single multi-agent
+  // runtime), or one assistant's if `assistantId` is given. Filtered to agents
+  // the caller can currently access.
   threads.get('/', (req, res, next) => {
     (async () => {
-      const userRef = await resolveUserRef(req);
+      const { userRef, accessibleIds } = await resolveAccess(req);
       const assistantId = req.query.assistantId;
-      if (typeof assistantId !== 'string' || !assistantId) {
-        throw new InputError('assistantId query parameter is required');
-      }
-      res.json({ threads: await threadService.listThreads(userRef, assistantId) });
+      const scoped =
+        typeof assistantId === 'string' && assistantId ? assistantId : undefined;
+      const all = await threadService.listThreads(userRef, scoped);
+      res.json({
+        threads: all.filter(t => accessibleIds.has(t.assistantId)),
+      });
     })().catch(next);
   });
 
-  // Create a thread.
+  // Create a thread (only for an assistant the caller can access).
   threads.post('/', (req, res, next) => {
     (async () => {
-      const userRef = await resolveUserRef(req);
+      const { userRef, accessibleIds } = await resolveAccess(req);
       const { assistantId, model } = req.body ?? {};
       if (typeof assistantId !== 'string' || !assistantId) {
         throw new InputError('assistantId is required');
+      }
+      if (!accessibleIds.has(assistantId)) {
+        throw new NotAllowedError(
+          `You do not have access to assistant '${assistantId}'`,
+        );
       }
       const thread = await threadService.createThread(
         userRef,
@@ -735,16 +776,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // MUST precede `/:id` so 'status' isn't matched as a thread id.
   threads.get('/status', (req, res, next) => {
     (async () => {
-      const userRef = await resolveUserRef(req);
+      const { userRef, accessibleIds } = await resolveAccess(req);
       const rows = await threadService.listUserThreadStatuses(userRef);
       const working = inFlight.get(userRef);
       res.json({
-        threads: rows.map(r => ({
-          threadId: r.threadId,
-          assistantId: r.assistantId,
-          unread: r.unread,
-          working: working?.has(r.threadId) ?? false,
-        })),
+        threads: rows
+          .filter(r => accessibleIds.has(r.assistantId))
+          .map(r => ({
+            threadId: r.threadId,
+            assistantId: r.assistantId,
+            unread: r.unread,
+            working: working?.has(r.threadId) ?? false,
+          })),
       });
     })().catch(next);
   });

@@ -227,7 +227,7 @@ assistants:
             <tr><td class="k">mcp.servers.*.headers · env</td><td><span class="tag secret">secret</span></td><td>MCP transport auth (server)</td></tr>
             <tr><td class="k">mcp.servers.* (transport · url · command · args · cwd)</td><td><span class="tag secret">backend</span></td><td>MCP connection (server)</td></tr>
             <tr><td class="k">profiles.*.prompt</td><td><span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code></td></tr>
-            <tr><td class="k">profiles.*.access</td><td><span class="tag secret">backend</span></td><td>access gate (<code>/status</code> filter + <code>/chat</code>)</td></tr>
+            <tr><td class="k">profiles.*.access</td><td><span class="tag secret">backend</span></td><td>access gate — <code>/status</code> filter, <code>/chat</code> + <code>/title</code>, and <code>/threads</code> list/status filter + <code>POST /threads</code></td></tr>
             <tr><td class="k">profiles.*.actions[]</td><td><span class="tag secret">backend</span></td><td>Action tool allowlist at <code>/chat</code> (run as user)</td></tr>
             <tr><td class="k">profiles.*.mcpServers[]</td><td><span class="tag secret">backend</span></td><td>MCP tool selection at <code>/chat</code> (run as configured)</td></tr>
             <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code> (default 10)</td></tr>
@@ -256,6 +256,7 @@ assistants:
             <li><b>UI merge</b> — <code>deepMerge(global ui, profile.ui)</code>: objects deep-merge, arrays replace (so a profile can clear inherited values). Welcome text is derived from <code>title</code> / <code>description</code>.</li>
             <li><b>Theme</b> — one built-in palette that follows Backstage light/dark automatically. Not configurable, by design.</li>
             <li><b>Persistence</b> — conversations are stored server-side via Backstage's <code>backend.database</code>; no new config key (see <a href="architecture.html#persistence">architecture §5</a>).</li>
+            <li><b>Access is the boundary</b> — every conversation is scoped to its owner (<code>user_ref</code>) AND filtered to currently-accessible agents: <code>/threads</code> + <code>/threads/status</code> only return chats for agents the caller can access, and <code>POST /threads</code> is gated — so removing an agent (or revoking access) removes its conversations and its unread.</li>
             <li><b>Runtime guards</b> — global, backend-only: <code>maxSteps</code> (tool-call steps/turn, default 10), <code>toolResultMaxChars</code> (cap one tool result, head+tail truncate, default 30000, <code>0</code> disables), <code>requestBodyLimit</code> (Express body limit, default <code>10mb</code>).</li>
           </ol>
         </div>

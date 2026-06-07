@@ -12,7 +12,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { Content, Progress, ResponseErrorPanel } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import {
-  Badge,
+  Button,
   FormControl,
   IconButton,
   ListItemIcon,
@@ -50,8 +50,15 @@ import {
   type ThreadCustomMetadata,
   type ThreadSummary,
 } from './threadListAdapter';
+import { signalApiRef } from '@backstage/plugin-signals-react';
+import type { JsonObject } from '@backstage/types';
 import { makeRuntimeHook } from './useAssistantRuntime';
-import { useThreadStatus, type ConvStatus } from './useThreadStatus';
+import { StatusDot } from './StatusDot';
+import {
+  useThreadStatus,
+  toConvStatus,
+  type ConvStatus,
+} from './useThreadStatus';
 
 const SIDEPANE_COLLAPSED_KEY = 'ai-chat-sidepane-collapsed';
 
@@ -246,14 +253,24 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
   },
-  // The "working" indicator: a pulsing dot, distinct from the solid unread dot.
-  '@keyframes auiPulse': {
-    '0%': { transform: 'scale(1)', opacity: 1 },
-    '50%': { transform: 'scale(1.5)', opacity: 0.45 },
-    '100%': { transform: 'scale(1)', opacity: 1 },
+  // Bare-agent empty state (no conversation selected; new chats are "+"-only).
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(1),
+    height: '100%',
+    textAlign: 'center',
+    color: theme.palette.text.secondary,
+    padding: theme.spacing(3),
   },
-  pulseDot: {
-    animation: '$auiPulse 1.2s ease-in-out infinite',
+  emptyTitle: {
+    fontWeight: 600,
+    color: theme.palette.text.primary,
+  },
+  emptyButton: {
+    marginTop: theme.spacing(1),
   },
 }));
 
@@ -317,13 +334,35 @@ export function CollapsiblePage() {
       />
     );
   }
-  const assistant =
-    assistants.find(a => a.id === requestedAssistant) ?? assistants[0];
-  // Keyed by assistant.id: a fresh server-backed runtime per assistant. Switching
-  // never loses an in-flight reply — the backend persists it on finish.
+  // The active agent is UI state, NOT a remount key: one runtime carries every
+  // conversation across all agents (see ChatRuntime). `?assistant=` only seeds
+  // the initially-focused agent.
+  const initialAssistantId =
+    assistants.find(a => a.id === requestedAssistant)?.id ?? assistants[0].id;
   return (
-    <CollapsibleChat key={assistant.id} status={status.value} assistant={assistant} />
+    <CollapsibleChat
+      status={status.value}
+      initialAssistantId={initialAssistantId}
+    />
   );
+}
+
+/** The id of an agent's most-recently-updated conversation, or undefined if none. */
+function mostRecentThreadFor(
+  assistantId: string,
+  threadList: ThreadListState,
+): string | undefined {
+  const updatedAt = (id: string) =>
+    (threadList.threadItems[id]?.custom as Partial<ThreadCustomMetadata> | undefined)
+      ?.updatedAt ?? '';
+  return [...threadList.threadIds]
+    .filter(
+      id =>
+        (threadList.threadItems[id]?.custom as
+          | Partial<ThreadCustomMetadata>
+          | undefined)?.assistantId === assistantId,
+    )
+    .sort((a, b) => (updatedAt(a) < updatedAt(b) ? 1 : -1))[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -332,10 +371,10 @@ export function CollapsiblePage() {
 
 function CollapsibleChat({
   status,
-  assistant,
+  initialAssistantId,
 }: {
   status: StatusResponse;
-  assistant: AssistantSummary;
+  initialAssistantId: string;
 }) {
   const api = useApi(assistantsApiRef);
   const baseUrl = useAsync(() => api.getBaseUrl(), [api]);
@@ -353,35 +392,45 @@ function CollapsibleChat({
   return (
     <ChatRuntime
       status={status}
-      assistant={assistant}
       api={api}
       baseUrl={baseUrl.value}
+      initialAssistantId={initialAssistantId}
     />
   );
 }
 
 function ChatRuntime({
   status,
-  assistant,
   api,
   baseUrl,
+  initialAssistantId,
 }: {
   status: StatusResponse;
-  assistant: AssistantSummary;
   api: AssistantsApi;
   baseUrl: string;
+  initialAssistantId: string;
 }) {
-  const defaultModel = assistant.defaultModel ?? status.defaultModel;
+  // ONE runtime for the whole tab carrying every conversation across all agents.
+  // The active agent is a live ref the adapter/runtime read when creating or
+  // tagging a new thread — so switching agent or conversation never mounts or
+  // unmounts a runtime (no remount churn, no stream loss).
+  const activeAssistantIdRef = useRef<string>(initialAssistantId);
   // Drives the transport body; updated by the model picker + on thread switch.
-  const modelIdRef = useRef<ModelId>(defaultModel);
+  const modelIdRef = useRef<ModelId>(status.defaultModel);
 
   const adapter = useMemo(
-    () => createThreadListAdapter(api, assistant.id),
-    [api, assistant.id],
+    () => createThreadListAdapter(api, () => activeAssistantIdRef.current),
+    [api],
   );
   const runtimeHook = useMemo(
-    () => makeRuntimeHook({ api, baseUrl, assistantId: assistant.id, modelIdRef }),
-    [api, baseUrl, assistant.id],
+    () =>
+      makeRuntimeHook({
+        api,
+        baseUrl,
+        getActiveAssistantId: () => activeAssistantIdRef.current,
+        modelIdRef,
+      }),
+    [api, baseUrl],
   );
   const runtime = useRemoteThreadListRuntime({ adapter, runtimeHook });
 
@@ -389,10 +438,10 @@ function ChatRuntime({
     <AssistantRuntimeProvider runtime={runtime}>
       <ChatChrome
         status={status}
-        assistant={assistant}
         api={api}
         modelIdRef={modelIdRef}
-        defaultModel={defaultModel}
+        activeAssistantIdRef={activeAssistantIdRef}
+        initialAssistantId={initialAssistantId}
       />
     </AssistantRuntimeProvider>
   );
@@ -404,20 +453,42 @@ function ChatRuntime({
 
 function ChatChrome({
   status,
-  assistant,
   api,
   modelIdRef,
-  defaultModel,
+  activeAssistantIdRef,
+  initialAssistantId,
 }: {
   status: StatusResponse;
-  assistant: AssistantSummary;
   api: AssistantsApi;
   modelIdRef: React.MutableRefObject<ModelId>;
-  defaultModel: ModelId;
+  activeAssistantIdRef: React.MutableRefObject<string>;
+  initialAssistantId: string;
 }) {
   const classes = useStyles();
   const runtime = useAssistantRuntime();
+  const signals = useApi(signalApiRef);
   const [, setSearchParams] = useSearchParams();
+
+  // Active agent: UI state, with a ref mirror so the adapter/runtime can tag a
+  // brand-new thread synchronously (before React re-renders). The active
+  // conversation always belongs to this agent (the list is filtered by it).
+  const [activeAssistantId, setActiveAssistantIdState] = useState(
+    initialAssistantId,
+  );
+  const setActiveAssistantId = useCallback(
+    (id: string) => {
+      activeAssistantIdRef.current = id;
+      setActiveAssistantIdState(id);
+    },
+    [activeAssistantIdRef],
+  );
+  const assistant = useMemo(
+    () =>
+      status.assistants.find(a => a.id === activeAssistantId) ??
+      status.assistants[0],
+    [status.assistants, activeAssistantId],
+  );
+  const defaultModel = assistant.defaultModel ?? status.defaultModel;
 
   // Reactive snapshot of the server-backed thread list.
   const [threadList, setThreadList] = useState<ThreadListState>(() =>
@@ -434,12 +505,13 @@ function ChatChrome({
   const activeItem = threadList.threadItems[activeId];
   const activeRemoteId = activeItem?.remoteId;
   const activeTitle = activeItem?.title ?? '';
+  // A bare agent with no conversation: the blank, uninitialized draft slot. New
+  // chats are created only via "+", so we show an empty state here (no composer)
+  // instead of a chat box — removing the ambiguous "type to start" path.
+  const isBlankDraft = activeId === threadList.newThreadId && !activeRemoteId;
 
   // Single source of truth for read/working/unread, derived from server + signals.
-  const { statusOf, agentStatus, markRead, finishedTick } = useThreadStatus(
-    api,
-    activeRemoteId,
-  );
+  const { statusOf, agentStatus } = useThreadStatus(api, activeRemoteId);
 
   // On first load for this agent (the component is keyed by assistant.id), land
   // on the agent's MOST RECENT conversation. The runtime defaults the main thread
@@ -451,48 +523,67 @@ function ChatChrome({
   useEffect(() => {
     if (didSelectInitial.current || threadList.isLoading) return;
     didSelectInitial.current = true;
-    // Only auto-select if we're still on the blank draft (don't override a user pick).
+    // Land on the active agent's most-recent conversation; if it has none, stay
+    // on the blank draft (never empty). Don't override a user pick.
     if (activeId !== threadList.newThreadId) return;
-    const mostRecent = [...threadList.threadIds]
-      .map(id => ({
-        id,
-        updatedAt:
-          (threadList.threadItems[id]?.custom as Partial<ThreadCustomMetadata>)
-            ?.updatedAt ?? '',
-      }))
-      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0]?.id;
-    if (mostRecent) {
-      void runtime.threads.switchToThread(mostRecent);
-    }
+    const mostRecent = mostRecentThreadFor(
+      activeAssistantIdRef.current,
+      threadList,
+    );
+    if (mostRecent) void runtime.threads.switchToThread(mostRecent);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadList.isLoading]);
 
   const conversations = useMemo<ThreadSummary[]>(
     () =>
-      threadList.threadIds.map(id => {
-        const item = threadList.threadItems[id];
-        const custom = item?.custom as Partial<ThreadCustomMetadata> | undefined;
-        // Every dot derives from the single status store; the focused
-        // conversation shows neither (you're looking at it).
-        const st: ConvStatus = id === activeId ? 'read' : statusOf(item?.remoteId);
-        return {
-          id,
-          remoteId: item?.remoteId,
-          title: item?.title ?? 'New Chat',
-          pinned: custom?.pinned ?? false,
-          unread: st === 'unread',
-          working: st === 'working',
-        };
-      }),
-    [threadList, activeId, statusOf],
+      threadList.threadIds
+        .filter(id => {
+          // The conversation you're viewing always shows; other blank drafts
+          // don't; the rest are filtered to the active agent. A just-sent thread
+          // has no assistantId metadata until the next reload, but it's the
+          // active thread, so it stays visible via the first clause.
+          if (id === activeId) return true;
+          if (id === threadList.newThreadId) return false;
+          const aid = (
+            threadList.threadItems[id]?.custom as
+              | Partial<ThreadCustomMetadata>
+              | undefined
+          )?.assistantId;
+          return aid === activeAssistantId;
+        })
+        .map(id => {
+          const item = threadList.threadItems[id];
+          const custom = item?.custom as Partial<ThreadCustomMetadata> | undefined;
+          // Every dot derives from the single status snapshot. `working` shows
+          // even for the focused conversation; `unread` is suppressed for it.
+          const st: ConvStatus = statusOf(item?.remoteId);
+          return {
+            id,
+            remoteId: item?.remoteId,
+            title: item?.title ?? 'New Chat',
+            pinned: custom?.pinned ?? false,
+            unread: st === 'unread',
+            working: st === 'working',
+          };
+        }),
+    [threadList, statusOf, activeAssistantId, activeId],
   );
 
-  // A turn finished — refresh the thread list so the sidebar picks up new titles.
+  // Refresh the thread list ONLY on metadata changes (a generated title), never
+  // mid-turn: reloading re-keys an in-flight new thread (localId → remoteId) and
+  // would break its stream. The 'updated' signal fires after a turn completes.
   useEffect(() => {
-    if (finishedTick > 0) {
-      void runtime.threads.reload();
-    }
-  }, [finishedTick, runtime]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sub = signals.subscribe('assistants:threads', (msg: JsonObject) => {
+      if ((msg as { type?: string }).type !== 'updated') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void runtime.threads.reload(), 150);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      sub.unsubscribe();
+    };
+  }, [signals, runtime]);
 
   // Model picker: limited to the assistant's allowlist (else the global pool).
   const allowedModels = useMemo<ModelId[]>(
@@ -532,14 +623,6 @@ function ChatChrome({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  // Viewing a conversation marks it read — instantly in the store, persisted on
-  // the server. The conversation dot and the agent rollup both derive from the
-  // store, so they clear together.
-  useEffect(() => {
-    if (activeRemoteId) markRead(activeRemoteId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRemoteId]);
-
   const [sidePaneCollapsed, setSidePaneCollapsed] = useState(loadSidePaneCollapsed);
   useEffect(() => {
     try {
@@ -551,9 +634,15 @@ function ChatChrome({
 
   const handleSelectAssistant = useCallback(
     (id: string) => {
-      if (id !== assistant.id) setSearchParams({ assistant: id });
+      if (id === activeAssistantId) return;
+      setActiveAssistantId(id);
+      setSearchParams({ assistant: id }); // deep-link / survive refresh
+      // Land on that agent's most-recent conversation, else a fresh draft.
+      const mostRecent = mostRecentThreadFor(id, threadList);
+      if (mostRecent) void runtime.threads.switchToThread(mostRecent);
+      else void runtime.threads.switchToNewThread();
     },
-    [assistant.id, setSearchParams],
+    [activeAssistantId, setActiveAssistantId, setSearchParams, threadList, runtime],
   );
 
   const handleNew = useCallback(() => {
@@ -587,9 +676,22 @@ function ChatChrome({
 
   const handleDelete = useCallback(
     (id: string) => {
-      void runtime.threads.getItemById(id).delete();
+      void (async () => {
+        const wasActive = id === activeId;
+        await runtime.threads.getItemById(id).delete();
+        await runtime.threads.reload();
+        if (!wasActive) return; // deleting a background chat doesn't move you
+        // Land somewhere valid: the agent's most-recent remaining chat, else the
+        // empty state (same as a first visit). No conversation is auto-created.
+        const remaining = mostRecentThreadFor(
+          activeAssistantIdRef.current,
+          runtime.threads.getState(),
+        );
+        if (remaining) await runtime.threads.switchToThread(remaining);
+        else await runtime.threads.switchToNewThread();
+      })();
     },
-    [runtime],
+    [runtime, activeId, activeAssistantIdRef],
   );
 
   const handlePin = useCallback(
@@ -698,21 +800,9 @@ function ChatChrome({
                       aria-label={a.title}
                       onClick={() => handleSelectAssistant(a.id)}
                     >
-                      <Badge
-                        color={
-                          agentStatus(a.id) === 'working' ? 'primary' : 'error'
-                        }
-                        variant="dot"
-                        overlap="circular"
-                        invisible={agentStatus(a.id) === 'read'}
-                        classes={
-                          agentStatus(a.id) === 'working'
-                            ? { dot: classes.pulseDot }
-                            : undefined
-                        }
-                      >
+                      <StatusDot status={agentStatus(a.id)}>
                         <AssistantAvatar color={a.color} size={24} />
-                      </Badge>
+                      </StatusDot>
                     </IconButton>
                   </Tooltip>
                 ))}
@@ -750,21 +840,14 @@ function ChatChrome({
                       aria-label={conversation.title}
                       onClick={() => handleSelect(conversation.id)}
                     >
-                      <Badge
-                        color={conversation.working ? 'primary' : 'error'}
-                        variant="dot"
-                        overlap="circular"
-                        invisible={
-                          !conversation.working && !conversation.unread
-                        }
-                        classes={
-                          conversation.working
-                            ? { dot: classes.pulseDot }
-                            : undefined
-                        }
+                      <StatusDot
+                        status={toConvStatus(
+                          conversation.working,
+                          conversation.unread,
+                        )}
                       >
                         <ChatBubbleOutlineIcon fontSize="small" />
-                      </Badge>
+                      </StatusDot>
                     </IconButton>
                   </Tooltip>
                 ))}
@@ -809,11 +892,31 @@ function ChatChrome({
               {modelPicker}
             </div>
             <div className={classes.threadBody}>
-              <ConversationSurface
-                composerPlaceholder={assistant.ui?.composer?.placeholder}
-                suggestions={assistant.ui?.suggestions}
-                assistantColor={assistant.color}
-              />
+              {isBlankDraft ? (
+                <div className={classes.emptyState}>
+                  <Typography variant="body1" className={classes.emptyTitle}>
+                    No conversation yet
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    Start a new chat with {assistant.title}.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={handleNew}
+                    className={classes.emptyButton}
+                  >
+                    New chat
+                  </Button>
+                </div>
+              ) : (
+                <ConversationSurface
+                  composerPlaceholder={assistant.ui?.composer?.placeholder}
+                  suggestions={assistant.ui?.suggestions}
+                  assistantColor={assistant.color}
+                />
+              )}
             </div>
           </main>
         </div>
