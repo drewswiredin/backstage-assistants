@@ -236,13 +236,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // keeps running so it can be resumed.
   const turnAborts = new Map<string, AbortController>();
 
-  // Last completed turn's total token usage (input + output) per thread —
-  // surfaced via GET /threads/status so the composer can render a context-usage
-  // gauge. assistant-ui's transport drops the AI-SDK message-metadata usage from
-  // the live message, so the server is the source of truth here (matching the
-  // rest of the design). In-memory: recomputed on the next turn after a restart.
-  const lastTurnUsage = new Map<string, number>();
-
   function noteStarted(userRef: string, threadId: string, assistantId: string) {
     let m = inFlight.get(userRef);
     if (!m) {
@@ -622,8 +615,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // usage at the end, so fall back to `finish.totalUsage` when no step usage
     // was seen. Streams live AND lands in the persisted message (survives reload).
     let sawStepUsage = false;
-    // Running total (input + output) of the latest step — the context footprint.
-    let turnTokens: number | undefined;
     result.pipeUIMessageStreamToResponse(res, {
       originalMessages: messages as UIMessage[],
       generateMessageId: () => `msg-${randomUUID()}`,
@@ -633,8 +624,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           typeof part.usage?.inputTokens === 'number'
         ) {
           sawStepUsage = true;
-          turnTokens =
-            part.usage.inputTokens + (part.usage.outputTokens ?? 0);
           return {
             usage: {
               inputTokens: part.usage.inputTokens,
@@ -647,8 +636,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           !sawStepUsage &&
           typeof part.totalUsage?.inputTokens === 'number'
         ) {
-          turnTokens =
-            part.totalUsage.inputTokens + (part.totalUsage.outputTokens ?? 0);
           return {
             usage: {
               inputTokens: part.totalUsage.inputTokens,
@@ -660,8 +647,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       },
       onFinish: async ({ messages: finalMessages }) => {
         if (!threadId) return;
-        // Record the turn's context footprint for the status snapshot / gauge.
-        if (typeof turnTokens === 'number') lastTurnUsage.set(threadId, turnTokens);
         // If this turn was aborted via Stop, mark the (partial) assistant reply
         // so ANY client that loads it later shows a "Canceled" indicator instead
         // of an ambiguous half-finished turn. The flag rides in the message's
@@ -901,7 +886,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             assistantId: r.assistantId,
             unread: r.unread,
             working: working?.has(r.threadId) ?? false,
-            tokens: lastTurnUsage.get(r.threadId),
+            tokens: r.tokens,
           })),
       });
     })().catch(next);

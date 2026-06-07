@@ -288,6 +288,7 @@ sequenceDiagram
               <tr><td class="k">user_ref</td><td>owner — every read/write is scoped to it</td></tr>
               <tr><td class="k">title</td><td>generated from the first turn</td></tr>
               <tr><td class="k">model</td><td>last model id used</td></tr>
+              <tr><td class="k">last_tokens</td><td>most recent turn's total tokens (input+output) — drives the composer context gauge, durable across restarts</td></tr>
               <tr><td class="k">pinned · archived</td><td>list state</td></tr>
               <tr><td class="k">created_at · updated_at</td><td>timestamps</td></tr>
               <tr><td class="k">last_read_at</td><td>unread = <code>last_read_at ? updated_at &gt; last_read_at : false</code></td></tr>

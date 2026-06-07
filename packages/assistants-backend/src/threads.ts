@@ -159,10 +159,17 @@ export class ThreadService {
    */
   async listUserThreadStatuses(
     userRef: string,
-  ): Promise<Array<{ threadId: string; assistantId: string; unread: boolean }>> {
+  ): Promise<
+    Array<{
+      threadId: string;
+      assistantId: string;
+      unread: boolean;
+      tokens?: number;
+    }>
+  > {
     const rows = await this.db('threads')
       .where({ user_ref: userRef, archived: false })
-      .select('id', 'assistant_id', 'updated_at', 'last_read_at');
+      .select('id', 'assistant_id', 'updated_at', 'last_read_at', 'last_tokens');
     return rows.map(r => {
       const updatedAt = String(r.updated_at);
       const lastReadAt = r.last_read_at ? String(r.last_read_at) : null;
@@ -170,6 +177,7 @@ export class ThreadService {
         threadId: r.id as string,
         assistantId: r.assistant_id as string,
         unread: lastReadAt ? new Date(updatedAt) > new Date(lastReadAt) : false,
+        tokens: typeof r.last_tokens === 'number' ? r.last_tokens : undefined,
       };
     });
   }
@@ -231,8 +239,27 @@ export class ThreadService {
         );
       }
 
+      // Durable token tally for the composer gauge: the latest assistant turn's
+      // total (input + output), read from its usage metadata. Left untouched when
+      // no assistant message carries usage (e.g. the user-message persist at turn
+      // start), so it retains the prior turn's value mid-turn.
+      let lastTokens: number | undefined;
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        if (messages[i].role !== 'assistant') continue;
+        const usage = (
+          messages[i].metadata as
+            | { usage?: { inputTokens?: number; outputTokens?: number } }
+            | undefined
+        )?.usage;
+        if (usage) {
+          lastTokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+          break;
+        }
+      }
+
       const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (model) fields.model = model;
+      if (typeof lastTokens === 'number') fields.last_tokens = lastTokens;
       await trx('threads').where({ id: threadId }).update(fields);
       return true;
     });
