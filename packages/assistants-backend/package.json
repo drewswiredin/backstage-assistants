@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants-backend",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Backend plugin — AI Assistants for Backstage.",
   "license": "Apache-2.0",
   "publishConfig": {

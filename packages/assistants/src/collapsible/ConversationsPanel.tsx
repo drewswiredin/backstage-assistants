@@ -119,6 +119,9 @@ export function ConversationsPanel({
   } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // The conversation queued for rename while the menu animates closed (applied
+  // in the menu's onExited below — see handleRenameStart).
+  const [pendingRename, setPendingRename] = useState<ThreadSummary | null>(null);
 
   const handleMenuOpen = (e: MouseEvent<HTMLElement>, id: string) => {
     e.stopPropagation();
@@ -128,8 +131,12 @@ export function ConversationsPanel({
   const handleMenuClose = () => setMenuAnchor(null);
 
   const handleRenameStart = (conv: ThreadSummary) => {
-    setRenamingId(conv.id);
-    setRenameValue(conv.title);
+    // Defer entering edit mode until the menu has fully closed. If we mounted the
+    // autofocus input now, MUI's focus restoration when the menu closes would
+    // immediately blur it — firing onBlur, which submits and tears the field down
+    // before you can type (looks like "rename does nothing"). The menu's onExited
+    // applies this once focus has settled.
+    setPendingRename(conv);
     handleMenuClose();
   };
 
@@ -212,6 +219,16 @@ export function ConversationsPanel({
         anchorEl={menuAnchor?.el}
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
+        disableRestoreFocus
+        TransitionProps={{
+          onExited: () => {
+            if (pendingRename) {
+              setRenameValue(pendingRename.title);
+              setRenamingId(pendingRename.id);
+              setPendingRename(null);
+            }
+          },
+        }}
       >
         {menuAnchor &&
           (() => {

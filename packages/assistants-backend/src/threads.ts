@@ -112,11 +112,18 @@ export class ThreadService {
     threadId: string,
     patch: ThreadPatch,
   ): Promise<Thread | null> {
-    const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    // Metadata edits (title / model / pin / archive) must NOT bump updated_at:
+    // unread is `updated_at > last_read_at`, so bumping it would falsely mark a
+    // conversation unread after a rename or pin. updated_at moves only when a
+    // turn lands (replaceMessages) — it tracks activity + recency, not edits.
+    const fields: Record<string, unknown> = {};
     if (patch.title !== undefined) fields.title = patch.title;
     if (patch.model !== undefined) fields.model = patch.model;
     if (patch.pinned !== undefined) fields.pinned = patch.pinned;
     if (patch.archived !== undefined) fields.archived = patch.archived;
+    if (Object.keys(fields).length === 0) {
+      return this.getThread(userRef, threadId);
+    }
 
     const count = await this.db('threads')
       .where({ id: threadId, user_ref: userRef })
