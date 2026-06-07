@@ -236,9 +236,9 @@ const useStyles = makeStyles(theme => ({
 
 /**
  * The stock composer with a context-usage gauge (and over-limit warning) mounted
- * just above the input. Token usage comes from the official
- * `useThreadTokenUsage()` hook; the model's context window comes from
- * {@link ContextWindowContext}. assistant-ui renders this via
+ * just above the input. Token usage + the model's context window both come from
+ * {@link ComposerInfoContext} (server-derived via GET /threads/status, passed as
+ * props to ConversationSurface). assistant-ui renders this via
  * `components.Composer`, so it takes no props.
  */
 function ComposerWithGauge() {

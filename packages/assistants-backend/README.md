@@ -48,6 +48,10 @@ assistants:
       models:
         - google/gemini-2.5-flash
         - anthropic/claude-3.5-sonnet
+      # Optional per-model context windows (max input tokens) — drives the
+      # composer's context-usage gauge. Omit a model to show only its count.
+      contextWindows:
+        google/gemini-2.5-flash: 1048576
 
   # Global UI defaults, deep-merged into every profile (browser-safe).
   ui:
@@ -93,6 +97,7 @@ assistants:
 | `providers.<id>.baseUrl` | no | Base URL override. |
 | `providers.<id>.options` | no | Passthrough opts spread into the AI-SDK factory. |
 | `providers.<id>.models` | yes | Models exposed by this provider. |
+| `providers.<id>.contextWindows` | no | Per-model max input tokens (e.g. `{ "gpt-4o": 128000 }`) — drives the composer's context-usage gauge; omit a model to show only its token count. |
 | `ui` | no | Global composer placeholder + starter suggestions. |
 | `profiles.<id>.title` | yes | Display name. |
 | `profiles.<id>.description` | no | Shown in the picker / detail modal. |

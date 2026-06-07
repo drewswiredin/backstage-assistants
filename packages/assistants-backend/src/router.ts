@@ -161,8 +161,7 @@ const TITLE_SYSTEM_PROMPT =
  *
  * Scope: gated to the `anthropic` provider only — it must not run for other
  * providers. Remove this once the backend is bumped past an `@ai-sdk/anthropic`
- * release that fixes the round-trip. See the upstream tracking issue:
- *   https://github.com/vercel/ai/issues/  (tool-call args round-trip; Anthropic)
+ * release that fixes the Anthropic tool-call args round-trip upstream.
  */
 function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
   const coerce = (value: unknown): unknown => {
@@ -542,7 +541,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       onAbort: () => {
         // Explicit Stop: the model has stopped generating. Release MCP, clear the
         // working indicator, and drop the abort handle. The user message stays
-        // persisted (turn start); the partial reply is not persisted.
+        // persisted (turn start); the partial reply is persisted on finish,
+        // stamped metadata.canceled (see onFinish below).
         void mcp.close();
         if (threadId) {
           turnAborts.delete(threadId);
@@ -650,9 +650,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         // If this turn was aborted via Stop, mark the (partial) assistant reply
         // so ANY client that loads it later shows a "Canceled" indicator instead
         // of an ambiguous half-finished turn. The flag rides in the message's
-        // metadata, which round-trips through assistant-ui's history load. This
-        // is distinct from an error (which sets an `incomplete/error` status):
-        // the signal is aborted ONLY when the cancel route fired.
+        // metadata, which round-trips through assistant-ui's history load.
+        // Distinct from an error: errors surface via the streamed error part
+        // (the client renders them), not a metadata flag — the abort signal is
+        // set ONLY when the cancel route fired.
         if (turnAbort.signal.aborted && finalMessages.length > 0) {
           const last = finalMessages[finalMessages.length - 1];
           if (last.role === 'assistant') {

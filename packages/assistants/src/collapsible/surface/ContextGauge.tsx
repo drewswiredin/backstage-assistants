@@ -4,8 +4,8 @@
  * unknown (no `contextWindow` configured), the ring stays an empty track and the
  * readout shows `used / —` (no percentage).
  *
- * Token counts come from the official `useThreadTokenUsage()` hook upstream; this
- * component is purely presentational.
+ * Token counts are passed in via props — server-derived from GET /threads/status
+ * (assistant-ui's transport drops live usage metadata). Purely presentational.
  */
 import { Box, CircularProgress, Tooltip, Typography } from '@material-ui/core';
 import { makeStyles, useTheme } from '@material-ui/core/styles';

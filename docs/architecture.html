@@ -310,6 +310,7 @@ sequenceDiagram
         <p class="note">
           <b>Adapters (the only glue).</b> <code>RemoteThreadListAdapter</code> backs the thread list (list / create / rename / archive / delete / title) over <code>/threads</code>; <code>ThreadHistoryAdapter</code> loads a thread's messages over <code>/threads/:id/messages</code>. Message <i>writes</i> are not a client concern — the server persists the user message at turn start and the full turn on finish (§3). <code>useRemoteThreadListRuntime</code> provides the switcher, active-thread state, and (de)serialization for free.
           <br/><b>Unread</b> is server-computed (<code>updated_at</code> vs <code>last_read_at</code>) and surfaced through thread metadata — no client-side unread store.
+          <br/><b>Metadata edits don't touch <code>updated_at</code>.</b> Rename / model / pin / archive update only their own fields; <code>updated_at</code> moves solely when a turn lands (<code>replaceMessages</code>). So it tracks activity + recency, not edits — editing a conversation never falsely marks it unread or reorders the list.
         </p>
       </section>
 
