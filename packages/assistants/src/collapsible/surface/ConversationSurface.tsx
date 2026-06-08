@@ -186,16 +186,27 @@ const useStyles = makeStyles(theme => ({
   // Two-level composer: full-width input on top; a second row with attachments
   // on the left and the context gauge + send/stop on the right. Keeps the stock
   // `aui-composer-root` border + focus glow (withDefaults merges classNames).
+  //
+  // The `&&` doubles the generated class selector (→ 0,2,0 specificity) so these
+  // overrides beat the stock `.aui-composer-root` / `.aui-composer-input` rules
+  // (0,1,0) REGARDLESS of stylesheet injection order. Without it the two rules
+  // tie, and on hosts where the vendored assistant-ui CSS is injected after our
+  // makeStyles, the stock `align-items: flex-end` wins — collapsing the textarea
+  // to its default width and floating it right (the layout looks broken).
   composerRoot: {
-    flexDirection: 'column',
-    flexWrap: 'nowrap',
-    alignItems: 'stretch',
+    '&&': {
+      flexDirection: 'column',
+      flexWrap: 'nowrap',
+      alignItems: 'stretch',
+    },
   },
   composerInput: {
     // A touch taller so the input reads as a full first row.
-    minHeight: 44,
-    paddingTop: theme.spacing(1.25),
-    paddingBottom: theme.spacing(1),
+    '&&': {
+      minHeight: 44,
+      paddingTop: theme.spacing(1.25),
+      paddingBottom: theme.spacing(1),
+    },
   },
   composerRow2: {
     display: 'flex',
