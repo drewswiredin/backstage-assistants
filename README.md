@@ -1,11 +1,51 @@
-# Backstage AI Assistants
+# AI Assistants for Backstage
 
-A polished, configurable AI chat experience for Backstage. Define assistants in
-`app-config.yaml` — each with its own system prompt, tool allowlist, model
-allowlist, access policy, and color — and users chat with them in a collapsible,
-multi-conversation UI: streaming responses, tool calls, Markdown/Mermaid,
-per-conversation model selection, and background (concurrent) conversations with
-unread indicators.
+Configurable, in-portal AI assistants for Backstage whose tools are your
+Backstage actions, run as the signed-in user. Define assistants in
+`app-config.yaml`, give each its own tools, models, and prompt, and chat with
+them in a collapsible, multi-conversation panel.
+
+It aims to be the most complete open-source AI chat plugin for Backstage — the
+alternatives today are either minimal or hosted and paid.
+
+## Features
+
+- **Multiple assistants** — defined in `app-config.yaml`, each with its own
+  allowed tools, allowed models, system prompt, access policy, and color.
+- **Concurrent conversations** — many streaming conversations across many
+  assistants at once; switch between conversations and assistants without
+  interrupting a reply in flight.
+- **Actions as tools, run as the requesting user** — every registered Backstage
+  action is available to an assistant and executes with the caller's own
+  credentials, so Backstage permissions apply unchanged. External MCP servers
+  can be added as tools too.
+- **Tool approval** — any tool can require an explicit Allow / Deny in the chat
+  before it runs; with per-tool "always allow" and one-click batch approval.
+- **Server-side conversations + live resume** — persisted per user; a reply
+  keeps running if you navigate away and rejoins the stream when you return.
+- **Notifications** — working (reply in flight) and unread indicators, per
+  conversation and per assistant.
+- **Generative UI** — an assistant can render an interactive form inline
+  (reusing Backstage scaffolder field pickers) to collect structured input.
+- **Polished chat UI** — streaming, Markdown + Mermaid, message branching,
+  per-conversation model selection, a context-usage gauge, and per-assistant
+  color (hex, from config).
+
+## Approach
+
+We set out to build a robust, full-featured multi-assistant chat plugin for
+Backstage by stitching prebuilt packages together — **glue, not build**. It
+wires [assistant-ui](https://www.assistant-ui.com/) (chat UI + runtime), the
+[Vercel AI SDK](https://sdk.vercel.ai/) (model + tool loop), and Backstage
+(identity, the Actions registry, database, signals) with thin glue; the
+capabilities are the libraries'.
+
+No spec, no ADRs — the design lives in two living diagrams and a short set of
+decision principles, updated alongside the code:
+
+- [Architecture](docs/architecture.html)
+- [Configuration flow](docs/config-flow.html)
+- [Principles](docs/PRINCIPLES.md)
 
 ## Packages
 
@@ -15,45 +55,8 @@ unread indicators.
 | [`@drewswiredin/backstage-plugin-assistants-backend`](packages/assistants-backend) | Backend plugin |
 | [`@drewswiredin/backstage-plugin-assistants-common`](packages/assistants-common) | Shared browser-safe types |
 
-## Installing into a Backstage app
-
-See the **[frontend plugin README](packages/assistants/README.md)** for the full
-install + wiring guide, and the
-**[backend plugin README](packages/assistants-backend/README.md)** for the
-complete configuration reference. In short:
-
-```bash
-yarn --cwd packages/app add @drewswiredin/backstage-plugin-assistants
-yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backend
-```
-
-```ts
-// packages/app/src/App.tsx
-import assistantsPlugin from '@drewswiredin/backstage-plugin-assistants/alpha';
-export default createApp({ features: [assistantsPlugin /* ... */] });
-
-// packages/backend/src/index.ts
-backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
-```
-
-Then add an `assistants:` block to `app-config.yaml` and set your provider key
-(e.g. `OPENROUTER_API_KEY`). The "Assistants" nav item registers automatically.
-
-## Repository layout
-
-This is a Yarn workspaces monorepo containing the three plugin packages plus a
-co-located demo app (`packages/app`) and backend (`packages/backend`) used for
-local development.
-
-## Local development
-
-```bash
-yarn install
-OPENROUTER_API_KEY=sk-or-... yarn start
-```
-
-This boots the demo app + backend with the plugin wired in. The key is read from
-your environment (or a gitignored `.env`) — never commit it.
+Install + wiring: [frontend README](packages/assistants/README.md). Full
+configuration reference: [backend README](packages/assistants-backend/README.md).
 
 ## License
 
