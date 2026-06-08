@@ -4715,7 +4715,6 @@ __metadata:
     "@material-ui/icons": "npm:^4.11.3"
     "@remixicon/react": "npm:^4.5.0"
     "@rjsf/core": "npm:^5.24.0"
-    "@rjsf/material-ui": "npm:^5.24.0"
     "@rjsf/utils": "npm:^5.24.0"
     "@rjsf/validator-ajv8": "npm:^5.24.0"
     "@types/react": "npm:^18.0.0"
@@ -9725,7 +9724,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/material-ui@npm:5.24.13, @rjsf/material-ui@npm:^5.24.0":
+"@rjsf/material-ui@npm:5.24.13":
   version: 5.24.13
   resolution: "@rjsf/material-ui@npm:5.24.13"
   peerDependencies:

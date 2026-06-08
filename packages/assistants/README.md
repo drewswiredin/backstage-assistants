@@ -56,6 +56,14 @@ The page mounts at `/assistants`.
 > Using a custom `NavContentBlueprint` to lay out your sidebar? The plugin's nav
 > entry has the id `page:assistants` — `take()` it to place it yourself.
 
+> **Interactive forms & scaffolder pickers (optional).** Assistants can render
+> inline RJSF forms (the `render_form` tool) for human-in-the-loop input. Those
+> forms reuse Backstage **scaffolder field extensions** (owner / entity / repo
+> pickers, plus any custom field), resolved at runtime from the app. If
+> `@backstage/plugin-scaffolder` is registered (it is under feature discovery /
+> `app.packages: all`), those pickers populate from the catalog; without it,
+> forms still render with plain inputs. No extra wiring is required.
+
 ## Wire up the backend
 
 ```ts

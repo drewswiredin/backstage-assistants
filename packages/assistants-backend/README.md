@@ -105,6 +105,7 @@ assistants:
 | `profiles.<id>.prompt` | yes | System prompt (backend-only). |
 | `profiles.<id>.access` | yes | `allowAuthenticated` and/or `users` / `groups` entity refs. |
 | `profiles.<id>.actions` | no | Tool allowlist (action names), or `'*'`. |
+| `profiles.<id>.requireApproval` | no | Tool names that must be confirmed (Allow/Deny in chat) before they run — see [Human-in-the-loop](#human-in-the-loop-approvals--forms). |
 | `profiles.<id>.models` | no | Per-profile model allowlist (subset of pool). |
 | `profiles.<id>.defaultModel` | conditional | Required if the allowlist excludes the global `defaultModel`. |
 | `profiles.<id>.ui` | no | Per-profile UI overrides. |
@@ -302,6 +303,49 @@ shared server connection. Applied to both `/chat` and the `/status` tool listing
 Notes: tool listings for `/status` are cached briefly; a server that's
 unreachable is logged and skipped (it never breaks a turn or `/status`).
 Connections are opened per turn and closed when the response finishes.
+
+## Human-in-the-loop (approvals & forms)
+
+Two ways a turn pauses for the user instead of running autonomously. Both are
+enforced in the model loop, not requested of the model.
+
+### Approval gate (`requireApproval`)
+
+List tool names in a profile's `requireApproval` and they are gated behind an
+explicit **Allow / Deny** in the chat before they ever run:
+
+```yaml
+profiles:
+  devops:
+    title: DevOps Assistant
+    access: { groups: [group:default/platform] }
+    actions: [get-catalog-entity, register-entity, unregister-entity, execute-template]
+    requireApproval: # confirmed before running; read-only tools above are not gated
+      - register-entity
+      - unregister-entity
+      - execute-template
+```
+
+For each listed tool the backend sets the AI SDK's `needsApproval` flag, so
+`streamText` emits an approval request and **skips the tool's execution** until
+the user answers — Allow runs it (under the same run-as-user identity), Deny
+returns an `execution-denied` result to the model. This is deterministic and
+code-enforced: it does not depend on the model choosing to ask. Names match
+`actions` entries (or namespaced `<server>__<tool>` MCP tools); a name not in the
+assistant's tool set is logged and ignored. It's a confirmation checkpoint,
+**orthogonal to authorization** — Backstage's per-user permissions still apply
+when an approved action invokes.
+
+### Interactive forms (`render_form`)
+
+The model can render an inline RJSF form instead of asking a string of questions
+in chat — useful for structured, multi-field, or multiple-choice input. It's a
+built-in **client-side** tool (always available, no config); the user fills and
+submits, and the values flow back as the tool result. Forms render Backstage
+**scaffolder field extensions** (owner / entity / repo pickers, plus any custom
+field the host app has registered) resolved at runtime, so the model can reuse a
+scaffolder template's parameter block verbatim. See the
+[architecture §4](../../docs/architecture.html#hitl).
 
 ## Security
 

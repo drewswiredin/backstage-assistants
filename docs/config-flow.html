@@ -91,7 +91,7 @@ flowchart LR
     PROV["providers.{id}<br/>type · apiKey* · baseUrl · options · models[] · contextWindows"]
     MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*"]
     UIG["ui (global defaults)<br/>composer.placeholder · suggestions[]"]
-    PROF["profiles.{id} — many<br/>title · description · color · prompt* · access*<br/>actions[] · mcpServers[] · models[] · defaultModel · ui"]
+    PROF["profiles.{id} — many<br/>title · description · color · prompt* · access*<br/>actions[] · requireApproval[] · mcpServers[] · models[] · defaultModel · ui"]
   end
 
   subgraph BE["backend — config.d.ts + readConfig()"]
@@ -102,7 +102,7 @@ flowchart LR
   end
 
   STATUS["GET /status — browser-safe<br/>profiles[ id · title · description · color · models · defaultModel · ui · tools[] ]"]
-  CHAT["POST /chat — backend applies<br/>system = prompt · tools = Actions(as user) + MCP(as configured)"]
+  CHAT["POST /chat — backend applies<br/>system = prompt · tools = Actions(as user) + MCP(as configured)<br/>gate: requireApproval → needsApproval (Allow/Deny before run)"]
 
   subgraph FE["browser — usePluginStatus"]
     direction TB
@@ -212,7 +212,19 @@ assistants:
       access: { groups: [group:default/platform] }     <span class="c"># *</span>
       actions: [search-techdocs, read-techdocs]
       models: [openai:gpt-4o-mini]      <span class="c"># optional allowlist (subset of pool; omit = full pool)</span>
-      defaultModel: openai:gpt-4o-mini  <span class="c"># required when the allowlist excludes the global default</span></pre>
+      defaultModel: openai:gpt-4o-mini  <span class="c"># required when the allowlist excludes the global default</span>
+
+    devops:                             <span class="c"># write-capable assistant with a human checkpoint</span>
+      title: DevOps Assistant
+      color: "#e3a008"
+      prompt: |
+        <span class="s">…</span>
+      access: { groups: [group:default/platform] }     <span class="c"># *</span>
+      actions: [get-catalog-entity, register-entity, unregister-entity, execute-template]
+      requireApproval:                  <span class="c"># deterministic Allow/Deny in chat before these run</span>
+        - register-entity               <span class="c"># names match `actions` (or namespaced MCP tools)</span>
+        - unregister-entity             <span class="c"># read-only tools above are NOT gated</span>
+        - execute-template</pre>
         </div>
         <p class="note"><b>No <code>assistants.database</code> key.</b> Conversation persistence uses Backstage's standard <code>backend.database</code> — the same database the catalog and search already require. No operator action beyond having one configured. <b>No <code>theme</code> key</b> — see §4.</p>
       </section>
@@ -231,6 +243,7 @@ assistants:
             <tr><td class="k">profiles.*.prompt</td><td><span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code></td></tr>
             <tr><td class="k">profiles.*.access</td><td><span class="tag secret">backend</span></td><td>access gate — <code>/status</code> filter, <code>/chat</code> + <code>/title</code>, and <code>/threads</code> list/status filter + <code>POST /threads</code></td></tr>
             <tr><td class="k">profiles.*.actions[]</td><td><span class="tag secret">backend</span></td><td>Action tool allowlist at <code>/chat</code> (run as user)</td></tr>
+            <tr><td class="k">profiles.*.requireApproval[]</td><td><span class="tag secret">backend</span></td><td>tools gated behind an Allow/Deny prompt — sets the AI SDK <code>needsApproval</code> flag at <code>/chat</code> (see <a href="architecture.html#hitl">architecture §4</a>)</td></tr>
             <tr><td class="k">profiles.*.mcpServers[]</td><td><span class="tag secret">backend</span></td><td>MCP tool selection at <code>/chat</code> (run as configured)</td></tr>
             <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code> (default 10)</td></tr>
             <tr><td class="k">toolResultMaxChars</td><td><span class="tag secret">backend</span></td><td>cap per tool result — head+tail truncate at the tool boundary (default 30000, <code>0</code> off)</td></tr>
@@ -255,6 +268,8 @@ assistants:
             <li><b>Block shape</b> — <code>assistants.profiles.{id}</code>: global settings + a named map of profiles, one per assistant.</li>
             <li><b>Providers</b> — a <code>type</code> discriminator selects the <code>@ai-sdk/*</code> factory; <code>options</code> is spread verbatim; the union of all <code>models</code> is the pool; a model id is <code>&lt;providerId&gt;:&lt;model&gt;</code>.</li>
             <li><b>MCP</b> — <code>assistants.mcp.servers.{id}</code> defines connections; profiles opt in via <code>mcpServers: [{ server, tools? }]</code>. Each server uses one static credential (<code>headers</code> / <code>env</code>) — a shared identity, not run-as-user.</li>
+            <li><b>Approval gate</b> — per-profile <code>requireApproval: [toolName…]</code> lists tools that must be confirmed before they run. The backend sets the AI SDK <code>needsApproval</code> flag, so execution pauses for an Allow/Deny in chat — deterministic, enforced in the loop, not prompt-driven. Names match <code>actions</code> entries (or namespaced MCP tools); a name not in the assistant's tool set is logged and ignored. Orthogonal to <code>access</code>/authorization — it withholds execution, it does not grant it (<a href="architecture.html#hitl">architecture §4</a>).</li>
+            <li><b>Interactive forms need no config</b> — the <code>render_form</code> tool is always available to the model (a client-side tool resolved in the browser); there is no config key for it. It renders any scaffolder field extension the host app has registered (<a href="architecture.html#hitl">architecture §4</a>).</li>
             <li><b>Models</b> — global pool + optional per-profile <code>models</code> allowlist (subset of pool; omit = all) + per-profile <code>defaultModel</code>. A profile's effective default must lie within its allowlist. Optional per-provider <code>contextWindows: { &lt;model&gt;: tokens }</code> rides through to <code>models[].contextWindow</code> (browser-safe) to drive the composer's context-usage gauge; omit a model to leave its limit unknown.</li>
             <li><b>UI merge</b> — <code>deepMerge(global ui, profile.ui)</code>: objects deep-merge, arrays replace (so a profile can clear inherited values). Welcome text is derived from <code>title</code> / <code>description</code>.</li>
             <li><b>Theme</b> — one built-in palette that follows Backstage light/dark automatically. Not configurable, by design.</li>

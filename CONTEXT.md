@@ -32,6 +32,14 @@ What the model actually receives for a request = `Allowlist ∩ actions the call
 **Two gates**:
 The two independent authorization checks. (1) The Assistant **Allowlist** — what this Assistant may offer. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every tool runs as the user.
 
+**Approval gate**:
+A per-Assistant allowlist (`requireApproval[]`) of tool names that must be confirmed — an explicit Allow/Deny in chat — before they run. Sets the AI SDK `needsApproval` flag so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
+_Avoid_: treating it as authorization (it is a checkpoint, not a permission)
+
+**Interactive form** (`render_form`):
+A client-side tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No server `execute`: the model composes the form (JSON Schema + uiSchema), the surface renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. The in-plugin generative UI, distinct from the broader **gen-ui library**.
+_Avoid_: a bespoke form widget — it reuses scaffolder's fields
+
 **Conversation**:
 A single chat session with one Assistant — its ordered messages. The user-facing term. Owned by exactly one Assistant; ownership is immutable (a conversation can never move to another Assistant). Persists server-side in the plugin's own database, scoped to the owning user, and reaches the browser only through assistant-ui's remote thread-list + history adapters — the frontend is a pure view, holding no conversation state of its own. Lists are siloed per Assistant — no unified cross-Assistant view.
 _Avoid_: Chat, Session (as a noun for stored history)
@@ -50,7 +58,7 @@ A `<providerId>:<model>` string (e.g. `myAzure:gpt-4o`, `openrouter:anthropic/cl
 The union of every Provider's `models[]`. The global set of selectable models; an Assistant's `models[]` allowlist is a subset of it.
 
 **Conversation surface**:
-The inner chat component — message list, composer, tool-call rendering, and (later) generative UI. It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its **own** surface in-repo (seeded from the assistant-ui registry template); gen-ui owns a parallel one. They are kept swappable by the **surface seam**, not a shared dependency. Distinct from the **chrome**.
+The inner chat component — message list, composer, tool-call rendering, approval Allow/Deny, and generative UI (interactive RJSF forms). It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its **own** surface in-repo (seeded from the assistant-ui registry template); gen-ui owns a parallel one. They are kept swappable by the **surface seam**, not a shared dependency. Distinct from the **chrome**.
 _Avoid_: chat window (ambiguous — say "surface" for the replaceable unit, "chrome" for the frame)
 
 **Surface seam**:

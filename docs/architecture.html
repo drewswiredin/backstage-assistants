@@ -73,9 +73,10 @@
       <a href="#stack">1 · stack</a>
       <a href="#components">2 · components &amp; wiring</a>
       <a href="#chat">3 · chat turn</a>
-      <a href="#identity">4 · identity &amp; authorization</a>
-      <a href="#persistence">5 · persistence &amp; data model</a>
-      <a href="#notifications">6 · notifications &amp; live streaming</a>
+      <a href="#hitl">4 · human-in-the-loop &amp; generative UI</a>
+      <a href="#identity">5 · identity &amp; authorization</a>
+      <a href="#persistence">6 · persistence &amp; data model</a>
+      <a href="#notifications">7 · notifications &amp; live streaming</a>
     </nav>
 
     <main>
@@ -90,7 +91,12 @@
             <tr>
               <td class="k">Chat UI</td>
               <td class="k">@assistant-ui/react · -ai-sdk · -markdown · -ui</td>
-              <td>Prebuilt thread, composer, markdown, reasoning &amp; tool-call rendering, Mermaid. Owns the one multi-conversation, multi-agent runtime.</td>
+              <td>Prebuilt thread, composer, markdown, reasoning &amp; tool-call rendering, Mermaid. Owns the one multi-conversation, multi-agent runtime. Native tool-approval gate (<code>respondToApproval</code>).</td>
+            </tr>
+            <tr>
+              <td class="k">Interactive forms</td>
+              <td class="k">@rjsf/* · @backstage/plugin-scaffolder-react</td>
+              <td>RJSF forms rendered inline in chat for human-in-the-loop input; scaffolder field extensions (owner / entity / repo pickers, plus app-custom fields) resolved at runtime from the app's registry. See §4.</td>
             </tr>
             <tr>
               <td class="k">Model loop</td>
@@ -133,7 +139,7 @@ flowchart TB
   subgraph FE["Frontend plugin · packages/assistants (browser)"]
     direction TB
     CHROME["Backstage chrome<br/>assistant rail · conversation list · model picker"]
-    SURF["assistant-ui surface<br/>Thread: 2-level composer (+ context-usage gauge) · markdown · tool calls · mermaid"]
+    SURF["assistant-ui surface<br/>Thread: 2-level composer (+ context-usage gauge) · markdown · tool calls · mermaid<br/>interactive RJSF forms (render_form) · tool-approval Allow/Deny"]
     RUNTIME["Runtime — ONE per tab, all agents &amp; conversations<br/>useRemoteThreadListRuntime (no remount on agent/convo switch)<br/>RemoteThreadListAdapter · ThreadHistoryAdapter (load-only)<br/>per-thread: useChat + useAISDKRuntime · resumable transport"]
     CHROME --> SURF --> RUNTIME
   end
@@ -144,7 +150,7 @@ flowchart TB
     GATE{"Identity + access<br/>httpAuth · userInfo · access policy"}
     CONFIG["readConfig()<br/>providers · profiles · mcp · ui"]
     ASM["Tool assembly<br/>Actions ∩ user · MCP allowlist"]
-    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps · abortSignal (Stop)<br/>cap tool results · consumeStream · usage metadata · persist on start + finish"]
+    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps · abortSignal (Stop)<br/>needsApproval gate · client-side render_form yields to UI<br/>cap tool results · consumeStream · usage metadata · persist on start + finish"]
     THREADS["ThreadService<br/>Knex over DatabaseService"]
     RESUME["Resumable buffer<br/>in-memory · live resume"]
     ROUTER --> GATE --> ASM --> LOOP
@@ -201,7 +207,7 @@ flowchart TB
             <span><span class="sw line dash"></span>config / derived</span>
           </div>
         </div>
-        <p class="note"><b>One tool set, two identities.</b> The loop receives Backstage Actions and MCP tools as a single tool list, but they execute under different credentials — see §4.</p>
+        <p class="note"><b>One tool set, two identities.</b> The loop receives Backstage Actions and MCP tools as a single tool list, but they execute under different credentials — see §5. A tool may also pause for the user before running — see §4.</p>
       </section>
 
       <!-- 3 · CHAT TURN --------------------------------------------------- -->
@@ -247,12 +253,58 @@ sequenceDiagram
         <p class="note"><b>Thread lifecycle (separate from a turn).</b> On mount the runtime loads the list (<code>GET /threads</code> — every conversation across all agents, filtered to ones the caller can access) and the active thread's messages (<code>GET /threads/:id/messages</code>); selecting a thread marks it read (<code>POST /threads/:id/read</code>). Create / rename / archive / delete are REST calls through the <code>RemoteThreadListAdapter</code>. <b>New conversations are created only via "+"</b> (typing never forks) — a bare agent with no conversation shows an empty state; deleting the active conversation lands on the agent's most-recent remaining chat, else that empty state. The browser keeps no conversation state of its own.</p>
         <p class="note"><b>Oversized tool results are capped.</b> A tool result longer than <code>toolResultMaxChars</code> (default 30000) is truncated head+tail with an elision marker at the tool boundary — on both the success and error paths — so one huge result can't overflow the context window or bloat the stored turn; the model is told it was truncated and can refine. <b>Failures surface.</b> When a turn errors (e.g. an over-long prompt), the AI SDK streams the real message as an error part and the UI shows it — not a generic notice.</p>
         <p class="note"><b>Stop cancels the turn.</b> The composer Stop posts <code>POST /chat/cancel/:threadId</code>, which aborts <i>this</i> turn's server-side <code>AbortController</code> (ownership-checked against the in-flight set). A bare disconnect does <b>not</b> abort — that means "navigate away / reload" and the turn keeps running for resume. On abort the partial reply is persisted and stamped <code>metadata.canceled</code>; the UI shows one neutral <b>"Request interrupted"</b> line — live (a client store keyed by message id) and durably on any client (the persisted flag).</p>
-        <p class="note"><b>Token usage rides the turn.</b> The final step's input+output tokens are attached to the assistant message (AI SDK <code>messageMetadata</code>) and recorded per thread; <code>GET /threads/status</code> returns the last turn's total as <code>tokens</code>, which the composer renders as a context-usage gauge against the model's configured <code>contextWindow</code> (§6). assistant-ui's transport drops live message metadata, so the server is the source of truth here.</p>
+        <p class="note"><b>Token usage rides the turn.</b> The final step's input+output tokens are attached to the assistant message (AI SDK <code>messageMetadata</code>) and recorded per thread; <code>GET /threads/status</code> returns the last turn's total as <code>tokens</code>, which the composer renders as a context-usage gauge against the model's configured <code>contextWindow</code> (§7). assistant-ui's transport drops live message metadata, so the server is the source of truth here.</p>
+        <p class="note"><b>A turn may pause for the user.</b> The loop above is the autonomous path. A tool call can instead render an interactive form or wait for explicit approval before running — both resolve back into this same turn. See §4.</p>
       </section>
 
-      <!-- 4 · IDENTITY ---------------------------------------------------- -->
+      <!-- 4 · HUMAN-IN-THE-LOOP & GENERATIVE UI --------------------------- -->
+      <section id="hitl">
+        <h2><span class="n">4</span>Human-in-the-loop &amp; generative UI</h2>
+        <p class="lead">Two ways a tool call pauses for the user instead of running autonomously — both are assistant-ui rendering a tool-call part inline and feeding the answer back into the <i>same</i> turn. Neither depends on the model choosing to ask: the pause is enforced in the loop.</p>
+        <div class="frame">
+          <div class="diagram">
+            <pre class="mermaid">
+flowchart TB
+  CALL["model emits a tool call"]
+  Q1{"client-side tool?<br/>(no server execute)"}
+  Q2{"needsApproval?<br/>(profile requireApproval)"}
+  FORM["render_form — render RJSF inline<br/>scaffolder Form + field-extension registry"]
+  SUBMIT["user fills + submits, or cancels / ignores"]
+  RES["addResult → tool result (or dismissed)"]
+  GATE["tool-approval-request<br/>SDK SKIPS execute"]
+  DECIDE{"user decides"}
+  RUN["execute — as the user / as configured"]
+  DENY["execution-denied → model"]
+  OUT["result in context · turn auto-resumes (sendAutomaticallyWhen)"]
+
+  CALL --> Q1
+  Q1 -->|"yes · render_form"| FORM --> SUBMIT --> RES --> OUT
+  Q1 -->|"no"| Q2
+  Q2 -->|"gated"| GATE --> DECIDE
+  DECIDE -->|"Allow"| RUN --> OUT
+  DECIDE -->|"Deny"| DENY --> OUT
+  Q2 -->|"normal"| RUN --> OUT
+
+  classDef plugin fill:#e7f3f2,stroke:#0b6b6b,color:#10312f;
+  classDef gate fill:#ffffff,stroke:#0b6b6b,color:#10312f;
+  class CALL,FORM,SUBMIT,RES,GATE,RUN,DENY,OUT plugin;
+  class Q1,Q2,DECIDE gate;
+            </pre>
+          </div>
+          <div class="legend">
+            <span><span class="sw plugin"></span>this plugin / surface</span>
+            <span><span class="sw gate"></span>decision point</span>
+            <span>both paths feed the result back into the same turn</span>
+          </div>
+        </div>
+        <p class="note"><b>Interactive forms — <code>render_form</code>.</b> A <b>client-side tool</b>: declared with a schema but <b>no server <code>execute</code></b>, so <code>streamText</code> emits the call and yields to the browser. The surface renders it inline (<code>makeAssistantToolUI</code>) through scaffolder's own RJSF <code>&lt;Form&gt;</code>, fed the live field-extension registry from <code>formFieldsApiRef.loadFormFields()</code> — so any built-in or app-registered scaffolder picker (<code>OwnerPicker</code>, <code>EntityPicker</code>, <code>RepoUrlPicker</code>, …) renders by name, with no per-field code here. <code>ui:*</code> keys embedded in the schema (the scaffolder-template convention) are hoisted into the uiSchema via scaffolder's <code>extractSchemaFromStep</code>, so a template's parameter block works verbatim. The user's submit becomes the tool result via <code>addResult</code> and the turn auto-resumes; cancelling — or ignoring the form and sending a new message — resolves it as <i>dismissed</i>, never as a value. Use it whenever structured / multi-field / multiple-choice input beats a bulleted question in chat.</p>
+        <p class="note"><b>Deterministic approval gate — <code>requireApproval</code>.</b> A per-profile allowlist of tool names that must be confirmed before they run. For each, the backend sets the AI SDK's <code>needsApproval</code>; the SDK then emits a <code>tool-approval-request</code> and <b>skips the tool's <code>execute</code></b> until the user answers. The surface shows an <b>Allow / Deny</b> card with the exact tool input (<code>respondToApproval</code>, bridged to the SDK's <code>addToolApprovalResponse</code> by <code>useAISDKRuntime</code>); <b>Allow</b> runs the action server-side under its normal identity, <b>Deny</b> returns an <code>execution-denied</code> result to the model. The gate is enforced in the loop — not a prompt the model can route around — and is <b>orthogonal to authorization</b> (§5): it is a human checkpoint, while Backstage's per-user permissions still apply when an approved Action invokes. Names not in the assistant's tool set are logged and skipped.</p>
+        <p class="note"><b>Both resume the same turn.</b> The form result and the approval response are written onto the latest assistant step; the composer's <code>sendAutomaticallyWhen</code> flushes once that step is fully settled (every tool part submitted or approved/denied) and at least one is a client-driven resolution — so a <i>server</i> tool truncated at <code>maxSteps</code> is never auto-resumed. The model then continues with the new tool results in context.</p>
+      </section>
+
+      <!-- 5 · IDENTITY ---------------------------------------------------- -->
       <section id="identity">
-        <h2><span class="n">4</span>Identity &amp; authorization</h2>
+        <h2><span class="n">5</span>Identity &amp; authorization</h2>
         <p class="lead">The trust model. Tools reach the model from two sources with two different identities — this is the single most important property to get right.</p>
         <div class="frame">
           <table>
@@ -272,12 +324,13 @@ sequenceDiagram
         <p class="note">
           <b>Deny by default.</b> Omitting an Action allowlist yields no Action tools; omitting <code>mcpServers</code> yields no MCP tools. The <code>access</code> policy gates whether a user may use the assistant at all.
           <br/><b>Consequence.</b> A low-privilege user chatting with an assistant wired to a powerful MCP server gets that server's full configured access — Backstage's per-user permissions do not apply on the MCP path. Choose MCP servers and the scope of their credentials deliberately.
+          <br/><b>Approval is a separate axis.</b> A profile's <code>requireApproval</code> list (§4) adds an orthogonal human checkpoint <i>before</i> a tool runs — it never grants access, it withholds execution pending an explicit Allow. Pair it with the MCP path above when a shared-credential tool warrants a per-call confirmation.
         </p>
       </section>
 
-      <!-- 5 · PERSISTENCE ------------------------------------------------- -->
+      <!-- 6 · PERSISTENCE ------------------------------------------------- -->
       <section id="persistence">
-        <h2><span class="n">5</span>Persistence &amp; data model</h2>
+        <h2><span class="n">6</span>Persistence &amp; data model</h2>
         <p class="lead">Conversations live server-side, scoped to their owner. The frontend is a pure view through two assistant-ui adapters; the server is the single source of truth and the only writer of messages.</p>
         <div class="cols">
           <div class="frame">
@@ -314,9 +367,9 @@ sequenceDiagram
         </p>
       </section>
 
-      <!-- 6 · NOTIFICATIONS & LIVE STREAMING ------------------------------ -->
+      <!-- 7 · NOTIFICATIONS & LIVE STREAMING ------------------------------ -->
       <section id="notifications">
-        <h2><span class="n">6</span>Notifications &amp; live streaming</h2>
+        <h2><span class="n">7</span>Notifications &amp; live streaming</h2>
         <p class="lead">Parallel background conversations across assistants. Every indicator is a pure derivation of one server snapshot (<code>GET /threads/status</code>); Signals just invalidate it. An in-memory, thread-keyed resumable stream lets you rejoin a generation you stepped away from.</p>
         <div class="cols">
           <div class="frame">
