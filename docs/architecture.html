@@ -90,41 +90,47 @@
             <tr><th>Layer</th><th>Packages</th><th>Role</th></tr>
             <tr>
               <td class="k">Chat UI</td>
-              <td class="k">@assistant-ui/react · -ai-sdk · -markdown · -ui</td>
-              <td>Prebuilt thread, composer, markdown, reasoning &amp; tool-call rendering, Mermaid. Owns the one multi-conversation, multi-agent runtime. Native tool-approval gate (<code>respondToApproval</code>).</td>
+              <td class="k">@assistant-ui/react · -react-ai-sdk · -react-ui · -react-markdown · -core</td>
+              <td>Prebuilt thread / composer / branching, message + tool-call rendering, and the single multi-conversation, multi-agent runtime (<code>useRemoteThreadListRuntime</code>). The AI-SDK bridge (<code>useAISDKRuntime</code>, <code>AssistantChatTransport</code>) and native tool-approval gate (<code>respondToApproval</code>) live here. Our surface is <b>seeded from assistant-ui's prebuilt <code>&lt;Thread&gt;</code></b> (the <code>-react-ui</code> registry template) and vendored in-repo so it stays editable.</td>
             </tr>
             <tr>
-              <td class="k">Interactive forms</td>
-              <td class="k">@rjsf/* · @backstage/plugin-scaffolder-react</td>
-              <td>RJSF forms rendered inline in chat for human-in-the-loop input; scaffolder field extensions (owner / entity / repo pickers, plus app-custom fields) resolved at runtime from the app's registry. See §4.</td>
-            </tr>
-            <tr>
-              <td class="k">Model loop</td>
+              <td class="k">Model + tool loop</td>
               <td class="k">ai (Vercel AI SDK) · @ai-sdk/react</td>
-              <td>Provider-agnostic <code>streamText</code> tool loop, streaming, server-side persistence hooks.</td>
+              <td>Provider-agnostic <code>streamText</code> tool loop, token streaming, resumable UI-message stream, the <code>needsApproval</code> approval gate, and server-side persistence hooks; <code>useChat</code> drives the client.</td>
             </tr>
             <tr>
               <td class="k">Providers</td>
-              <td class="k">@ai-sdk/openai · anthropic · azure</td>
-              <td>Model connections; their union is the model pool.</td>
+              <td class="k">@ai-sdk/openai · -anthropic · -azure</td>
+              <td>Model connections — including OpenAI-compatible gateways (e.g. OpenRouter) through the <code>openai</code> factory; the union of their models is the pool.</td>
+            </tr>
+            <tr>
+              <td class="k">Tools</td>
+              <td class="k">Backstage Actions registry (backend-plugin-api/alpha) · @modelcontextprotocol/sdk</td>
+              <td>In-process Backstage Actions (run as the user) + external MCP servers (run as a configured per-server identity), merged into one tool list for the loop. See §5.</td>
+            </tr>
+            <tr>
+              <td class="k">Interactive forms</td>
+              <td class="k">@rjsf/core · -utils · -validator-ajv8 · @backstage/plugin-scaffolder-react</td>
+              <td>Inline RJSF forms for human-in-the-loop input; scaffolder field extensions (owner / entity / repo pickers, plus app-custom fields) resolved at runtime from the app's registry. See §4.</td>
             </tr>
             <tr>
               <td class="k">Backend platform</td>
               <td class="k">@backstage/backend-plugin-api · backend-defaults · backend-openapi-utils</td>
-              <td>Plugin + router + core services (<code>database</code>, <code>httpAuth</code>, <code>userInfo</code>) + the Actions service (<code>actionsServiceRef</code>, from <code>backend-plugin-api/alpha</code>).</td>
-            </tr>
-            <tr>
-              <td class="k">Tools</td>
-              <td class="k">Backstage Actions registry · @modelcontextprotocol/sdk</td>
-              <td>In-process Actions (run as the user) + external MCP servers (run as configured).</td>
+              <td>Plugin + OpenAPI router + core services (<code>database</code>, <code>httpAuth</code>, <code>userInfo</code>) + the Actions service (<code>actionsServiceRef</code>, from <code>backend-plugin-api/alpha</code>).</td>
             </tr>
             <tr>
               <td class="k">Persistence</td>
               <td class="k">coreServices.database (Knex; SQLite dev / Postgres prod)</td>
               <td>Plugin-owned <code>threads</code> + <code>messages</code> tables, scoped per user.</td>
             </tr>
+            <tr>
+              <td class="k">Markdown &amp; diagrams</td>
+              <td class="k">@assistant-ui/react-markdown · remark-gfm · mermaid</td>
+              <td>GitHub-flavoured Markdown and inline Mermaid diagrams in assistant replies.</td>
+            </tr>
           </table>
         </div>
+        <p class="note"><b>Also load-bearing:</b> <code>@backstage/plugin-signals-{react,node}</code> for real-time push (working / unread, §7), <code>knex</code> for the SQL schema over <code>coreServices.database</code>, and <code>@material-ui/core</code> v4 throughout so the chat matches Backstage's component theme. The plugin itself is the thin glue between these packages; the capabilities are the libraries'.</p>
       </section>
 
       <!-- 2 · COMPONENTS -------------------------------------------------- -->
