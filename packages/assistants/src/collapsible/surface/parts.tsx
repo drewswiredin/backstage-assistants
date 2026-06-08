@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
-import { Box, CircularProgress, Collapse, Typography } from '@material-ui/core';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Collapse,
+  Typography,
+} from '@material-ui/core';
 import BlockIcon from '@material-ui/icons/Block';
 import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
 import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
@@ -110,6 +116,39 @@ const useStyles = makeStyles(theme => ({
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
   },
+  approvalCard: {
+    margin: theme.spacing(0.5, 0),
+    padding: theme.spacing(1.25, 1.5),
+    border: `1px solid ${theme.palette.warning?.main ?? '#e3a008'}`,
+    borderRadius: theme.shape.borderRadius,
+    backgroundColor:
+      theme.palette.type === 'dark'
+        ? 'rgba(227,160,8,0.10)'
+        : 'rgba(227,160,8,0.07)',
+    maxWidth: 560,
+  },
+  approvalHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    marginBottom: theme.spacing(0.75),
+    color: theme.palette.warning?.main ?? '#b07a05',
+    fontWeight: 600,
+  },
+  approvalActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(1.25),
+  },
+  approvalDenied: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    margin: theme.spacing(0.5, 0),
+    color: theme.palette.text.secondary,
+    fontSize: theme.typography.caption.fontSize,
+  },
 }));
 
 /** Format a byte count to a human-readable string. */
@@ -196,6 +235,8 @@ export function ToolFallback({
   args,
   result,
   status,
+  approval,
+  respondToApproval,
 }: ToolCallMessagePartProps) {
   const classes = useStyles();
   const theme = useTheme();
@@ -210,8 +251,71 @@ export function ToolFallback({
   const hasArgs = args !== undefined && args !== null;
   const hasResult = result !== undefined && result !== null;
 
+  // Deterministic approval gate. When the backend marked this tool
+  // `needsApproval`, the AI SDK pauses before executing and assistant-ui exposes
+  // a pending `approval` (approved === undefined). Show an Allow / Deny prompt —
+  // with the exact input the tool would run with — instead of the normal tool
+  // row. respondToApproval() is bridged to addToolApprovalResponse by
+  // useAISDKRuntime; Allow runs the action server-side, Deny tells the model.
+  const awaitingApproval = !!approval && approval.approved === undefined;
+  if (awaitingApproval) {
+    return (
+      <Box className={classes.approvalCard}>
+        <Typography
+          variant="body2"
+          component="div"
+          className={classes.approvalHeader}
+        >
+          <BlockIcon fontSize="small" />
+          Approval required to run <strong>{toolName}</strong>
+        </Typography>
+        {hasArgs && (
+          <>
+            <Typography
+              variant="caption"
+              component="div"
+              className={classes.payloadTitle}
+            >
+              Input
+            </Typography>
+            <pre className={classes.payloadBlock}>{formatPayload(args)}</pre>
+          </>
+        )}
+        <div className={classes.approvalActions}>
+          <Button
+            type="button"
+            variant="contained"
+            color="primary"
+            size="small"
+            onClick={() => respondToApproval?.({ approved: true })}
+          >
+            Allow
+          </Button>
+          <Button
+            type="button"
+            variant="text"
+            size="small"
+            onClick={() => respondToApproval?.({ approved: false })}
+          >
+            Deny
+          </Button>
+        </div>
+      </Box>
+    );
+  }
+
+  const denied = !!approval && approval.approved === false;
   return (
     <div>
+      {denied && (
+        <Typography
+          variant="caption"
+          component="div"
+          className={classes.approvalDenied}
+        >
+          <BlockIcon style={{ fontSize: 14 }} /> Denied — not run
+        </Typography>
+      )}
       <button
         type="button"
         className={classes.toolToggle}

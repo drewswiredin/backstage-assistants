@@ -558,6 +558,34 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }),
     };
 
+    // 6b. Deterministic approval gate. For every tool named in the assistant's
+    //     `requireApproval` list, set the AI SDK's `needsApproval` flag. The SDK
+    //     then emits a tool-approval-request and SKIPS the tool's `execute` until
+    //     the user responds (Allow runs it server-side; Deny tells the model it
+    //     was declined). This is code-enforced — not a prompt the model can
+    //     ignore. Names that don't resolve to a tool are logged and skipped.
+    if (assistant.requireApproval.length > 0) {
+      const gated: string[] = [];
+      for (const name of assistant.requireApproval) {
+        const t = (tools as Record<string, unknown>)[name];
+        if (t && typeof t === 'object') {
+          (t as { needsApproval?: boolean }).needsApproval = true;
+          gated.push(name);
+        }
+      }
+      const missing = assistant.requireApproval.filter(
+        n => !gated.includes(n),
+      );
+      if (missing.length > 0) {
+        logger.warn(
+          `requireApproval lists tool(s) not available to assistant '${assistant.id}': ${missing.join(', ')}`,
+        );
+      }
+      logger.info(
+        `Approval gate active for assistant '${assistant.id}': ${gated.join(', ') || '(none)'}`,
+      );
+    }
+
     // 7. Convert UI messages → model messages.
     let modelMessages = await convertToModelMessages(
       messages as Omit<UIMessage, 'id'>[],

@@ -63,6 +63,12 @@ export interface AssistantDefinition {
   /** Backstage action names allowed as tools for this assistant. */
   actions: string[];
   /**
+   * Tool names whose execution must be gated behind explicit user approval
+   * (deterministic, enforced via the AI SDK's `needsApproval`). Matches `actions`
+   * names or namespaced MCP tool names; entries not in the tool set are ignored.
+   */
+  requireApproval: string[];
+  /**
    * MCP servers this assistant exposes, each with an optional per-tool
    * allowlist. `tools` undefined or containing `'*'` = all tools; `[]` = none;
    * otherwise exactly the named (un-namespaced) tools.
@@ -502,6 +508,8 @@ export function readConfig(config: Config): AssistantsConfig {
       prompt: profileConfig.getString('prompt'),
       access: parseAccess(profileId, profileConfig),
       actions: profileConfig.getOptionalStringArray('actions') ?? [],
+      requireApproval:
+        profileConfig.getOptionalStringArray('requireApproval') ?? [],
       mcpServers: profileMcpServers,
       models: profileModels,
       defaultModel: profileDefault,

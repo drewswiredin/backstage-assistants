@@ -190,6 +190,18 @@ export interface Config {
         actions?: string[];
 
         /**
+         * Tool names that require explicit user approval before they run. When
+         * the model calls one of these, execution is DETERMINISTICALLY paused
+         * (enforced in the AI SDK, not by prompting the model): the user is shown
+         * an Allow / Deny prompt in the chat and the tool's action runs only on
+         * Allow; on Deny the model is told it was declined. Names match the
+         * `actions` allowlist exactly; MCP tools use their namespaced
+         * `<serverId>__<toolName>` form. A name not in `actions`/`mcpServers` is
+         * ignored. This is a safety gate, independent of `access`/authz.
+         */
+        requireApproval?: string[];
+
+        /**
          * MCP servers (from `assistants.mcp.servers`) this assistant exposes.
          * Each entry is a server id string (all of that server's tools) or an
          * object selecting a subset. Tools are namespaced `<serverId>__<tool>`.

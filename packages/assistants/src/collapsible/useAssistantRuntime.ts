@@ -160,15 +160,22 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       onFinish: ({ message, isAbort }) => {
         if (isAbort && message) markTurnInterrupted(message.id);
       },
-      // Resume the turn automatically once the user submits an interactive
-      // `render_form` (a client-side tool: the model emits the call, the form UI
-      // supplies the result via addResult). Mirrors AI SDK's
-      // lastAssistantMessageIsCompleteWithToolCalls — it scopes to the LATEST
-      // step (parts after the final `step-start`), so this fires exactly once:
-      // after the model continues, the form is in a prior step and no longer
-      // matches (otherwise the completed part would keep matching → infinite
-      // re-send). Scoped to render_form so a SERVER tool truncated at maxSteps is
-      // never auto-resumed (which could run away).
+      // Auto-send the turn back to the server when a client-driven tool step is
+      // resolved — so the conversation continues without the user pressing send.
+      // Two cases, both scoped to the LATEST step (parts after the final
+      // `step-start`) so this fires exactly once: after the server continues, the
+      // resolved parts are in a prior step and no longer match (otherwise they'd
+      // keep matching → infinite re-send).
+      //   1. `render_form` submitted/cancelled (a client-side tool whose result
+      //      the form UI supplies via addResult).
+      //   2. A DETERMINISTIC approval gate (`needsApproval`) the user answered:
+      //      the tool part moves to `approval-responded`, and we must send so the
+      //      backend runs the approved tool (or records the denial). addToolApproval
+      //      Response only flushes when this predicate is true (see AI SDK chat.ts).
+      // We never fire while a part is still `approval-requested` (awaiting the
+      // user) or mid-stream, and we require a client-resolved part (form or
+      // approval) so a SERVER tool truncated at maxSteps is never auto-resumed
+      // (which could run away).
       sendAutomaticallyWhen: ({ messages }) => {
         const last = messages[messages.length - 1];
         if (!last || last.role !== 'assistant') return false;
@@ -183,13 +190,25 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
         const latestStepTools = parts
           .slice(lastStepStart + 1)
           .filter(p => typeof p.type === 'string' && p.type.startsWith('tool-'));
-        return (
-          latestStepTools.length > 0 &&
-          latestStepTools.some(p => p.type === 'tool-render_form') &&
-          latestStepTools.every(
-            p => p.state === 'output-available' || p.state === 'output-error',
-          )
+        if (latestStepTools.length === 0) return false;
+        // Every tool in the step must be client-settled — nothing still streaming,
+        // awaiting input, or awaiting the user's approval decision.
+        const allSettled = latestStepTools.every(
+          p =>
+            p.state === 'output-available' ||
+            p.state === 'output-error' ||
+            p.state === 'approval-responded',
         );
+        if (!allSettled) return false;
+        const formResolved = latestStepTools.some(
+          p =>
+            p.type === 'tool-render_form' &&
+            (p.state === 'output-available' || p.state === 'output-error'),
+        );
+        const approvalResolved = latestStepTools.some(
+          p => p.state === 'approval-responded',
+        );
+        return formResolved || approvalResolved;
       },
     });
     const runtime = useAISDKRuntime(chat);
