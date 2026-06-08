@@ -15,6 +15,8 @@ import {
   generateText,
   convertToModelMessages,
   stepCountIs,
+  tool,
+  jsonSchema,
   UI_MESSAGE_STREAM_HEADERS,
   type ModelMessage,
   type UIMessage,
@@ -493,6 +495,53 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         assistants.toolResultMaxChars,
       ),
       ...mcp.tools,
+      // Interactive form tool — a CLIENT-side tool (no `execute`): the model
+      // calls it with an RJSF form spec, streamText emits the call and yields,
+      // the frontend renders the form, and the user's submitted values come back
+      // as the tool result (human-in-the-loop) so the turn continues. Generic:
+      // use any time structured / multi-field / multiple-choice input is needed.
+      render_form: tool({
+        description:
+          'Render an interactive form for the user to fill, instead of asking ' +
+          'multiple questions in chat. Provide `jsonSchema` (a standard JSON ' +
+          'Schema describing the fields — use enums for dropdowns, `required`, ' +
+          'types, etc.) and optionally `uiSchema` (RJSF widgets/ordering), ' +
+          '`title`, and `submitLabel`. The form is shown in the chat; the user ' +
+          'fills and submits it and you receive their values as the tool result. ' +
+          'Use whenever you need structured, multi-field, multiple-choice, or ' +
+          'complex input. The result is `{ submitted: true, values: {...} }` when ' +
+          'the user submits, or `{ submitted: false, cancelled: true }` if they ' +
+          'dismiss it — in which case do not assume any values; ask again or ' +
+          'proceed without them.',
+        inputSchema: jsonSchema<{
+          jsonSchema: Record<string, unknown>;
+          uiSchema?: Record<string, unknown>;
+          title?: string;
+          submitLabel?: string;
+        }>({
+          type: 'object',
+          properties: {
+            jsonSchema: {
+              type: 'object',
+              description:
+                'A JSON Schema (RJSF) describing the form fields to collect.',
+            },
+            uiSchema: {
+              type: 'object',
+              description:
+                'Optional RJSF uiSchema (widgets, ordering, ui:field, etc.).',
+            },
+            title: { type: 'string', description: 'Optional form heading.' },
+            submitLabel: {
+              type: 'string',
+              description: 'Optional submit button label (default "Submit").',
+            },
+          },
+          required: ['jsonSchema'],
+          additionalProperties: false,
+        }),
+        // No `execute`: resolved on the client via the form's submit (addResult).
+      }),
     };
 
     // 7. Convert UI messages → model messages.

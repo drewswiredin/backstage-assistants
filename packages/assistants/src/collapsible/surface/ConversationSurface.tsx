@@ -30,6 +30,7 @@ import {
 } from '@assistant-ui/react-ui';
 import { MarkdownText } from './MarkdownText';
 import { ContextGauge } from './ContextGauge';
+import { RenderFormTool } from './RenderFormTool';
 import {
   MessageError,
   MessageInterrupted,
@@ -491,6 +492,9 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
             } as CSSProperties
           }
         >
+          {/* Registers the inline RJSF renderer for the `render_form` tool — the
+              form appears in the message stream where the tool call is. */}
+          <RenderFormTool />
           <Thread
             strings={
               composerPlaceholder

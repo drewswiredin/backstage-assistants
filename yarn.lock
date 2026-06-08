@@ -4713,6 +4713,10 @@ __metadata:
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
     "@remixicon/react": "npm:^4.5.0"
+    "@rjsf/core": "npm:^5.24.0"
+    "@rjsf/material-ui": "npm:^5.24.0"
+    "@rjsf/utils": "npm:^5.24.0"
+    "@rjsf/validator-ajv8": "npm:^5.24.0"
     "@types/react": "npm:^18.0.0"
     ai: "npm:^6.0.192"
     mermaid: "npm:^11.0.0"
@@ -9705,7 +9709,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/core@npm:5.24.13":
+"@rjsf/core@npm:5.24.13, @rjsf/core@npm:^5.24.0":
   version: 5.24.13
   resolution: "@rjsf/core@npm:5.24.13"
   dependencies:
@@ -9720,7 +9724,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/material-ui@npm:5.24.13":
+"@rjsf/material-ui@npm:5.24.13, @rjsf/material-ui@npm:^5.24.0":
   version: 5.24.13
   resolution: "@rjsf/material-ui@npm:5.24.13"
   peerDependencies:
@@ -9733,7 +9737,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/utils@npm:5.24.13":
+"@rjsf/utils@npm:5.24.13, @rjsf/utils@npm:^5.24.0":
   version: 5.24.13
   resolution: "@rjsf/utils@npm:5.24.13"
   dependencies:
@@ -9748,7 +9752,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/validator-ajv8@npm:5.24.13":
+"@rjsf/validator-ajv8@npm:5.24.13, @rjsf/validator-ajv8@npm:^5.24.0":
   version: 5.24.13
   resolution: "@rjsf/validator-ajv8@npm:5.24.13"
   dependencies:

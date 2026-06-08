@@ -160,6 +160,37 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       onFinish: ({ message, isAbort }) => {
         if (isAbort && message) markTurnInterrupted(message.id);
       },
+      // Resume the turn automatically once the user submits an interactive
+      // `render_form` (a client-side tool: the model emits the call, the form UI
+      // supplies the result via addResult). Mirrors AI SDK's
+      // lastAssistantMessageIsCompleteWithToolCalls — it scopes to the LATEST
+      // step (parts after the final `step-start`), so this fires exactly once:
+      // after the model continues, the form is in a prior step and no longer
+      // matches (otherwise the completed part would keep matching → infinite
+      // re-send). Scoped to render_form so a SERVER tool truncated at maxSteps is
+      // never auto-resumed (which could run away).
+      sendAutomaticallyWhen: ({ messages }) => {
+        const last = messages[messages.length - 1];
+        if (!last || last.role !== 'assistant') return false;
+        const parts = (last.parts ?? []) as Array<{
+          type?: string;
+          state?: string;
+        }>;
+        const lastStepStart = parts.reduce(
+          (idx, p, i) => (p.type === 'step-start' ? i : idx),
+          -1,
+        );
+        const latestStepTools = parts
+          .slice(lastStepStart + 1)
+          .filter(p => typeof p.type === 'string' && p.type.startsWith('tool-'));
+        return (
+          latestStepTools.length > 0 &&
+          latestStepTools.some(p => p.type === 'tool-render_form') &&
+          latestStepTools.every(
+            p => p.state === 'output-available' || p.state === 'output-error',
+          )
+        );
+      },
     });
     const runtime = useAISDKRuntime(chat);
 
