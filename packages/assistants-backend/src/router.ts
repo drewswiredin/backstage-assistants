@@ -559,17 +559,52 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     };
 
     // 6b. Deterministic approval gate. For every tool named in the assistant's
-    //     `requireApproval` list, set the AI SDK's `needsApproval` flag. The SDK
-    //     then emits a tool-approval-request and SKIPS the tool's `execute` until
-    //     the user responds (Allow runs it server-side; Deny tells the model it
-    //     was declined). This is code-enforced — not a prompt the model can
+    //     `requireApproval` list, set the AI SDK's `needsApproval` predicate. The
+    //     SDK then emits a tool-approval-request and SKIPS the tool's `execute`
+    //     until the user responds (Allow runs it server-side; Deny tells the model
+    //     it was declined). This is code-enforced — not a prompt the model can
     //     ignore. Names that don't resolve to a tool are logged and skipped.
+    //
+    //     The predicate also honours a standing "always allow <tool>" grant: the
+    //     surface's "Always allow" button records an approved tool-approval-
+    //     response whose `reason` is `always:<tool>`. Once that is in the
+    //     conversation, the tool runs without prompting for the rest of the chat —
+    //     so a long batch is one click, not one per call. The grant lives in the
+    //     model message history (persisted + replayed), so it is deterministic and
+    //     survives reloads, and it is per-tool by design (granting one tool never
+    //     auto-approves another).
     if (assistant.requireApproval.length > 0) {
+      const hasStandingGrant = (
+        history: ReadonlyArray<{ content?: unknown }>,
+        toolName: string,
+      ): boolean => {
+        const want = `always:${toolName}`;
+        for (const m of history) {
+          const content = m?.content;
+          if (!Array.isArray(content)) continue;
+          for (const part of content) {
+            if (
+              part &&
+              typeof part === 'object' &&
+              (part as { type?: string }).type === 'tool-approval-response' &&
+              (part as { approved?: boolean }).approved === true &&
+              (part as { reason?: string }).reason === want
+            ) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
       const gated: string[] = [];
       for (const name of assistant.requireApproval) {
         const t = (tools as Record<string, unknown>)[name];
         if (t && typeof t === 'object') {
-          (t as { needsApproval?: boolean }).needsApproval = true;
+          // A function, not `true`: skip the prompt once a standing grant exists.
+          (t as { needsApproval?: unknown }).needsApproval = (
+            _input: unknown,
+            opts: { messages: ReadonlyArray<{ content?: unknown }> },
+          ): boolean => !hasStandingGrant(opts.messages, name);
           gated.push(name);
         }
       }
@@ -807,6 +842,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             });
           }
         })();
+      },
+      // Surface a stream/turn error as a readable error part instead of the SDK's
+      // masked default, so a failed turn shows WHY in the chat (the client renders
+      // it via MessageError) rather than ending silently. Capped; this is an
+      // internal developer tool, so the real reason beats an opaque mask.
+      onError: error => {
+        const detail = error instanceof Error ? error.message : String(error);
+        logger.warn('chat stream error surfaced to client', {
+          requestId,
+          threadId,
+          error: detail,
+        });
+        return `The assistant couldn't finish this turn: ${detail.slice(0, 300)}`;
       },
       // Buffer a tee'd copy of the SSE so a client returning mid-flight can
       // rejoin via GET /chat/resume/:id (in-memory; single replica).

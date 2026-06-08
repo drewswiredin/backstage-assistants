@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
 import {
   Box,
@@ -18,7 +18,7 @@ import type {
   ReasoningMessagePartProps,
   ToolCallMessagePartProps,
 } from '@assistant-ui/react';
-import { useTurnInterrupted } from '../interruptedTurns';
+import { useTurnEndReason } from '../interruptedTurns';
 
 const useStyles = makeStyles(theme => ({
   thinkingMessage: {
@@ -141,6 +141,10 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1),
     marginTop: theme.spacing(1.25),
   },
+  approvalHint: {
+    marginTop: theme.spacing(0.75),
+    color: theme.palette.text.secondary,
+  },
   approvalDenied: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -253,12 +257,74 @@ export function ToolFallback({
 
   // Deterministic approval gate. When the backend marked this tool
   // `needsApproval`, the AI SDK pauses before executing and assistant-ui exposes
-  // a pending `approval` (approved === undefined). Show an Allow / Deny prompt —
-  // with the exact input the tool would run with — instead of the normal tool
-  // row. respondToApproval() is bridged to addToolApprovalResponse by
-  // useAISDKRuntime; Allow runs the action server-side, Deny tells the model.
+  // a pending `approval` (approved === undefined) per call. respondToApproval()
+  // is bridged to addToolApprovalResponse by useAISDKRuntime (Allow runs the
+  // action server-side, Deny tells the model; the standing "always allow" grant
+  // additionally skips this tool for the rest of the chat).
+  //
+  // The agent often fires several gated calls of the SAME tool in one step
+  // (parallel), which would otherwise stack up as one card per call. We COLLAPSE
+  // them: the lowest-index pending call is the "leader" and renders ONE control
+  // with a count; the rest hide and mirror the leader's decision — so a whole
+  // batch is resolved with a single click.
   const awaitingApproval = !!approval && approval.approved === undefined;
+
+  // Same-tool sibling approvals in this message, as a value-stable JSON snapshot
+  // (a string, so the external-store selector never churns its identity).
+  const groupJson = useAuiState(s => {
+    const parts = (s.message.parts ?? []) as Array<{
+      toolName?: string;
+      toolCallId?: string;
+      args?: unknown;
+      approval?: { approved?: boolean };
+    }>;
+    return JSON.stringify(
+      parts
+        .filter(p => p.toolName === toolName && !!p.approval)
+        .map(p => ({
+          id: p.toolCallId,
+          approved: p.approval?.approved ?? null,
+          args: p.args,
+        })),
+    );
+  });
+  const group = useMemo(
+    () =>
+      JSON.parse(groupJson) as Array<{
+        id?: string;
+        approved: boolean | null;
+        args: unknown;
+      }>,
+    [groupJson],
+  );
+  const groupDecided = group.find(g => g.approved !== null)?.approved as
+    | boolean
+    | undefined;
+  const groupPending = group.filter(g => g.approved === null);
+  const isGroupLeader =
+    groupPending.length > 0 && groupPending[0].id === toolCallId;
+
+  // Follower: once any sibling call of this tool has been decided, mirror it
+  // (the leader's one click resolves the batch). Guarded to fire once per call.
+  const mirroredRef = useRef(false);
+  useEffect(() => {
+    mirroredRef.current = false;
+  }, [toolCallId]);
+  useEffect(() => {
+    if (awaitingApproval && groupDecided !== undefined && !mirroredRef.current) {
+      mirroredRef.current = true;
+      respondToApproval?.({ approved: groupDecided });
+    }
+  }, [awaitingApproval, groupDecided, respondToApproval]);
+
   if (awaitingApproval) {
+    // A sibling already decided → we mirror it (effect above); render nothing.
+    if (groupDecided !== undefined) return null;
+    // Not the leader of the pending group → the leader's card represents us.
+    if (!isGroupLeader) return null;
+
+    const count = groupPending.length;
+    const inputs = groupPending.map(g => g.args);
     return (
       <Box className={classes.approvalCard}>
         <Typography
@@ -267,20 +333,27 @@ export function ToolFallback({
           className={classes.approvalHeader}
         >
           <BlockIcon fontSize="small" />
-          Approval required to run <strong>{toolName}</strong>
+          {count > 1 ? (
+            <>
+              Approval required — <strong>{count}</strong> calls to{' '}
+              <strong>{toolName}</strong>
+            </>
+          ) : (
+            <>
+              Approval required to run <strong>{toolName}</strong>
+            </>
+          )}
         </Typography>
-        {hasArgs && (
-          <>
-            <Typography
-              variant="caption"
-              component="div"
-              className={classes.payloadTitle}
-            >
-              Input
-            </Typography>
-            <pre className={classes.payloadBlock}>{formatPayload(args)}</pre>
-          </>
-        )}
+        <Typography
+          variant="caption"
+          component="div"
+          className={classes.payloadTitle}
+        >
+          {count > 1 ? `Inputs (${count})` : 'Input'}
+        </Typography>
+        <pre className={classes.payloadBlock}>
+          {formatPayload(count > 1 ? inputs : inputs[0])}
+        </pre>
         <div className={classes.approvalActions}>
           <Button
             type="button"
@@ -289,7 +362,24 @@ export function ToolFallback({
             size="small"
             onClick={() => respondToApproval?.({ approved: true })}
           >
-            Allow
+            {count > 1 ? `Allow all (${count})` : 'Allow'}
+          </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            color="primary"
+            size="small"
+            // Standing grant: approve these AND skip the prompt for this tool for
+            // the rest of the conversation (backend reads `always:<tool>` from
+            // history — see the approval gate in router.ts).
+            onClick={() =>
+              respondToApproval?.({
+                approved: true,
+                reason: `always:${toolName}`,
+              })
+            }
+          >
+            Always allow
           </Button>
           <Button
             type="button"
@@ -297,9 +387,18 @@ export function ToolFallback({
             size="small"
             onClick={() => respondToApproval?.({ approved: false })}
           >
-            Deny
+            {count > 1 ? 'Deny all' : 'Deny'}
           </Button>
         </div>
+        <Typography
+          variant="caption"
+          component="div"
+          className={classes.approvalHint}
+        >
+          <strong>Always allow</strong> runs <strong>{toolName}</strong> without
+          asking again for the rest of this conversation
+          {count > 1 ? ' (covers these and any further calls)' : ''}.
+        </Typography>
       </Box>
     );
   }
@@ -456,10 +555,24 @@ export function MessageInterrupted() {
       (s.message.metadata as Record<string, unknown> | undefined)?.canceled ===
       true,
   );
-  const liveInterrupted = useTurnInterrupted(messageId);
+  const liveReason = useTurnEndReason(messageId);
 
-  if (!flagged && !liveInterrupted) {
+  // Live reason (this tab) wins; the durable backend `canceled` flag (reload /
+  // other client) is a user-stop → "interrupted".
+  const reason = liveReason ?? (flagged ? 'interrupted' : undefined);
+  if (!reason) {
     return null;
+  }
+
+  if (reason === 'disconnected') {
+    return (
+      <Box className={classes.interruptedMessage}>
+        <ErrorOutlineIcon fontSize="small" />
+        <Typography variant="body2" component="span">
+          Connection lost — the reply was cut off. Send again to retry.
+        </Typography>
+      </Box>
+    );
   }
 
   return (

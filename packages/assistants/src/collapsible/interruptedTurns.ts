@@ -1,27 +1,34 @@
 /**
- * Live, client-side record of assistant turns the user stopped this session,
- * keyed by the assistant message's stable (globally-unique) id.
+ * Live, client-side record of how an assistant turn ENDED this session, keyed by
+ * the assistant message's stable (globally-unique) id. Its job is to guarantee
+ * that the tab which streamed a turn never shows a silent, reasonless ending.
  *
- * Why this exists: when the user clicks Stop, the backend stamps
- * `metadata.canceled` on the PERSISTED reply, which drives the "Request
- * interrupted" indicator for any client that loads the thread later (reload,
- * other tab). But the tab that clicked Stop holds the live, streamed message,
- * which never receives that server flag (the connection is closing). This store
- * bridges that one gap with the smallest possible mechanism — a Set + a
- * subscription — so the indicator shows immediately, without rewriting the
- * message array (which fights assistant-ui's tool tracking). Keyed by message id
- * means there is never a cross-conversation collision. Cleared on full reload,
- * where the server flag takes over.
+ * Two reasons:
+ *   - `interrupted` — the user stopped the turn (or it was aborted).
+ *   - `disconnected` — the stream dropped or the turn was cut off before it
+ *     finished (network, or a provider stream that died server-side and escaped
+ *     the SDK's error path). Distinct from a clean failure, which the AI SDK
+ *     surfaces as a message error part (see MessageError) — that is not recorded
+ *     here.
+ *
+ * Why this exists: the streamed message never receives the server's durable flag
+ * (the connection is closing), so the live indicator would otherwise be missing.
+ * The backend independently stamps the persisted reply, which drives the same
+ * indicator for any client after a reload. Smallest possible mechanism — a Map +
+ * a subscription — keyed by message id so there is never a cross-conversation
+ * collision. Cleared on full reload, where the server flag takes over.
  */
 import { useSyncExternalStore } from 'react';
 
-const ids = new Set<string>();
+export type TurnEndReason = 'interrupted' | 'disconnected';
+
+const reasons = new Map<string, TurnEndReason>();
 const listeners = new Set<() => void>();
 
-/** Mark an assistant turn as user-interrupted (idempotent; notifies readers). */
-export function markTurnInterrupted(messageId: string): void {
-  if (ids.has(messageId)) return;
-  ids.add(messageId);
+/** Record how an assistant turn ended (idempotent per id; notifies readers). */
+export function markTurnEnded(messageId: string, reason: TurnEndReason): void {
+  if (reasons.get(messageId) === reason) return;
+  reasons.set(messageId, reason);
   listeners.forEach(listener => listener());
 }
 
@@ -32,10 +39,10 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** Reactively report whether this assistant turn was interrupted this session. */
-export function useTurnInterrupted(messageId: string): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => ids.has(messageId),
-  );
+/**
+ * Reactively report how this assistant turn ended this session, or `undefined`
+ * if it ended normally (or hasn't ended).
+ */
+export function useTurnEndReason(messageId: string): TurnEndReason | undefined {
+  return useSyncExternalStore(subscribe, () => reasons.get(messageId));
 }

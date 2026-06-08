@@ -23,7 +23,24 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 import { fetchThreadStatus } from './threadListAdapter';
-import { markTurnInterrupted } from './interruptedTurns';
+import { markTurnEnded } from './interruptedTurns';
+
+/**
+ * True when an assistant turn legitimately paused for the user (a `render_form`
+ * to fill or a tool approval to answer), so a missing `finishReason` there is a
+ * normal hand-off, not a cut-off.
+ */
+function awaitingHumanInput(message: {
+  parts?: ReadonlyArray<{ type?: string; state?: string }>;
+}): boolean {
+  return (message.parts ?? []).some(
+    p =>
+      p.state === 'approval-requested' ||
+      (typeof p.type === 'string' &&
+        p.type.startsWith('tool-') &&
+        (p.state === 'input-available' || p.state === 'input-streaming')),
+  );
+}
 
 /** Verbose resume tracing for local debugging (open the browser console). */
 const DEBUG = false;
@@ -153,12 +170,28 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     const chat = useChat({
       id: threadChatId,
       transport,
-      // When the user clicks Stop, the AI SDK reports the aborted turn here.
-      // Record it by the message's stable id so this tab shows "Request
-      // interrupted" immediately; the backend independently stamps the persisted
-      // reply, which drives the same indicator for any client after a reload.
-      onFinish: ({ message, isAbort }) => {
-        if (isAbort && message) markTurnInterrupted(message.id);
+      // Guarantee no turn ever ends silently. The AI SDK reports how the stream
+      // ended; we record it by the message's stable id so the surface always
+      // shows a reason (see MessageInterrupted), live in this tab. The backend
+      // independently stamps the persisted reply for any client after a reload.
+      //   - isAbort      → user stopped / aborted        → "Request interrupted"
+      //   - isDisconnect → the stream dropped (network)  → "Connection lost"
+      //   - isError      → a clean failure; surfaced as the message error part
+      //                    (MessageError), with a readable reason from the backend
+      //   - clean close, no finishReason, NOT a human-in-the-loop pause → the turn
+      //     was cut off (e.g. a provider stream that died server-side and escaped
+      //     the SDK error path) → surface it rather than leave a blank ending.
+      onFinish: ({ message, isAbort, isDisconnect, isError, finishReason }) => {
+        if (!message) return;
+        if (isDisconnect) {
+          markTurnEnded(message.id, 'disconnected');
+        } else if (isAbort) {
+          markTurnEnded(message.id, 'interrupted');
+        } else if (isError) {
+          // Surfaced by the streamed error part (MessageError) — nothing to add.
+        } else if (!finishReason && !awaitingHumanInput(message)) {
+          markTurnEnded(message.id, 'disconnected');
+        }
       },
       // Auto-send the turn back to the server when a client-driven tool step is
       // resolved — so the conversation continues without the user pressing send.
