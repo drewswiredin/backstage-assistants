@@ -7,11 +7,23 @@
  * in useAssistantRuntime). Generic: the agent uses it any time it needs
  * structured / multi-field / multiple-choice input instead of asking in chat.
  *
- * v1 renders plain RJSF (MUI v4 theme, matching the app). Backstage scaffolder
- * field extensions (owner/entity pickers) can be registered here later.
+ * Rendering goes through scaffolder's OWN RJSF `<Form>` (alpha) fed with the
+ * field registry from `formFieldsApiRef.loadFormFields()` — the exact same set
+ * the scaffolder wizard uses (built-in pickers AND any app-registered custom
+ * fields), keyed by each field's name (`OwnerPicker`, `EntityPicker`, …). So any
+ * `ui:field` the agent emits — including a scaffolder template's verbatim
+ * schema/uiSchema — renders the real picker, dynamically, with no per-field code
+ * here. Wrapped in `SecretsContextProvider` so the repo pickers render too.
  */
 import { makeAssistantToolUI } from '@assistant-ui/react';
-import Form from '@rjsf/material-ui';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useApiHolder, type ApiHolder } from '@backstage/core-plugin-api';
+import {
+  Form,
+  formFieldsApiRef,
+  extractSchemaFromStep,
+} from '@backstage/plugin-scaffolder-react/alpha';
+import { SecretsContextProvider } from '@backstage/plugin-scaffolder-react';
 import validator from '@rjsf/validator-ajv8';
 import type { IChangeEvent } from '@rjsf/core';
 import type { RJSFSchema, UiSchema } from '@rjsf/utils';
@@ -72,6 +84,43 @@ interface FormResult {
   cancelled?: boolean;
 }
 
+/** RJSF field registry: `ui:field` name → component. */
+type FieldRegistry = Record<string, ComponentType<any>>;
+
+/**
+ * Scaffolder field extensions are stable for the app session, so load them once
+ * and share across every rendered form. `loadFormFields()` returns the same set
+ * scaffolder's wizard uses — built-in pickers plus any app-registered custom
+ * fields — each keyed by its own `name`, which is what a template's `ui:field`
+ * references. Degrades to an empty registry if scaffolder isn't installed (the
+ * form still renders plain fields).
+ */
+let fieldsCache: Promise<FieldRegistry> | undefined;
+function loadScaffolderFields(holder: ApiHolder): Promise<FieldRegistry> {
+  if (!fieldsCache) {
+    const api = holder.get(formFieldsApiRef);
+    fieldsCache = api
+      ? api
+          .loadFormFields()
+          .then(list =>
+            Object.fromEntries(
+              list.map(field => {
+                // FormField is opaque to the type system but carries its name +
+                // component at runtime (createFormField / OpaqueFormField).
+                const f = field as unknown as {
+                  name: string;
+                  component: ComponentType<any>;
+                };
+                return [f.name, f.component];
+              }),
+            ),
+          )
+          .catch(() => ({}))
+      : Promise.resolve({});
+  }
+  return fieldsCache;
+}
+
 /**
  * Registering component. Render once inside the assistant runtime tree; the
  * `render` fn below is what assistant-ui invokes inline for each `render_form`
@@ -81,12 +130,47 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
   toolName: 'render_form',
   render: function RenderForm({ args, result, addResult }) {
     const classes = useStyles();
-    const schema = args?.jsonSchema;
-    // Args stream in token by token — wait for a complete schema before RJSF
-    // tries to render (a partial schema would throw).
+    const holder = useApiHolder();
+    const [fields, setFields] = useState<FieldRegistry | undefined>(undefined);
+
+    useEffect(() => {
+      let active = true;
+      loadScaffolderFields(holder).then(f => {
+        if (active) setFields(f);
+      });
+      return () => {
+        active = false;
+      };
+    }, [holder]);
+
+    const rawSchema = args?.jsonSchema;
+    // Wait for BOTH a complete schema (args stream in token by token, and a
+    // partial schema would throw) AND the field registry — a `ui:field` picker
+    // would error if its component isn't registered yet.
     const ready =
-      !!schema && typeof schema === 'object' && Object.keys(schema).length > 0;
-    if (!ready) {
+      !!rawSchema &&
+      typeof rawSchema === 'object' &&
+      Object.keys(rawSchema).length > 0;
+
+    // Scaffolder TEMPLATES embed `ui:*` keys (ui:field, ui:options, ui:autofocus)
+    // directly inside the JSON schema properties, and agents commonly lift a
+    // template's parameter block verbatim. RJSF only honours `ui:*` from the
+    // uiSchema, so hoist them out exactly as scaffolder's own wizard does
+    // (extractSchemaFromStep) — otherwise a picker's `ui:options` (e.g.
+    // OwnerPicker's catalog filter) is silently dropped and it renders as a plain
+    // input with no choices. Safe when the schema is already clean (empty uiSchema).
+    const { schema, hoistedUiSchema } = useMemo(() => {
+      if (!ready) {
+        return { schema: rawSchema, hoistedUiSchema: {} as UiSchema };
+      }
+      const extracted = extractSchemaFromStep(rawSchema as any);
+      return {
+        schema: extracted.schema as RJSFSchema,
+        hoistedUiSchema: extracted.uiSchema,
+      };
+    }, [rawSchema, ready]);
+
+    if (!ready || fields === undefined) {
       return (
         <Box className={classes.card}>
           <span className={classes.muted}>
@@ -124,41 +208,48 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
       );
     }
 
-    const uiSchema: UiSchema = args?.uiSchema ?? {};
+    // A separately-supplied args.uiSchema overrides the hoisted keys per entry.
+    const uiSchema: UiSchema = { ...hoistedUiSchema, ...(args?.uiSchema ?? {}) };
 
     return (
       <Box className={classes.card}>
         {title}
-        <Form
-          schema={schema}
-          uiSchema={uiSchema}
-          validator={validator}
-          formData={submitted ? (r?.values as object) : undefined}
-          disabled={submitted}
-          onSubmit={(e: IChangeEvent) =>
-            addResult({ submitted: true, values: e.formData })
-          }
-        >
-          {submitted ? (
-            // Submitted: read-only record, no buttons.
-            <></>
-          ) : (
-            // Active: custom footer with Submit + an always-present Cancel.
-            <div className={classes.actions}>
-              <Button type="submit" variant="contained" color="primary" size="small">
-                {args?.submitLabel ?? 'Submit'}
-              </Button>
-              <Button
-                type="button"
-                variant="text"
-                size="small"
-                onClick={() => addResult({ submitted: false, cancelled: true })}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </Form>
+        {/* SecretsContextProvider lets scaffolder's repo pickers (RepoUrlPicker,
+            RepoBranchPicker, RepoOwnerPicker) render — they stash SCM tokens in
+            this context. Harmless for forms that don't use them. */}
+        <SecretsContextProvider>
+          <Form
+            schema={schema}
+            uiSchema={uiSchema}
+            fields={fields}
+            validator={validator}
+            formData={submitted ? (r?.values as object) : undefined}
+            disabled={submitted}
+            onSubmit={(e: IChangeEvent) =>
+              addResult({ submitted: true, values: e.formData })
+            }
+          >
+            {submitted ? (
+              // Submitted: read-only record, no buttons.
+              <></>
+            ) : (
+              // Active: custom footer with Submit + an always-present Cancel.
+              <div className={classes.actions}>
+                <Button type="submit" variant="contained" color="primary" size="small">
+                  {args?.submitLabel ?? 'Submit'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="text"
+                  size="small"
+                  onClick={() => addResult({ submitted: false, cancelled: true })}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </Form>
+        </SecretsContextProvider>
         {submitted && (
           <Typography variant="caption" className={classes.submitted}>
             ✓ Submitted

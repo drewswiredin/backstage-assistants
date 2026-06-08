@@ -509,7 +509,21 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           '`title`, and `submitLabel`. The form is shown in the chat; the user ' +
           'fills and submits it and you receive their values as the tool result. ' +
           'Use whenever you need structured, multi-field, multiple-choice, or ' +
-          'complex input. The result is `{ submitted: true, values: {...} }` when ' +
+          'complex input. ' +
+          'The form renders Backstage scaffolder field extensions: set a ' +
+          "property's `uiSchema` `ui:field` to a picker to get a real Backstage " +
+          'widget instead of a plain input. Built-in pickers: `OwnerPicker` and ' +
+          '`OwnedEntityPicker` (catalog owner/entity), `EntityPicker` and ' +
+          '`MultiEntityPicker` (catalog entities; filter via `ui:options.catalogFilter`), ' +
+          '`EntityNamePicker`, `EntityTagsPicker`, `MyGroupsPicker`, ' +
+          '`RepoUrlPicker` / `RepoBranchPicker` / `RepoOwnerPicker` (SCM repo ' +
+          'location). Any custom field the app has registered works the same way ' +
+          'by its name. When reusing a scaffolder template, you can pass that ' +
+          "template's parameter block as `jsonSchema` as-is — `ui:field` / " +
+          '`ui:options` embedded inside the schema properties (the template ' +
+          'convention) are handled automatically; you do not need to split them ' +
+          'into `uiSchema` yourself. ' +
+          'The result is `{ submitted: true, values: {...} }` when ' +
           'the user submits, or `{ submitted: false, cancelled: true }` if they ' +
           'dismiss it — in which case do not assume any values; ask again or ' +
           'proceed without them.',
