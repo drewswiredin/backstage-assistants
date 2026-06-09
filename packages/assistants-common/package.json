@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants-common",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "Shared browser-safe types — AI Assistants for Backstage.",
   "license": "Apache-2.0",
   "publishConfig": {

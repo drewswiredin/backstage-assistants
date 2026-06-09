@@ -12,13 +12,13 @@ import {
   type CSSProperties,
 } from 'react';
 import type { ProfileInfo } from '@backstage/core-plugin-api';
-import { identityApiRef, useApi } from '@backstage/core-plugin-api';
+import { alertApiRef, identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { Avatar as BackstageAvatar } from '@backstage/core-components';
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Button, Typography } from '@material-ui/core';
 import { BackstageLogo } from './BackstageLogo';
 import { DEFAULT_AVATAR_COLOR, resolveAssistantColor } from './AssistantAvatar';
-import { ThreadPrimitive } from '@assistant-ui/react';
+import { ThreadPrimitive, useAuiEvent } from '@assistant-ui/react';
 import {
   AssistantMessage,
   BranchPicker,
@@ -260,6 +260,14 @@ function ComposerWithGauge() {
   const { contextWindow, used } = useContext(ComposerInfoContext);
   const color = useContext(AvatarColorContext) ?? DEFAULT_AVATAR_COLOR;
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Surface attachment rejections instead of swallowing them. The composer's paste
+  // handler silently catches any adapter error, so without this a rejected paste
+  // (e.g. over the 7 MB cap, or an unsupported file type) shows nothing at all.
+  const alertApi = useApi(alertApiRef);
+  useAuiEvent('composer.attachmentAddError', ({ message }) => {
+    alertApi.post({ message, severity: 'error', display: 'transient' });
+  });
   const over =
     typeof contextWindow === 'number' &&
     typeof used === 'number' &&

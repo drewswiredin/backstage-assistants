@@ -130,14 +130,6 @@ export interface Config {
          * e.g. `{ "gpt-5.5": 400000 }`.
          */
         contextWindows?: { [modelName: string]: number };
-
-        /**
-         * Optional per-model vision capability (accepts image attachments), keyed
-         * by the model name as it appears in `models`. Gates the composer's image
-         * upload for that model. Text/code file attachments are inlined as text
-         * and need no flag. e.g. `{ "gpt-4o": true }`.
-         */
-        vision?: { [modelName: string]: boolean };
       };
     };
 

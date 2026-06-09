@@ -11,6 +11,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import {
+  ButtonBase,
   IconButton,
   ListItemIcon,
   Menu,
@@ -25,6 +26,7 @@ import CheckIcon from '@material-ui/icons/Check';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
 import { useAttachment } from '@assistant-ui/react';
+import { PanZoomDialog } from './PanZoomViewer';
 
 const useStyles = makeStyles(theme => ({
   chip: {
@@ -44,6 +46,26 @@ const useStyles = makeStyles(theme => ({
     borderRadius: theme.shape.borderRadius,
     objectFit: 'cover',
     flexShrink: 0,
+  },
+  // The clickable region of an image chip (thumb + label) that opens the viewer.
+  // The kebab menu is a sibling, so its clicks never reach here.
+  previewButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'left',
+    borderRadius: theme.shape.borderRadius,
+    padding: theme.spacing(0.25, 0.5),
+    margin: theme.spacing(-0.25, -0.5),
+    cursor: 'zoom-in',
+    '&:hover': { backgroundColor: theme.palette.action.hover },
+    // Keyboard focus ring — the ripple alone is too subtle over a thumbnail.
+    '&:focus-visible': {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: 2,
+    },
   },
   icon: {
     color: theme.palette.text.secondary,
@@ -123,6 +145,10 @@ export function DownloadChip({
   const classes = useStyles();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [copied, setCopied] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  // Natural image size, read once it loads — gives the pan/zoom viewport a definite
+  // box to fit/center against (and re-fits when it lands; see PanZoomDialog.fitKey).
+  const [imgDims, setImgDims] = useState<{ w: number; h: number } | null>(null);
   const image = isImageMime(mimeType);
 
   const onCopy = async () => {
@@ -143,8 +169,8 @@ export function DownloadChip({
     thumb = <InsertDriveFileIcon className={classes.icon} fontSize="small" />;
   }
 
-  return (
-    <div className={classes.chip}>
+  const body = (
+    <>
       {thumb}
       <span className={classes.text}>
         <Typography variant="body2" className={classes.name} title={name}>
@@ -154,6 +180,25 @@ export function DownloadChip({
           {typeLabel(name, mimeType)}
         </Typography>
       </span>
+    </>
+  );
+
+  return (
+    <div className={classes.chip}>
+      {/* Images: the chip body is a button that opens the full-size viewer.
+          Other files: a plain, non-interactive label (actions live in the menu). */}
+      {image ? (
+        <ButtonBase
+          className={classes.previewButton}
+          onClick={() => setViewerOpen(true)}
+          focusRipple
+          aria-label={`View ${name}`}
+        >
+          {body}
+        </ButtonBase>
+      ) : (
+        body
+      )}
       <Tooltip title="File actions">
         <IconButton
           className={classes.action}
@@ -197,6 +242,28 @@ export function DownloadChip({
           </MenuItem>
         )}
       </Menu>
+      {image && (
+        <PanZoomDialog
+          open={viewerOpen}
+          onClose={() => setViewerOpen(false)}
+          width={imgDims?.w}
+          height={imgDims?.h}
+          fitKey={imgDims}
+          ariaLabel={name}
+        >
+          <img
+            src={dataUrl}
+            alt={name}
+            draggable={false}
+            onLoad={e =>
+              setImgDims({
+                w: e.currentTarget.naturalWidth,
+                h: e.currentTarget.naturalHeight,
+              })
+            }
+          />
+        </PanZoomDialog>
+      )}
     </div>
   );
 }

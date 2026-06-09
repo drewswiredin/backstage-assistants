@@ -119,13 +119,6 @@ export interface ModelOption {
    * shows the token count without a percentage).
    */
   contextWindow?: number;
-  /**
-   * Whether this model accepts image attachments (vision). Gates the composer's
-   * image upload for the selected model; absent/false means images aren't offered.
-   * Text/code file attachments are inlined as text and work on any model
-   * regardless of this flag.
-   */
-  vision?: boolean;
 }
 
 /**

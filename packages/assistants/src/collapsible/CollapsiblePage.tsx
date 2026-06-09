@@ -429,10 +429,6 @@ function ChatRuntime({
         baseUrl,
         getActiveAssistantId: () => activeAssistantIdRef.current,
         modelIdRef,
-        // Live lookup of the selected model's option so the attachment adapter can
-        // gate image upload on its `vision` capability (models is a static pool).
-        getActiveModelOption: () =>
-          status.models.find(m => m.id === modelIdRef.current),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, baseUrl],

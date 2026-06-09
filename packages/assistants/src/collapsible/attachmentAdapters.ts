@@ -1,32 +1,30 @@
 /**
- * Composer attachment adapters — file + image upload.
+ * Composer attachment adapter — file + image upload.
  *
- * A {@link CompositeAttachmentAdapter} over two adapters:
- *  - Text/code/data files (matched by EXTENSION) are sent as a FILE content part
- *    (a base64 data URL) so the chat renders them as a compact chip rather than
- *    dumping the contents into the message. The backend then decodes each non-image
- *    file part back into a text block before the model (see inlineTextFileAttachments
- *    in the backend router), so they still work on every model regardless of vision
- *    support. (The built-in text adapter matches a few MIME types only and misses
- *    code files whose `File.type` is empty/non-text — hence the extension list.)
- *  - Images are sent as a FILE content part carrying the real mime type, and are
- *    GATED on the selected model's `vision` capability. We deliberately do NOT use
- *    `SimpleImageAttachmentAdapter` (an `image` content part): the AI-SDK bridge
- *    hardcodes `image/png` for that path, mislabelling JPEG/WebP/GIF to the model.
- *    The `file` content part preserves the true mime type (image still previews as
- *    a thumbnail because the attachment `type` is `"image"`).
+ * A single {@link AttachmentAdapter} for everything the composer can attach. Every
+ * file is sent as a `file` content part (a base64 data URL) carrying its real mime
+ * type:
+ *  - Images preview as a thumbnail (attachment `type: 'image'`) and are forwarded
+ *    to the model as-is. We deliberately do NOT use `SimpleImageAttachmentAdapter`
+ *    (an `image` content part): the AI-SDK bridge hardcodes `image/png` for that
+ *    path, mislabelling JPEG/WebP/GIF. A `file` part preserves the true mime type.
+ *  - Everything else previews as a compact chip (attachment `type: 'document'`).
+ *    The backend re-inlines non-image file parts as text before the model (see
+ *    inlineTextFileAttachments in the backend router), so text/code files work on
+ *    every model.
  *
- * Capability is read LIVE from `getModel()` (the currently-selected model option)
- * inside add()/send(), so switching models mid-thread is honored without rebuilding
- * the runtime (a rebuild would drop an in-flight stream — see useAssistantRuntime).
+ * No per-model capability gating: we always attach and always send. If a model
+ * can't read an image, the provider's own error surfaces in the thread — one less
+ * thing to configure, and the source of truth is the provider, not our config.
+ * The only client-side guard is a size cap (a clean error instead of an opaque
+ * 413); rejections are surfaced to the user, not swallowed (see ConversationSurface
+ * — it listens for `composer.attachmentAddError` and posts an alert).
  */
-import {
-  CompositeAttachmentAdapter,
-  type AttachmentAdapter,
-  type CompleteAttachment,
-  type PendingAttachment,
+import type {
+  AttachmentAdapter,
+  CompleteAttachment,
+  PendingAttachment,
 } from '@assistant-ui/react';
-import type { ModelOption } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /**
  * ~7 MB raw cap. A base64 data URL inflates ~33%, and the backend `/chat` body
@@ -36,8 +34,9 @@ import type { ModelOption } from '@drewswiredin/backstage-plugin-assistants-comm
 const MAX_ATTACHMENT_BYTES = 7 * 1024 * 1024;
 
 /**
- * Text/code/data files we inline as text, matched by extension (code files often
- * have an empty or non-`text/*` MIME type, so an extension list is required).
+ * File extensions the picker offers alongside images. Code/data files often have
+ * an empty or non-`text/*` MIME type, so the file-picker `accept` needs an explicit
+ * extension list (paste ignores `accept` and routes by the file itself).
  */
 const TEXT_FILE_EXTENSIONS = [
   '.txt', '.text', '.md', '.markdown', '.rst', '.log',
@@ -68,66 +67,21 @@ const assertSize = (file: File) => {
   }
 };
 
+const isImage = (file: { type?: string }) => (file.type ?? '').startsWith('image/');
+
 /**
- * Sends text/code/data files as a FILE content part (a chip in the chat). The
- * backend re-inlines non-image file parts as text before the model, so this works
- * on every model. Always on, no capability gate.
+ * Sends any attachment as a `file` content part with its real mime type. Images
+ * preview as a thumbnail; everything else as a chip and is re-inlined as text by
+ * the backend. No capability gate — the provider is the source of truth.
  */
-class TextFileAttachmentAdapter implements AttachmentAdapter {
-  accept = TEXT_FILE_EXTENSIONS.join(',');
+class FileAttachmentAdapter implements AttachmentAdapter {
+  accept = [...TEXT_FILE_EXTENSIONS, 'image/*'].join(',');
 
   async add({ file }: { file: File }): Promise<PendingAttachment> {
     assertSize(file);
     return {
       id: file.name,
-      type: 'document',
-      name: file.name,
-      contentType: file.type || 'text/plain',
-      file,
-      status: { type: 'requires-action', reason: 'composer-send' },
-    };
-  }
-
-  async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
-    const data = await readAsDataURL(attachment.file);
-    return {
-      ...attachment,
-      status: { type: 'complete' },
-      content: [
-        {
-          type: 'file',
-          mimeType: attachment.contentType || 'text/plain',
-          filename: attachment.name,
-          data,
-        },
-      ],
-    };
-  }
-
-  async remove(): Promise<void> {}
-}
-
-/** Sends images as a file part (real mime type), gated on the model's vision flag. */
-class VisionImageAttachmentAdapter implements AttachmentAdapter {
-  accept = 'image/*';
-
-  constructor(private readonly getModel: () => ModelOption | undefined) {}
-
-  private assertVision() {
-    if (!this.getModel()?.vision) {
-      throw new Error(
-        'This model can’t accept images. Switch to a vision-capable model, ' +
-          'or attach a text/code file instead.',
-      );
-    }
-  }
-
-  async add({ file }: { file: File }): Promise<PendingAttachment> {
-    this.assertVision();
-    assertSize(file);
-    return {
-      id: file.name,
-      type: 'image',
+      type: isImage(file) ? 'image' : 'document',
       name: file.name,
       contentType: file.type,
       file,
@@ -136,8 +90,6 @@ class VisionImageAttachmentAdapter implements AttachmentAdapter {
   }
 
   async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
-    // Re-check at send: the selected model may have changed since attach time.
-    this.assertVision();
     const data = await readAsDataURL(attachment.file);
     return {
       ...attachment,
@@ -145,7 +97,9 @@ class VisionImageAttachmentAdapter implements AttachmentAdapter {
       content: [
         {
           type: 'file',
-          mimeType: attachment.contentType || 'image/png',
+          mimeType:
+            attachment.contentType ||
+            (attachment.type === 'image' ? 'image/png' : 'text/plain'),
           filename: attachment.name,
           data,
         },
@@ -156,16 +110,7 @@ class VisionImageAttachmentAdapter implements AttachmentAdapter {
   async remove(): Promise<void> {}
 }
 
-/**
- * Build the composer attachment adapter for a thread. `getModel` returns the
- * currently-selected model option, read live so a mid-thread model switch is
- * honored at attach/send without rebuilding the runtime.
- */
-export function createAttachmentAdapter(
-  getModel: () => ModelOption | undefined,
-): CompositeAttachmentAdapter {
-  return new CompositeAttachmentAdapter([
-    new TextFileAttachmentAdapter(),
-    new VisionImageAttachmentAdapter(getModel),
-  ]);
+/** Build the composer attachment adapter for a thread. */
+export function createAttachmentAdapter(): AttachmentAdapter {
+  return new FileAttachmentAdapter();
 }

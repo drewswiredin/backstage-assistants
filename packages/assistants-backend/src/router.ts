@@ -204,7 +204,8 @@ function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
  * message. Many providers won't read a non-image file part, so here — only for what
  * is sent to the model — each non-image file part is decoded and replaced with a
  * text part wrapping the file contents. Image file parts are left untouched
- * (forwarded to vision models). The persisted UI message keeps the original file
+ * (forwarded to the model as-is; if it can't read images, its provider errors).
+ * The persisted UI message keeps the original file
  * part, so the chip survives reloads; this transform is per-turn and model-only.
  */
 function inlineTextFileAttachments(messages: unknown[]): unknown[] {
