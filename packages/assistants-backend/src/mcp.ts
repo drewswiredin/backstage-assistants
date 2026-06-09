@@ -48,6 +48,74 @@ export function mcpToolName(serverId: string, toolName: string): string {
 }
 
 /**
+ * The sanitized form of a server id as it appears in a namespaced tool name
+ * (the same transform {@link mcpToolName} applies to the prefix). An assistant's
+ * `allowedTools` carry the namespaced name, so resolution matches on this form.
+ */
+function sanitizeServerId(serverId: string): string {
+  return serverId.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+/**
+ * Splits an assistant's unified `allowedTools` into bare Backstage action ids
+ * and per-server MCP tool selections.
+ *
+ * An entry is treated as an MCP tool when it is `<serverId>__<tool>` and
+ * `<serverId>` (in its {@link mcpToolName}-sanitized form) matches a configured
+ * server in `servers`; the remainder is the bare tool name. Everything else —
+ * including a namespaced entry whose server prefix is unknown — is returned as a
+ * bare action id, so unknown entries are tolerated downstream (an unknown action
+ * id is logged + skipped by {@link selectAssistantActions}; an unknown MCP tool
+ * name is simply not connected).
+ *
+ * Returns the bare action-id list plus one {@link ResolvedMcpSelection} per
+ * referenced server with its per-server tool allowlist assembled from the
+ * matching entries (so only the named tools on each server are exposed).
+ */
+export function splitAllowedTools(
+  allowedTools: string[],
+  servers: Map<string, McpServerConfig>,
+): { actionIds: string[]; mcpSelections: ResolvedMcpSelection[] } {
+  // Map a sanitized server id back to its config + raw id, for prefix matching.
+  const bySanitized = new Map<string, McpServerConfig>();
+  for (const server of servers.values()) {
+    bySanitized.set(sanitizeServerId(server.id), server);
+  }
+
+  const actionIds: string[] = [];
+  // Preserve first-seen server order; collect each server's allowlisted tools.
+  const selByServerId = new Map<string, { server: McpServerConfig; tools: string[] }>();
+
+  for (const entry of allowedTools) {
+    const sep = entry.indexOf(NAME_SEPARATOR);
+    if (sep > 0) {
+      const prefix = entry.slice(0, sep);
+      const toolName = entry.slice(sep + NAME_SEPARATOR.length);
+      const server = bySanitized.get(prefix);
+      if (server && toolName) {
+        let sel = selByServerId.get(server.id);
+        if (!sel) {
+          sel = { server, tools: [] };
+          selByServerId.set(server.id, sel);
+        }
+        sel.tools.push(toolName);
+        continue;
+      }
+    }
+    // Not a known-server namespaced tool → a bare action id (tolerated).
+    actionIds.push(entry);
+  }
+
+  return {
+    actionIds,
+    mcpSelections: [...selByServerId.values()].map(({ server, tools }) => ({
+      server,
+      tools,
+    })),
+  };
+}
+
+/**
  * Per-tool allowlist semantics: `undefined` or `['*']` allow everything; `[]`
  * allows nothing; otherwise only the named (un-namespaced) tools.
  */
@@ -106,16 +174,31 @@ const rawCache = new Map<string, RawCacheEntry>();
 const LIST_TTL_MS = 5 * 60 * 1000;
 
 /**
- * A server's full raw tool list, cached. On failure returns the last cached
- * value (or empty) so `/status` never breaks because a server is down.
+ * A server's reachability + tool inventory.
+ *
+ * Unlike {@link listServerToolsRaw}, a failure is REPORTED (`reachable: false`
+ * with `error`) rather than swallowed — so the editor's `/capabilities` picker
+ * can show why a server is unavailable instead of an indistinguishable empty
+ * list. On a cache hit the server is reported reachable with the cached tools.
  */
-export async function listServerToolsRaw(
+export interface ServerToolProbe {
+  reachable: boolean;
+  error?: string;
+  tools: RawMcpTool[];
+}
+
+/**
+ * Connect to a server and list its tools, populating the shared TTL cache.
+ * Captures the failure instead of swallowing it. A cache hit short-circuits and
+ * is reported reachable.
+ */
+export async function probeServerTools(
   server: McpServerConfig,
   logger: LoggerService,
-): Promise<RawMcpTool[]> {
+): Promise<ServerToolProbe> {
   const cached = rawCache.get(server.id);
   if (cached && Date.now() - cached.fetchedAt < LIST_TTL_MS) {
-    return cached.tools;
+    return { reachable: true, tools: cached.tools };
   }
   try {
     const client = await connect(server);
@@ -126,18 +209,28 @@ export async function listServerToolsRaw(
         description: t.description,
       }));
       rawCache.set(server.id, { fetchedAt: Date.now(), tools: raw });
-      return raw;
+      return { reachable: true, tools: raw };
     } finally {
       await client.close();
     }
   } catch (error) {
-    logger.warn(
-      `MCP server '${server.id}' tool listing failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return cached?.tools ?? [];
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`MCP server '${server.id}' tool listing failed: ${message}`);
+    // Report the failure (capabilities); still expose any stale tools we have.
+    return { reachable: false, error: message, tools: cached?.tools ?? [] };
   }
+}
+
+/**
+ * A server's full raw tool list, cached. On failure returns the last cached
+ * value (or empty) so `/status` never breaks because a server is down. Thin
+ * wrapper over {@link probeServerTools} that drops the reachability signal.
+ */
+export async function listServerToolsRaw(
+  server: McpServerConfig,
+  logger: LoggerService,
+): Promise<RawMcpTool[]> {
+  return (await probeServerTools(server, logger)).tools;
 }
 
 /**

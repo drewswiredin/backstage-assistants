@@ -5,14 +5,21 @@
  * app-config validation and visibility/secret enforcement at startup, and is
  * referenced from `package.json` via `"configSchema": "config.d.ts"`.
  *
+ * Scope: this block now holds ONLY the platform/safety surface — providers and
+ * the model pool, MCP server connections, the management allowlist, the global
+ * approval floor, global UI defaults, and the runtime limits. Assistant
+ * *definitions* (title/prompt/access/tools/models) live in the plugin database
+ * (the `assistants` table, edited at runtime via the admin API/editor), NOT
+ * here; there is no longer a `profiles` block.
+ *
  * Backstage's config-schema loader requires this file to export ONLY the
  * `Config` interface, so every supporting shape is inlined below rather than
  * declared as a separate exported interface.
  *
  * Visibility: every field here is backend-only by default (never bundled to the
  * frontend). The browser receives only the projection the plugin serves over
- * `GET /status` — assistant titles/descriptions, the model pool + defaults, and
- * the resolved `ui`. `apiKey` is additionally `@visibility secret` so it is
+ * `GET /status` — the accessible assistants, the model pool + defaults, and the
+ * resolved `ui`. `apiKey` is additionally `@visibility secret` so it is
  * redacted everywhere (logs, frontend, etc.).
  *
  * Theme is intentionally NOT configurable: the chat uses one built-in palette
@@ -46,13 +53,41 @@ export interface Config {
      * Register the built-in catalog/search/TechDocs actions under the
      * `assistants` source. Defaults to false.
      */
-    registerCoreActions?: boolean;
+    builtinActions?: boolean;
+
+    /**
+     * Management allowlist: who may create/edit/delete assistant definitions via
+     * the admin API/editor. Evaluated server-side with the same ownership-ref
+     * check used for assistant access (`userEntityRef` / `ownershipEntityRefs`)
+     * and default-deny — with no `users`/`groups`, nobody may manage. Independent
+     * of the Backstage permission framework (`permission.enabled` is not
+     * consulted). Drives `/status.canManage`; the `/manage` and `/capabilities`
+     * endpoints independently 403 non-admins.
+     */
+    admins?: {
+      /** Entity refs of users granted management (e.g. `user:default/jdoe`). */
+      users?: string[];
+      /** Entity refs of groups granted management (e.g. `group:default/platform`). */
+      groups?: string[];
+    };
+
+    /**
+     * Global approval floor: bare Backstage action ids whose execution must be
+     * gated behind an explicit user Allow/Deny in the chat (deterministic,
+     * enforced via the AI SDK's `needsApproval` — not by prompting the model).
+     * The effective approval set for an assistant is this list (∪ each MCP
+     * server's per-server `requireApproval`, namespaced `<serverId>__<tool>`)
+     * intersected with that assistant's `allowedTools`. There is no per-assistant
+     * approval setting. A name not in any assistant's tools is simply never hit.
+     */
+    requireApproval?: string[];
 
     /**
      * External MCP (Model Context Protocol) servers whose tools are exposed to
      * assistants. Each server is connected with a static credential (the
      * configured `headers`) — i.e. one shared identity for all users (not yet
-     * run-as-user). Assistants opt in per profile via `mcpServers`.
+     * run-as-user). Assistants opt in by listing namespaced `<serverId>__<tool>`
+     * entries in their `allowedTools`.
      */
     mcp?: {
       servers?: {
@@ -85,6 +120,14 @@ export interface Config {
           env?: { [name: string]: string };
           /** stdio: working directory for the child process. */
           cwd?: string;
+          /**
+           * Per-server approval floor: un-namespaced tool names of this server
+           * whose execution must be gated behind an explicit user Allow/Deny.
+           * Folded into the global approval set as `<serverId>__<toolName>` and
+           * intersected with each assistant's `allowedTools`. Same deterministic
+           * AI-SDK `needsApproval` gate as the top-level `requireApproval`.
+           */
+          requireApproval?: string[];
         };
       };
     };
@@ -120,21 +163,25 @@ export interface Config {
          */
         options?: { [key: string]: unknown };
 
-        /** Models exposed by this provider, e.g. `["gpt-5.5", "gpt-4o-mini"]`. */
-        models: string[];
-
         /**
-         * Optional per-model context-window sizes (max input tokens), keyed by
-         * the model name as it appears in `models`. Surfaced to the UI to render
-         * a context-usage gauge. Omit a model to leave its limit unknown.
-         * e.g. `{ "gpt-5.5": 400000 }`.
+         * Models exposed by this provider. Each entry is an object with the
+         * model `name` and an optional `contextWindow` (max input tokens,
+         * surfaced to the UI to render a context-usage gauge; omit to leave the
+         * limit unknown). Model ids in the pool are `<providerId>:<name>`.
+         * e.g. `[{ name: "gpt-5.5", contextWindow: 400000 }, { name: "gpt-4o-mini" }]`.
          */
-        contextWindows?: { [modelName: string]: number };
+        models: Array<{
+          /** Model name as the provider exposes it (the `<name>` in `<providerId>:<name>`). */
+          name: string;
+          /** Optional max input tokens for this model; drives the context-usage gauge. */
+          contextWindow?: number;
+        }>;
       };
     };
 
     /**
-     * Global UI defaults, deep-merged into every profile's `ui`. Browser-safe.
+     * Global UI defaults, deep-merged UNDER each assistant's own `ui` (the
+     * assistant's values win). Browser-safe.
      */
     ui?: {
       composer?: {
@@ -148,101 +195,6 @@ export interface Config {
         /** The text submitted when the chip is clicked. */
         prompt: string;
       }>;
-    };
-
-    /**
-     * Configured assistant profiles, keyed by id. At least one must be defined.
-     */
-    profiles: {
-      [profileId: string]: {
-        /** Display title (shown in the assistant picker and welcome). */
-        title: string;
-
-        /** Short description shown in the assistant list / welcome. */
-        description?: string;
-
-        /**
-         * Optional brand hex color (e.g. `"#c2410c"`) used to tint the
-         * assistant's avatar in the nav. Purely cosmetic; browser-safe.
-         */
-        color?: string;
-
-        /**
-         * System prompt for this assistant. Backend-only; never sent to the
-         * browser.
-         */
-        prompt: string;
-
-        /** Access policy controlling who may use this profile. */
-        access: {
-          /** Any signed-in user may access this assistant. */
-          allowAuthenticated?: boolean;
-          /** Entity refs of users granted access (e.g. `user:default/jdoe`). */
-          users?: string[];
-          /** Entity refs of groups granted access (e.g. `group:default/platform`). */
-          groups?: string[];
-        };
-
-        /**
-         * Allowlist of Backstage action names exposed as tools for this profile.
-         * Resolved per request from the actions registry, scoped to the caller.
-         */
-        actions?: string[];
-
-        /**
-         * Tool names that require explicit user approval before they run. When
-         * the model calls one of these, execution is DETERMINISTICALLY paused
-         * (enforced in the AI SDK, not by prompting the model): the user is shown
-         * an Allow / Deny prompt in the chat and the tool's action runs only on
-         * Allow; on Deny the model is told it was declined. Names match the
-         * `actions` allowlist exactly; MCP tools use their namespaced
-         * `<serverId>__<toolName>` form. A name not in `actions`/`mcpServers` is
-         * ignored. This is a safety gate, independent of `access`/authz.
-         */
-        requireApproval?: string[];
-
-        /**
-         * MCP servers (from `assistants.mcp.servers`) this assistant exposes.
-         * Each entry is a server id string (all of that server's tools) or an
-         * object selecting a subset. Tools are namespaced `<serverId>__<tool>`.
-         *
-         * `tools`: omitted or `['*']` = all tools; `[]` = none; otherwise exactly
-         * the named (un-namespaced) tools.
-         */
-        mcpServers?: Array<
-          | string
-          | {
-              /** A configured `assistants.mcp.servers` id. */
-              server: string;
-              /** Allowlist of un-namespaced tool names (see above). */
-              tools?: string[];
-            }
-        >;
-
-        /**
-         * Allowlist of `provider:model` ids this profile may use — a subset of
-         * the global pool. Omit to allow the full pool.
-         */
-        models?: string[];
-
-        /**
-         * This profile's default model (`provider:model`). Must be within this
-         * profile's `models` allowlist. Required when the allowlist excludes the
-         * global `assistants.defaultModel`.
-         */
-        defaultModel?: string;
-
-        /** Per-profile UI overrides, deep-merged over the global `assistants.ui`. */
-        ui?: {
-          composer?: {
-            placeholder?: string;
-          };
-          suggestions?: Array<{
-            title: string;
-            prompt: string;
-          }>;
-        };
-      };
     };
   };
 }

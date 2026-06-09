@@ -11,6 +11,7 @@ import { readConfig } from './config';
 import { createRouter } from './router';
 import { registerCoreActions } from './actions';
 import { ThreadService } from './threads';
+import { AssistantStore } from './assistants';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -61,17 +62,31 @@ export const assistantsPlugin = createBackendPlugin({
         const assistants = readConfig(config);
 
         // Register the built-in catalog/search/TechDocs actions only when the
-        // operator opts in. They surface via `actions.list` only if `assistants`
-        // is listed in core `backend.actions.pluginSources`.
-        if (assistants.registerCoreActions) {
+        // operator opts in (config `assistants.builtinActions`). They surface
+        // via `actions.list` only if `assistants` is listed in core
+        // `backend.actions.pluginSources`.
+        if (assistants.builtinActions) {
           registerCoreActions({ actionsRegistry, discovery, auth });
         }
 
         // Conversation persistence: the plugin owns its own tables in Backstage's
         // standard `backend.database` (SQLite dev / Postgres prod). Migrations are
         // idempotent and run on every boot.
-        const threadService = new ThreadService(await database.getClient() as any);
+        const db = (await database.getClient()) as any;
+        const threadService = new ThreadService(db);
         await threadService.runMigrations();
+
+        // Assistant DEFINITIONS persistence: same DB, managed at runtime via the
+        // admin `/manage` API. The store holds a synchronously-read snapshot the
+        // router resolves per request; it's seeded with one default on first init
+        // (never resurrected once an operator deletes/edits it). The platform
+        // model pool + default feed its derived-at-read model/default helpers.
+        const assistantStore = new AssistantStore(db, {
+          pool: assistants.models,
+          defaultModel: assistants.defaultModel,
+        });
+        await assistantStore.runMigrations();
+        await assistantStore.seedOnce();
 
         const router = await createRouter({
           logger,
@@ -80,6 +95,7 @@ export const assistantsPlugin = createBackendPlugin({
           userInfo,
           actions,
           assistants,
+          assistantStore,
           threadService,
           signals,
         });
@@ -87,10 +103,10 @@ export const assistantsPlugin = createBackendPlugin({
         httpRouter.use(router);
 
         logger.info('AI Assistants backend plugin initialized', {
-          assistants: assistants.assistants.size,
           models: assistants.models.length,
           defaultModel: assistants.defaultModel,
-          registerCoreActions: assistants.registerCoreActions,
+          builtinActions: assistants.builtinActions,
+          assistants: assistantStore.list().length,
         });
       },
     });

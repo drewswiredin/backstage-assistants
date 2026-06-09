@@ -7,7 +7,7 @@
  *
  * Modifications by the backstage-assistants authors:
  *   - Consolidated the three core actions into a single module.
- *   - Registration is gated behind `assistants.registerCoreActions` and wired
+ *   - Registration is gated behind `assistants.builtinActions` and wired
  *     through this plugin's `register*CoreActions` entry point rather than the
  *     AWS extension-point plumbing.
  *   - Added the `actionsToTools` adapter (ActionsServiceAction -> AI SDK tool())
@@ -296,7 +296,7 @@ The response will be formatted as Markdown.`,
 /**
  * Registers all built-in core actions (`search-catalog`, `search-techdocs`,
  * `read-techdocs`) under the `assistants` source. Call this only when
- * `assistants.registerCoreActions` is true.
+ * `assistants.builtinActions` is true.
  *
  * Note: an action is only resolvable via {@link ActionsService} if `assistants`
  * is listed in the core `backend.actions.pluginSources` config.

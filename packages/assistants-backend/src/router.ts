@@ -21,21 +21,21 @@ import {
   type ModelMessage,
   type UIMessage,
 } from 'ai';
-import type { StatusResponse } from '@drewswiredin/backstage-plugin-assistants-common';
-import {
-  AssistantAccessPolicy,
+import type {
   AssistantDefinition,
-  AssistantsConfig,
-  buildStatus,
-} from './config';
+  StatusResponse,
+} from '@drewswiredin/backstage-plugin-assistants-common';
+import { AssistantsConfig, isPolicyAccessible } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
 import {
   buildMcpTools,
   listServerToolsRaw,
+  splitAllowedTools,
   summarizeMcpTools,
-  type ResolvedMcpSelection,
 } from './mcp';
+import type { AssistantStore } from './assistants';
 import { createOpenApiRouter } from './schema/openapi';
+import { createManageRouter } from './manage';
 import type { ThreadService } from './threads';
 import { ResumableStreamRegistry } from './resumableStreams';
 import type { SignalsService } from '@backstage/plugin-signals-node';
@@ -54,7 +54,19 @@ export interface RouterOptions {
   userInfo: UserInfoService;
   /** Actions service used to LIST + INVOKE the assistant's tool allowlist. */
   actions: ActionsService;
+  /**
+   * Platform/safety config: the model pool + resolver, MCP server connections,
+   * runtime limits, the management allowlist, and the global approval set.
+   * Assistant DEFINITIONS no longer live here — they come from {@link assistantStore}.
+   */
   assistants: AssistantsConfig;
+  /**
+   * Server-side store for assistant definitions. The router resolves an
+   * assistant per request from its synchronously-read in-memory snapshot
+   * (`get`/`list`), exactly where the old config Map was used; the admin
+   * `/manage` endpoints mutate it (write-through snapshot rebuild).
+   */
+  assistantStore: AssistantStore;
   /** Server-side conversation persistence. */
   threadService: ThreadService;
   /** Real-time push for working / unread indicators (per user). */
@@ -62,47 +74,26 @@ export interface RouterOptions {
 }
 
 /**
- * Evaluates an assistant's access policy against the caller's identity. Shared
- * by `/status` (filtering the assistant list) and `/chat` + `/title` (enforcing
- * per-turn access) so all routes apply identical semantics.
+ * Resolves an assistant's accessibility for a resolved
+ * {@link @backstage/backend-plugin-api#BackstageUserInfo}. Shared by `/status`
+ * (filtering the assistant list) and `/chat` + `/title` (enforcing per-turn
+ * access) so all routes apply identical semantics. Delegates to
+ * {@link isPolicyAccessible} (the same ownership-ref check, default-deny):
  *
- * - no policy (none of the three set) → closed; only the explicit grants below
- *   open it. A policy with `allowAuthenticated: false` and empty `users`/`groups`
- *   grants nobody.
  * - `allowAuthenticated` grants any signed-in user.
  * - `users` matches the caller's `userEntityRef`.
  * - `groups` matches any of the caller's `ownershipEntityRefs`.
- */
-function checkAccess(
-  policy: AssistantAccessPolicy,
-  userRef: string,
-  ownershipRefs: string[],
-): boolean {
-  if (policy.allowAuthenticated) {
-    return true;
-  }
-  if (policy.users.includes(userRef)) {
-    return true;
-  }
-  if (policy.groups.some(group => ownershipRefs.includes(group))) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Convenience wrapper resolving an assistant's accessibility from a resolved
- * {@link @backstage/backend-plugin-api#BackstageUserInfo}.
+ * - a policy with `allowAuthenticated: false` and empty `users`/`groups` grants
+ *   nobody.
  */
 function isAssistantAccessible(
   assistant: AssistantDefinition,
   user: BackstageUserInfo,
 ): boolean {
-  return checkAccess(
-    assistant.access,
-    user.userEntityRef,
-    user.ownershipEntityRefs,
-  );
+  return isPolicyAccessible(assistant.access, {
+    userEntityRef: user.userEntityRef,
+    ownershipEntityRefs: user.ownershipEntityRefs,
+  });
 }
 
 /**
@@ -288,9 +279,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     userInfo,
     actions,
     assistants,
+    assistantStore,
     threadService,
     signals,
   } = options;
+
+  /**
+   * Whether the caller may MANAGE assistants — the `assistants.admins`
+   * ownership-ref check, evaluated server-side and default-deny, independent of
+   * the Backstage permission framework. Gates `/status.canManage` plus every
+   * `/manage` + `/capabilities` endpoint (403 otherwise).
+   */
+  function canManage(user: BackstageUserInfo): boolean {
+    return isPolicyAccessible(assistants.adminAllowlist, {
+      userEntityRef: user.userEntityRef,
+      ownershipEntityRefs: user.ownershipEntityRefs,
+    });
+  }
 
   // Live, per-user set of in-flight generations: userRef -> (threadId -> assistantId).
   // Ephemeral (single backend replica); surfaced to the client via GET /threads/status.
@@ -444,14 +449,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // resolved), matching what `/chat` would actually offer the model.
     const { actions: available } = await actions.list({ credentials });
 
+    // The accessible definitions for this caller (snapshot read; sync). Each
+    // assistant's unified `allowedTools` is split into bare action ids + per-
+    // server MCP tool selections so the tool projection below mirrors `/chat`.
+    const accessible = assistantStore
+      .list()
+      .filter(assistant => isAssistantAccessible(assistant, user))
+      .map(assistant => ({
+        assistant,
+        split: splitAllowedTools(assistant.allowedTools, assistants.mcpServers),
+      }));
+
     // Pre-fetch (cached) MCP tool summaries for every server referenced by an
-    // assistant this caller can access, so the synchronous tool projection below
-    // can include them. A server that's down yields an empty list, not an error.
+    // accessible assistant, so the synchronous tool projection below can include
+    // them. A server that's down yields an empty list, not an error.
     const neededServers = new Set<string>();
-    for (const assistant of assistants.assistants.values()) {
-      if (isAssistantAccessible(assistant, user)) {
-        assistant.mcpServers.forEach(sel => neededServers.add(sel.server));
-      }
+    for (const { split } of accessible) {
+      split.mcpSelections.forEach(sel => neededServers.add(sel.server.id));
     }
     // Full (unfiltered) raw tool list per server, cached; the per-assistant
     // tool allowlist is applied below via summarizeMcpTools.
@@ -467,24 +481,33 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }),
     );
 
-    // Filter assistants by the caller's access policy, then project to the
-    // browser-safe summary shape. Prompt and access never leave the backend.
-    const status: StatusResponse = buildStatus(
-      assistants,
-      assistant => isAssistantAccessible(assistant, user),
-      assistant => [
-        ...selectAssistantActions(available, assistant.actions, logger).map(
-          a => ({
-            name: a.name,
-            description: a.description,
-            source: 'backstage',
-          }),
-        ),
-        ...assistant.mcpServers.flatMap(sel =>
-          summarizeMcpTools(sel.server, rawByServer.get(sel.server) ?? [], sel.tools),
-        ),
-      ],
-    );
+    // Project each accessible assistant to the browser-safe summary (no prompt,
+    // no access) via the store, attaching the resolved tool list = its allowlist
+    // ∩ the caller's visible actions (bare) + its allowlisted MCP tools.
+    const status: StatusResponse = {
+      assistants: accessible.map(({ assistant, split }) => ({
+        ...assistantStore.summaryFor(assistant),
+        tools: [
+          ...selectAssistantActions(available, split.actionIds, logger).map(
+            a => ({
+              name: a.name,
+              description: a.description,
+              source: 'backstage',
+            }),
+          ),
+          ...split.mcpSelections.flatMap(sel =>
+            summarizeMcpTools(
+              sel.server.id,
+              rawByServer.get(sel.server.id) ?? [],
+              sel.tools,
+            ),
+          ),
+        ],
+      })),
+      models: assistants.models,
+      defaultModel: assistants.defaultModel,
+      canManage: canManage(user),
+    };
 
     res.json(status);
   }
@@ -509,8 +532,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       messages: unknown[];
     };
 
-    // 3. Resolve assistant config; unknown assistantId → InputError (400).
-    const assistant = assistants.assistants.get(assistantId);
+    // 3. Resolve the assistant from the store snapshot (sync); unknown →
+    //    InputError (400). Tolerates a missing assistant exactly as before.
+    const assistant = assistantStore.get(assistantId);
     if (!assistant) {
       throw new InputError(`Unknown assistantId '${assistantId}'`);
     }
@@ -523,33 +547,37 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       );
     }
 
-    // 5. Resolve the model; unknown or out-of-allowlist modelId → 400.
-    if (!assistant.models.includes(modelId)) {
+    // 5. Resolve the model; unknown or out-of-allowlist modelId → 400. An empty
+    //    allowlist means the full platform pool — defer to the store's derived
+    //    effective model list.
+    if (!assistantStore.effectiveModels(assistant).includes(modelId)) {
       throw new InputError(
         `Model '${modelId}' is not available for assistant '${assistantId}'`,
       );
     }
     const model = assistants.resolveModel(modelId);
 
-    // 6. Resolve the assistant's tools from the Backstage Actions registry. The
-    //    list is scoped to what THIS user may see (gate 2, coarse); we then
-    //    keep only the actions named in the assistant's allowlist (gate 1;
-    //    unknown names are logged and skipped — non-fatal) and adapt them to AI
-    //    SDK tools whose `execute` invokes with the SAME caller credentials
-    //    (runs as the user; fine-grained perms enforced at invoke).
-    const { actions: available } = await actions.list({ credentials });
-    const selected = selectAssistantActions(available, assistant.actions, logger);
+    // 6. Resolve the assistant's tools from its unified `allowedTools`. Split
+    //    each entry into bare Backstage action ids and per-server MCP tool
+    //    selections (deriving which servers to connect from the namespaced
+    //    prefixes; unknown entries are tolerated — see splitAllowedTools).
+    const { actionIds, mcpSelections } = splitAllowedTools(
+      assistant.allowedTools,
+      assistants.mcpServers,
+    );
 
-    // 6b. Add tools from the assistant's allowlisted external MCP servers
+    // 6a. Backstage actions. The list is scoped to what THIS user may see
+    //     (gate 2, coarse); we keep only the actions named in the allowlist
+    //     (gate 1; unknown names are logged and skipped — non-fatal) and adapt
+    //     them to AI SDK tools whose `execute` invokes with the SAME caller
+    //     credentials (runs as the user; fine-grained perms enforced at invoke).
+    const { actions: available } = await actions.list({ credentials });
+    const selected = selectAssistantActions(available, actionIds, logger);
+
+    // 6b. Tools from the assistant's allowlisted external MCP servers
     //     (static/shared credential — not run-as-user). Connections are held for
     //     the turn and closed when the stream finishes/errors. A server that's
     //     down is skipped, not fatal.
-    const mcpSelections = assistant.mcpServers
-      .map((sel): ResolvedMcpSelection | undefined => {
-        const server = assistants.mcpServers.get(sel.server);
-        return server ? { server, tools: sel.tools } : undefined;
-      })
-      .filter((s): s is ResolvedMcpSelection => Boolean(s));
     const mcp = await buildMcpTools(
       mcpSelections,
       logger,
@@ -666,12 +694,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }),
     };
 
-    // 6b. Deterministic approval gate. For every tool named in the assistant's
-    //     `requireApproval` list, set the AI SDK's `needsApproval` predicate. The
-    //     SDK then emits a tool-approval-request and SKIPS the tool's `execute`
-    //     until the user responds (Allow runs it server-side; Deny tells the model
-    //     it was declined). This is code-enforced — not a prompt the model can
-    //     ignore. Names that don't resolve to a tool are logged and skipped.
+    // 6c. Deterministic approval gate. The approval set is GLOBAL now: the
+    //     platform `requireApproval` floor (top-level action ids ∪ per-server
+    //     namespaced `<serverId>__<tool>`) intersected with THIS assistant's
+    //     `allowedTools`. For every tool in that intersection, set the AI SDK's
+    //     `needsApproval` predicate. The SDK then emits a tool-approval-request
+    //     and SKIPS the tool's `execute` until the user responds (Allow runs it
+    //     server-side; Deny tells the model it was declined). This is
+    //     code-enforced — not a prompt the model can ignore. Names that don't
+    //     resolve to a built tool are logged and skipped.
     //
     //     The predicate also honours a standing "always allow <tool>" grant: the
     //     surface's "Always allow" button records an approved tool-approval-
@@ -681,7 +712,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     model message history (persisted + replayed), so it is deterministic and
     //     survives reloads, and it is per-tool by design (granting one tool never
     //     auto-approves another).
-    if (assistant.requireApproval.length > 0) {
+    // The per-turn approval set = global floor ∩ this assistant's allowedTools.
+    const approvalSet = assistant.allowedTools.filter(t =>
+      assistants.requireApproval.has(t),
+    );
+    if (approvalSet.length > 0) {
       const hasStandingGrant = (
         history: ReadonlyArray<{ content?: unknown }>,
         toolName: string,
@@ -705,7 +740,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return false;
       };
       const gated: string[] = [];
-      for (const name of assistant.requireApproval) {
+      for (const name of approvalSet) {
         const t = (tools as Record<string, unknown>)[name];
         if (t && typeof t === 'object') {
           // A function, not `true`: skip the prompt once a standing grant exists.
@@ -716,9 +751,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           gated.push(name);
         }
       }
-      const missing = assistant.requireApproval.filter(
-        n => !gated.includes(n),
-      );
+      const missing = approvalSet.filter(n => !gated.includes(n));
       if (missing.length > 0) {
         logger.warn(
           `requireApproval lists tool(s) not available to assistant '${assistant.id}': ${missing.join(', ')}`,
@@ -1003,8 +1036,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       messages: unknown[];
     };
 
-    // 3. Resolve assistant config; unknown assistantId → InputError (400).
-    const assistant = assistants.assistants.get(assistantId);
+    // 3. Resolve the assistant from the store snapshot (sync); unknown →
+    //    InputError (400). Tolerates a missing assistant exactly as before.
+    const assistant = assistantStore.get(assistantId);
     if (!assistant) {
       throw new InputError(`Unknown assistantId '${assistantId}'`);
     }
@@ -1017,8 +1051,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       );
     }
 
-    // 5. Resolve the model; unknown or out-of-allowlist modelId → 400.
-    if (!assistant.models.includes(modelId)) {
+    // 5. Resolve the model; unknown or out-of-allowlist modelId → 400. An empty
+    //    allowlist means the full platform pool — defer to the store's derived
+    //    effective model list.
+    if (!assistantStore.effectiveModels(assistant).includes(modelId)) {
       throw new InputError(
         `Model '${modelId}' is not available for assistant '${assistantId}'`,
       );
@@ -1072,8 +1108,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     const user = await userInfo.getUserInfo(credentials);
     const accessibleIds = new Set<string>();
-    for (const [id, def] of assistants.assistants) {
-      if (isAssistantAccessible(def, user)) accessibleIds.add(id);
+    for (const def of assistantStore.list()) {
+      if (isAssistantAccessible(def, user)) accessibleIds.add(def.id);
     }
     return { userRef: user.userEntityRef, accessibleIds };
   }
@@ -1208,6 +1244,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   router.use('/threads', threads);
+
+  // Admin management surface — `/manage/assistants` CRUD + `/capabilities`,
+  // all gated by `canManage` (403 for non-admins). A plain Express sub-router
+  // (out-of-spec, like `/threads`) so the typed OpenAPI router's path
+  // allowlist doesn't reject it and the hand-written `/chat` stays untouched.
+  // Mutations rebuild the store snapshot write-through (in AssistantStore).
+  router.use(
+    createManageRouter({
+      logger,
+      httpAuth,
+      userInfo,
+      actions,
+      assistants,
+      assistantStore,
+      canManage,
+    }),
+  );
 
   // Standard Backstage error envelope. Mounted LAST so thrown @backstage/errors
   // types are serialized to { error: { name, message }, request, response }.

@@ -8,14 +8,7 @@ import {
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
-import {
-  AssistantSummary,
-  ModelOption,
-  ModelId,
-  StatusResponse,
-  ToolSummary,
-  UiOptions,
-} from '@drewswiredin/backstage-plugin-assistants-common';
+import { ModelOption, ModelId, UiOptions } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /**
  * The set of provider `type` discriminators whose AI-SDK factories we know how
@@ -35,11 +28,17 @@ function isSupportedProviderType(type: string): type is SupportedProviderType {
 }
 
 /**
- * Per-assistant access policy. Parsed from config; evaluated per request in the
- * router against the caller's {@link @backstage/backend-plugin-api#BackstageUserInfo}.
+ * An assistant's access policy — who may converse with it. Mirrors the shared
+ * {@link @drewswiredin/backstage-plugin-assistants-common#AssistantAccess} and
+ * the same shape used by the management (`assistants.admins`) allowlist; both
+ * are evaluated with {@link isPolicyAccessible}.
+ *
+ * Lives in the backend (not derived from app-config anymore — assistant
+ * definitions are DB rows) and is kept here so the store, the admin-gate check,
+ * and the router all share one type + one evaluation helper.
  */
 export interface AssistantAccessPolicy {
-  /** Any signed-in user may access the assistant. */
+  /** Any signed-in user may access. */
   allowAuthenticated: boolean;
   /** Entity refs of users granted access. */
   users: string[];
@@ -48,46 +47,30 @@ export interface AssistantAccessPolicy {
 }
 
 /**
- * A fully parsed assistant. The prompt is backend-only and never leaves the
- * backend; `actions` is the per-assistant tool allowlist; `models`/`ui` are the
- * resolved (validated/merged) values used by the browser-safe projection.
+ * Evaluates an {@link AssistantAccessPolicy} (or the `assistants.admins`
+ * allowlist, which has the same shape) against a caller's ownership refs.
+ * Default-deny: an empty policy (no `allowAuthenticated`, no `users`/`groups`)
+ * grants nobody.
+ *
+ * `userEntityRef` is the caller's own ref; `ownershipEntityRefs` is the set of
+ * refs the caller owns/belongs to (user + groups), exactly as Backstage's
+ * `BackstageUserInfo` exposes them. Matching is membership in either the
+ * `users` list (by `userEntityRef`) or the `groups` list (by any
+ * `ownershipEntityRefs`).
+ *
+ * @public
  */
-export interface AssistantDefinition {
-  id: string;
-  title: string;
-  description?: string;
-  /** Optional brand hex color used to tint the assistant's avatar in the nav. */
-  color?: string;
-  prompt: string;
-  access: AssistantAccessPolicy;
-  /** Backstage action names allowed as tools for this assistant. */
-  actions: string[];
-  /**
-   * Tool names whose execution must be gated behind explicit user approval
-   * (deterministic, enforced via the AI SDK's `needsApproval`). Matches `actions`
-   * names or namespaced MCP tool names; entries not in the tool set are ignored.
-   */
-  requireApproval: string[];
-  /**
-   * MCP servers this assistant exposes, each with an optional per-tool
-   * allowlist. `tools` undefined or containing `'*'` = all tools; `[]` = none;
-   * otherwise exactly the named (un-namespaced) tools.
-   */
-  mcpServers: McpServerSelection[];
-  /**
-   * The `provider:model` ids this assistant may use. Always populated: either
-   * the per-profile allowlist or the full pool when none was declared.
-   */
-  models: ModelId[];
-  /** This assistant's default `provider:model`. */
-  defaultModel: ModelId;
-  /** Resolved UI options (deep-merge of global + per-profile `ui`). */
-  ui?: UiOptions;
-  /**
-   * Whether this assistant declared an explicit `models` allowlist. When false
-   * the assistant gets the full pool and `models` is omitted from `/status`.
-   */
-  hasModelAllowlist: boolean;
+export function isPolicyAccessible(
+  policy: AssistantAccessPolicy,
+  caller: { userEntityRef: string; ownershipEntityRefs: string[] },
+): boolean {
+  if (policy.allowAuthenticated) {
+    return true;
+  }
+  if (policy.users.includes(caller.userEntityRef)) {
+    return true;
+  }
+  return policy.groups.some(g => caller.ownershipEntityRefs.includes(g));
 }
 
 /** Supported MCP client transports (the full @modelcontextprotocol/sdk set). */
@@ -116,32 +99,28 @@ export interface McpServerConfig {
 }
 
 /**
- * An assistant's selection of one MCP server + an optional per-tool allowlist.
- * `tools` undefined or `['*']` = all; `[]` = none; otherwise exactly the named
- * (un-namespaced) tools.
- */
-export interface McpServerSelection {
-  server: string;
-  tools?: string[];
-}
-
-/**
- * The result of reading and validating the `assistants` config block.
+ * The platform/safety surface read from the `assistants` config block.
+ *
+ * Assistant *definitions* are NOT here — they live in the plugin database and
+ * are read through the assistant store. This config now exposes only the model
+ * pool + resolver, the provider registry, the MCP server connections, the
+ * global UI default, the runtime limits, the management allowlist, and the
+ * global approval set.
  */
 export interface AssistantsConfig {
   /**
    * Register the built-in catalog/search/TechDocs core actions under the
-   * `assistants` source. Defaults to false.
+   * `assistants` source. Defaults to false. (Config key `builtinActions`.)
    */
-  registerCoreActions: boolean;
-  /** Parsed assistants keyed by id. */
-  assistants: Map<string, AssistantDefinition>;
+  builtinActions: boolean;
   /** Configured external MCP servers keyed by id. */
   mcpServers: Map<string, McpServerConfig>;
   /** Flat, browser-safe list of every `provider:model` option (the pool). */
   models: ModelOption[];
-  /** Global initial model selection (`provider:model`). */
+  /** Global initial model selection (`provider:model`) — the platform default. */
   defaultModel: ModelId;
+  /** Global UI defaults, deep-merged UNDER each assistant's own `ui`. */
+  ui?: UiOptions;
   /** Maximum number of tool-call steps per turn. */
   maxSteps: number;
   /**
@@ -153,41 +132,26 @@ export interface AssistantsConfig {
   toolResultMaxChars: number;
   /** Express body-parser size limit for `/chat` and `/title` (default `'10mb'`). */
   requestBodyLimit: string;
+  /**
+   * Management allowlist (the `assistants.admins` block). Same shape +
+   * evaluation as an assistant {@link AssistantAccessPolicy}; default-deny.
+   * `canManage` is {@link isPolicyAccessible}(adminAllowlist, caller).
+   */
+  adminAllowlist: AssistantAccessPolicy;
+  /**
+   * The global approval floor as a flat set of tool ids: the top-level
+   * `requireApproval` action ids ∪ each MCP server's per-server
+   * `requireApproval` namespaced `<serverId>__<tool>`. The effective per-turn
+   * approval set is this intersected with the assistant's `allowedTools`.
+   */
+  requireApproval: Set<string>;
   /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
   resolveModel: (modelId: string) => LanguageModel;
 }
 
 /**
- * Deep-merges two {@link UiOptions} values: objects deep-merge, arrays (e.g.
- * `suggestions`) REPLACE so a profile can clear inherited values. Returns
- * undefined when both inputs are absent.
- */
-function mergeUi(
-  base: UiOptions | undefined,
-  override: UiOptions | undefined,
-): UiOptions | undefined {
-  if (!base && !override) {
-    return undefined;
-  }
-  const merged: UiOptions = {};
-
-  const composer = { ...(base?.composer ?? {}), ...(override?.composer ?? {}) };
-  if (Object.keys(composer).length > 0) {
-    merged.composer = composer;
-  }
-
-  // Arrays replace: a present override wins outright; otherwise inherit base.
-  const suggestions = override?.suggestions ?? base?.suggestions;
-  if (suggestions) {
-    merged.suggestions = suggestions;
-  }
-
-  return merged;
-}
-
-/**
- * Reads a profile's `ui` block (browser-safe) from raw config into the shared
- * {@link UiOptions} shape.
+ * Reads the global `ui` block (browser-safe) from raw config into the shared
+ * {@link UiOptions} shape. Returns undefined when the block is absent.
  */
 function readUi(uiConfig: Config | undefined): UiOptions | undefined {
   if (!uiConfig) {
@@ -209,7 +173,7 @@ function readUi(uiConfig: Config | undefined): UiOptions | undefined {
     }));
   }
 
-  return Object.keys(ui).length > 0 ? ui : {};
+  return Object.keys(ui).length > 0 ? ui : undefined;
 }
 
 /**
@@ -257,36 +221,16 @@ function buildProvider(
   }
 }
 
-function parseAccess(
-  profileId: string,
-  profileConfig: Config,
-): AssistantAccessPolicy {
-  // Total omission of the access block is almost always a mistake: with
-  // deny-by-default evaluation it produces a silently-dead assistant nobody can
-  // reach. Fail loudly instead. A present-but-empty block (e.g. only
-  // `allowAuthenticated: false`) is an intentional lockout and stays valid.
-  const access = profileConfig.getOptionalConfig('access');
-  if (!access) {
-    throw new InputError(
-      `assistants.profiles.${profileId} must define an access policy ` +
-        `(allowAuthenticated/users/groups)`,
-    );
-  }
-  return {
-    allowAuthenticated: access.getOptionalBoolean('allowAuthenticated') ?? false,
-    users: access.getOptionalStringArray('users') ?? [],
-    groups: access.getOptionalStringArray('groups') ?? [],
-  };
-}
-
 /**
- * Reads and validates the `assistants` config block, builds the AI SDK provider
- * registry, and returns parsed assistants plus a model resolver.
+ * Reads and validates the `assistants` config block (the platform/safety
+ * surface only — assistant definitions are DB rows, read via the store), builds
+ * the AI SDK provider registry, and returns the model pool + resolver plus the
+ * MCP servers, UI default, limits, management allowlist, and global approval
+ * set.
  *
  * Throws {@link @backstage/errors#InputError} when the config is malformed: an
- * unsupported provider type, zero assistants, no models, a `defaultModel` not in
- * the pool, a per-profile model allowlist not ⊆ the pool, or a profile default
- * not within its allowlist.
+ * unsupported provider type, no models, a `defaultModel` not in the pool, or an
+ * MCP server missing its transport's required connection field.
  *
  * @public
  */
@@ -312,18 +256,16 @@ export function readConfig(config: Config): AssistantsConfig {
 
     registryProviders[providerId] = buildProvider(type, providerConfig);
 
-    const modelNames = providerConfig.getStringArray('models');
-    // Optional per-model context windows, read as a raw object so model names
-    // containing '.' (e.g. `gpt-4.5`) aren't misread as nested config keys.
-    const contextWindows = providerConfig.getOptional('contextWindows') as
-      | Record<string, number>
-      | undefined;
-    for (const model of modelNames) {
-      const contextWindow = contextWindows?.[model];
+    // Each model is an object `{ name, contextWindow? }`. The optional
+    // `contextWindow` is surfaced to the UI's context-usage gauge.
+    const modelConfigs = providerConfig.getConfigArray('models');
+    for (const modelConfig of modelConfigs) {
+      const name = modelConfig.getString('name');
+      const contextWindow = modelConfig.getOptionalNumber('contextWindow');
       models.push({
-        id: `${providerId}:${model}`,
+        id: `${providerId}:${name}`,
         provider: providerId,
-        model,
+        model: name,
         ...(typeof contextWindow === 'number' ? { contextWindow } : {}),
       });
     }
@@ -348,10 +290,13 @@ export function readConfig(config: Config): AssistantsConfig {
   }
 
   // --- Global UI defaults -------------------------------------------------
-  const globalUi = readUi(root.getOptionalConfig('ui'));
+  const ui = readUi(root.getOptionalConfig('ui'));
 
   // --- External MCP servers ----------------------------------------------
+  // Each server's optional per-server `requireApproval` (un-namespaced tool
+  // names) is folded into the global approval set as `<serverId>__<tool>`.
   const mcpServers = new Map<string, McpServerConfig>();
+  const requireApproval = new Set<string>();
   const serversConfig = root
     .getOptionalConfig('mcp')
     ?.getOptionalConfig('servers');
@@ -406,178 +351,50 @@ export function readConfig(config: Config): AssistantsConfig {
           headers: readStringMap('headers'),
         });
       }
+
+      // Per-server approval floor, namespaced into the global set.
+      for (const tool of sc.getOptionalStringArray('requireApproval') ?? []) {
+        requireApproval.add(`${serverId}__${tool}`);
+      }
     }
   }
 
-  // --- Profiles (assistants) ----------------------------------------------
-  const profilesConfig = root.getConfig('profiles');
-  const profileIds = profilesConfig.keys();
-  if (profileIds.length === 0) {
-    throw new InputError(
-      'assistants config must define at least one profile',
-    );
+  // --- Global approval floor (top-level action ids) -----------------------
+  for (const actionId of root.getOptionalStringArray('requireApproval') ?? []) {
+    requireApproval.add(actionId);
   }
 
-  const assistants = new Map<string, AssistantDefinition>();
-  for (const profileId of profileIds) {
-    const profileConfig = profilesConfig.getConfig(profileId);
+  // --- Management allowlist (assistants.admins) ---------------------------
+  // Same shape + evaluation as an assistant access policy; default-deny.
+  const adminsConfig = root.getOptionalConfig('admins');
+  const adminAllowlist: AssistantAccessPolicy = {
+    // Management is never granted to "any authenticated user" from config; the
+    // allowlist is purely users/groups. Kept in the AccessPolicy shape so the
+    // same `isPolicyAccessible` evaluator applies.
+    allowAuthenticated: false,
+    users: adminsConfig?.getOptionalStringArray('users') ?? [],
+    groups: adminsConfig?.getOptionalStringArray('groups') ?? [],
+  };
 
-    // Per-profile model allowlist: subset of the pool; omit = full pool.
-    const allowlist = profileConfig.getOptionalStringArray('models');
-    const hasModelAllowlist = allowlist !== undefined;
-    if (allowlist) {
-      for (const id of allowlist) {
-        if (!modelIds.has(id)) {
-          throw new InputError(
-            `assistants.profiles.${profileId}.models contains '${id}', ` +
-              `which is not in the global model pool`,
-          );
-        }
-      }
-    }
-    const profileModels = allowlist ?? Array.from(modelIds);
-
-    // Effective default: the profile's own, else the global default — which
-    // must be within the profile's allowlist. A restricted profile that
-    // excludes the global default must declare its own `defaultModel`.
-    const profileDefault =
-      profileConfig.getOptionalString('defaultModel') ?? defaultModel;
-    if (!profileModels.includes(profileDefault)) {
-      throw new InputError(
-        `assistants.profiles.${profileId}.defaultModel '${profileDefault}' ` +
-          `is not within this profile's model allowlist`,
-      );
-    }
-
-    // Per-profile MCP server selections: a server-id string (all tools) or
-    // `{ server, tools }` to curate. Each server must be configured.
-    const rawMcp = profileConfig.getOptional('mcpServers');
-    const profileMcpServers: McpServerSelection[] = [];
-    if (rawMcp !== undefined) {
-      if (!Array.isArray(rawMcp)) {
-        throw new InputError(
-          `assistants.profiles.${profileId}.mcpServers must be an array`,
-        );
-      }
-      for (const entry of rawMcp) {
-        let selection: McpServerSelection;
-        if (typeof entry === 'string') {
-          selection = { server: entry };
-        } else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-          const e = entry as { server?: unknown; tools?: unknown };
-          if (typeof e.server !== 'string') {
-            throw new InputError(
-              `assistants.profiles.${profileId}.mcpServers entry must have a string 'server'`,
-            );
-          }
-          let tools: string[] | undefined;
-          if (e.tools !== undefined) {
-            if (
-              !Array.isArray(e.tools) ||
-              !e.tools.every(t => typeof t === 'string')
-            ) {
-              throw new InputError(
-                `assistants.profiles.${profileId}.mcpServers '${e.server}'.tools ` +
-                  `must be an array of strings`,
-              );
-            }
-            tools = e.tools as string[];
-          }
-          selection = { server: e.server, tools };
-        } else {
-          throw new InputError(
-            `assistants.profiles.${profileId}.mcpServers entries must be a ` +
-              `server id string or { server, tools? }`,
-          );
-        }
-        if (!mcpServers.has(selection.server)) {
-          throw new InputError(
-            `assistants.profiles.${profileId}.mcpServers references unknown ` +
-              `MCP server '${selection.server}'`,
-          );
-        }
-        profileMcpServers.push(selection);
-      }
-    }
-
-    assistants.set(profileId, {
-      id: profileId,
-      title: profileConfig.getString('title'),
-      description: profileConfig.getOptionalString('description'),
-      color: profileConfig.getOptionalString('color'),
-      prompt: profileConfig.getString('prompt'),
-      access: parseAccess(profileId, profileConfig),
-      actions: profileConfig.getOptionalStringArray('actions') ?? [],
-      requireApproval:
-        profileConfig.getOptionalStringArray('requireApproval') ?? [],
-      mcpServers: profileMcpServers,
-      models: profileModels,
-      defaultModel: profileDefault,
-      ui: mergeUi(globalUi, readUi(profileConfig.getOptionalConfig('ui'))),
-      hasModelAllowlist,
-    });
-  }
-
+  // --- Runtime limits + builtin actions toggle ----------------------------
   const maxSteps = root.getOptionalNumber('maxSteps') ?? 10;
   const toolResultMaxChars =
     root.getOptionalNumber('toolResultMaxChars') ?? 30000;
   const requestBodyLimit = root.getOptionalString('requestBodyLimit') ?? '10mb';
-  const registerCoreActions =
-    root.getOptionalBoolean('registerCoreActions') ?? false;
+  const builtinActions = root.getOptionalBoolean('builtinActions') ?? false;
 
   return {
-    registerCoreActions,
-    assistants,
+    builtinActions,
     mcpServers,
     models,
     defaultModel,
+    ui,
     maxSteps,
     toolResultMaxChars,
     requestBodyLimit,
+    adminAllowlist,
+    requireApproval,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),
-  };
-}
-
-/**
- * Projects a parsed {@link AssistantDefinition} to its browser-safe
- * {@link AssistantSummary} — never the prompt or access policy. A profile's
- * `models` is included only when it declared an explicit allowlist (omitted =
- * full pool, which the browser already has via the global `models`).
- */
-export function toAssistantSummary(
-  assistant: AssistantDefinition,
-  tools?: ToolSummary[],
-): AssistantSummary {
-  return {
-    id: assistant.id,
-    title: assistant.title,
-    description: assistant.description,
-    color: assistant.color,
-    models: assistant.hasModelAllowlist ? assistant.models : undefined,
-    defaultModel: assistant.defaultModel,
-    tools,
-    ui: assistant.ui,
-  };
-}
-
-/**
- * Builds the browser-safe {@link StatusResponse}: the assistants the caller may
- * access (per `isAccessible`), projected to summaries, plus the global model
- * pool and default. Prompt and access policy never leave the backend.
- */
-export function buildStatus(
-  assistantsConfig: AssistantsConfig,
-  isAccessible: (assistant: AssistantDefinition) => boolean,
-  resolveTools?: (assistant: AssistantDefinition) => ToolSummary[],
-): StatusResponse {
-  const assistants = Array.from(assistantsConfig.assistants.values())
-    .filter(isAccessible)
-    .map(a => toAssistantSummary(a, resolveTools?.(a)));
-
-  return {
-    assistants,
-    models: assistantsConfig.models,
-    defaultModel: assistantsConfig.defaultModel,
   };
 }
