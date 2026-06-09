@@ -8,6 +8,7 @@ import './surface/styles/assistant-ui-markdown.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
+import useAsyncRetry from 'react-use/lib/useAsyncRetry';
 import { useApi } from '@backstage/core-plugin-api';
 import { Content, Progress, ResponseErrorPanel } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
@@ -26,6 +27,7 @@ import AddIcon from '@material-ui/icons/Add';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import CheckIcon from '@material-ui/icons/Check';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
 import StarIcon from '@material-ui/icons/Star';
 import {
   AssistantRuntimeProvider,
@@ -41,6 +43,7 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef, type AssistantsApi } from '../api';
 import { ConversationSurface } from './surface';
+import { AssistantAdminDialog } from './admin/AssistantAdminDialog';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
@@ -199,6 +202,18 @@ const useStyles = makeStyles(theme => ({
     whiteSpace: 'nowrap',
     color: theme.palette.text.secondary,
   },
+  headerControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+  },
+  manageButton: {
+    color: theme.palette.text.secondary,
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
+  },
   modelSelect: {
     fontSize: theme.typography.caption.fontSize,
     color: theme.palette.text.secondary,
@@ -315,7 +330,10 @@ export function CollapsiblePage() {
   const [searchParams] = useSearchParams();
   const requestedAssistant = searchParams.get('assistant');
 
-  const status = useAsync(() => api.getStatus(), [api]);
+  // `useAsyncRetry` so the admin editor can refetch `/status` after a
+  // create/rename/delete: `retry()` re-runs `getStatus`, re-rendering the rail
+  // (and the active-assistant fallback handles a now-deleted active agent).
+  const status = useAsyncRetry(() => api.getStatus(), [api]);
 
   if (status.loading) {
     return <Progress />;
@@ -343,6 +361,7 @@ export function CollapsiblePage() {
     <CollapsibleChat
       status={status.value}
       initialAssistantId={initialAssistantId}
+      refreshStatus={status.retry}
     />
   );
 }
@@ -372,9 +391,11 @@ function mostRecentThreadFor(
 function CollapsibleChat({
   status,
   initialAssistantId,
+  refreshStatus,
 }: {
   status: StatusResponse;
   initialAssistantId: string;
+  refreshStatus: () => void;
 }) {
   const api = useApi(assistantsApiRef);
   const baseUrl = useAsync(() => api.getBaseUrl(), [api]);
@@ -395,6 +416,7 @@ function CollapsibleChat({
       api={api}
       baseUrl={baseUrl.value}
       initialAssistantId={initialAssistantId}
+      refreshStatus={refreshStatus}
     />
   );
 }
@@ -404,11 +426,13 @@ function ChatRuntime({
   api,
   baseUrl,
   initialAssistantId,
+  refreshStatus,
 }: {
   status: StatusResponse;
   api: AssistantsApi;
   baseUrl: string;
   initialAssistantId: string;
+  refreshStatus: () => void;
 }) {
   // ONE runtime for the whole tab carrying every conversation across all agents.
   // The active agent is a live ref the adapter/runtime read when creating or
@@ -443,6 +467,7 @@ function ChatRuntime({
         modelIdRef={modelIdRef}
         activeAssistantIdRef={activeAssistantIdRef}
         initialAssistantId={initialAssistantId}
+        refreshStatus={refreshStatus}
       />
     </AssistantRuntimeProvider>
   );
@@ -458,12 +483,14 @@ function ChatChrome({
   modelIdRef,
   activeAssistantIdRef,
   initialAssistantId,
+  refreshStatus,
 }: {
   status: StatusResponse;
   api: AssistantsApi;
   modelIdRef: React.MutableRefObject<ModelId>;
   activeAssistantIdRef: React.MutableRefObject<string>;
   initialAssistantId: string;
+  refreshStatus: () => void;
 }) {
   const classes = useStyles();
   const runtime = useAssistantRuntime();
@@ -633,6 +660,17 @@ function ChatChrome({
       // storage unavailable
     }
   }, [sidePaneCollapsed]);
+
+  // Admin editor (gear button → full-screen master-detail dialog). Gated on
+  // status.canManage at the call site, so non-admins never see the entry point.
+  const [adminOpen, setAdminOpen] = useState(false);
+  // After a create/rename/delete, refetch /status so the rail reflects it, and
+  // reload the runtime thread list (a deleted active assistant resolves via the
+  // `?? status.assistants[0]` fallback once the new status lands).
+  const handleAdminChanged = useCallback(() => {
+    refreshStatus();
+    void runtime.threads.reload();
+  }, [refreshStatus, runtime]);
 
   const handleSelectAssistant = useCallback(
     (id: string) => {
@@ -891,7 +929,21 @@ function ChatChrome({
                   </Typography>
                 )}
               </div>
-              {modelPicker}
+              <div className={classes.headerControls}>
+                {modelPicker}
+                {status.canManage && (
+                  <Tooltip title="Manage assistants">
+                    <IconButton
+                      size="small"
+                      className={classes.manageButton}
+                      aria-label="Manage assistants"
+                      onClick={() => setAdminOpen(true)}
+                    >
+                      <SettingsOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </div>
             </div>
             <div className={classes.threadBody}>
               {isBlankDraft ? (
@@ -927,6 +979,15 @@ function ChatChrome({
           </main>
         </div>
       </Content>
+      {status.canManage && (
+        <AssistantAdminDialog
+          open={adminOpen}
+          onClose={() => setAdminOpen(false)}
+          status={status}
+          api={api}
+          onChanged={handleAdminChanged}
+        />
+      )}
     </FullHeightRegion>
   );
 }
