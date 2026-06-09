@@ -54,3 +54,11 @@ e2e-test-report/
 
 # Cache
 .cache/
+
+# AI assistant & editor tooling (per-developer, not shared project config)
+.claude/
+.cursor/
+.aider*
+.windsurf/
+.idea/
+.vscode/
