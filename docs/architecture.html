@@ -77,6 +77,7 @@
       <a href="#identity">5 · identity &amp; authorization</a>
       <a href="#persistence">6 · persistence &amp; data model</a>
       <a href="#notifications">7 · notifications &amp; live streaming</a>
+      <a href="#management">8 · assistant management</a>
     </nav>
 
     <main>
@@ -106,7 +107,7 @@
             <tr>
               <td class="k">Tools</td>
               <td class="k">Backstage Actions registry (backend-plugin-api/alpha) · @modelcontextprotocol/sdk</td>
-              <td>In-process Backstage Actions (run as the user) + external MCP servers (run as a configured per-server identity), merged into one tool list for the loop. See §5.</td>
+              <td>In-process Backstage Actions (run as the user) + external MCP servers (run as a configured per-server identity), merged into one tool list for the loop. An assistant's <code>allowedTools</code> is a single namespace over both — see §5.</td>
             </tr>
             <tr>
               <td class="k">Interactive forms</td>
@@ -121,7 +122,7 @@
             <tr>
               <td class="k">Persistence</td>
               <td class="k">coreServices.database (Knex; SQLite dev / Postgres prod)</td>
-              <td>Plugin-owned <code>threads</code> + <code>messages</code> tables, scoped per user.</td>
+              <td>Plugin-owned <code>threads</code> + <code>messages</code> tables (scoped per user) and an <code>assistants</code> table (definitions, edited at runtime via the admin editor — §8).</td>
             </tr>
             <tr>
               <td class="k">Markdown &amp; diagrams</td>
@@ -136,7 +137,7 @@
       <!-- 2 · COMPONENTS -------------------------------------------------- -->
       <section id="components">
         <h2><span class="n">2</span>Components &amp; wiring</h2>
-        <p class="lead">Two packages we own (teal) talking to external systems across a trust boundary (dashed). One runtime carries every conversation across all agents — switching agent or conversation never remounts it, so in-flight streams keep running. The frontend holds no conversation state of its own; it is a view of the server.</p>
+        <p class="lead">Two packages we own (teal) talking to external systems across a trust boundary (dashed). One runtime carries every conversation across all agents — switching agent or conversation never remounts it, so in-flight streams keep running. The frontend holds no conversation state of its own; it is a view of the server. Assistant <b>definitions</b> live in the database (an in-memory snapshot, §8); config carries only platform, secrets, and the safety floor.</p>
         <div class="frame">
           <div class="diagram">
             <pre class="mermaid">
@@ -144,24 +145,30 @@ flowchart TB
 
   subgraph FE["Frontend plugin · packages/assistants (browser)"]
     direction TB
-    CHROME["Backstage chrome<br/>assistant rail · conversation list · model picker"]
+    CHROME["Backstage chrome<br/>assistant rail · conversation list · model picker<br/>gear → admin editor (when canManage)"]
     SURF["assistant-ui surface<br/>Thread: 2-level composer (+ context-usage gauge) · markdown · tool calls · mermaid<br/>interactive RJSF forms (render_form) · tool-approval Allow/Deny"]
+    EDITOR["Admin editor (Dialog)<br/>master-detail · live capability pickers · delta-validation"]
     RUNTIME["Runtime — ONE per tab, all agents &amp; conversations<br/>useRemoteThreadListRuntime (no remount on agent/convo switch)<br/>RemoteThreadListAdapter · ThreadHistoryAdapter (load-only)<br/>per-thread: useChat + useAISDKRuntime · resumable transport"]
     CHROME --> SURF --> RUNTIME
+    CHROME --> EDITOR
   end
 
   subgraph BE["Backend plugin · packages/assistants-backend"]
     direction TB
-    ROUTER["Router<br/>GET /status · POST /chat · POST /title (OpenAPI)<br/>GET /chat/resume/:threadId (SSE) · POST /chat/cancel/:threadId<br/>/threads (REST, all agents · access-filtered) · GET /threads/status (+ tokens)"]
-    GATE{"Identity + access<br/>httpAuth · userInfo · access policy"}
-    CONFIG["readConfig()<br/>providers · profiles · mcp · ui"]
-    ASM["Tool assembly<br/>Actions ∩ user · MCP allowlist"]
-    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps · abortSignal (Stop)<br/>needsApproval gate · client-side render_form yields to UI<br/>cap tool results · consumeStream · usage metadata · persist on start + finish"]
+    ROUTER["Router<br/>GET /status (+ canManage) · POST /chat · POST /title (OpenAPI)<br/>GET /chat/resume/:threadId (SSE) · POST /chat/cancel/:threadId<br/>/threads (REST, all agents · access-filtered) · GET /threads/status (+ tokens)<br/>manage/assistants · capabilities (canManage-gated)"]
+    GATE{"Identity + access<br/>httpAuth · userInfo · access policy · canManage"}
+    CONFIG["readConfig()<br/>providers · mcp · ui · platform guards<br/>admins · requireApproval (safety floor)<br/>secrets only — no assistant content"]
+    STORE[("AssistantStore (Knex)<br/>+ in-memory snapshot · write-through")]
+    ASM["Tool assembly<br/>allowedTools → Actions ∩ user · MCP servers"]
+    LOOP["AI SDK loop<br/>streamText · stopWhen = maxSteps · abortSignal (Stop)<br/>needsApproval gate (global floor ∩ allowedTools) · client-side render_form yields to UI<br/>cap tool results · consumeStream · usage metadata · persist on start + finish"]
     THREADS["ThreadService<br/>Knex over DatabaseService"]
     RESUME["Resumable buffer<br/>in-memory · live resume"]
     ROUTER --> GATE --> ASM --> LOOP
     CONFIG -.-> ASM
     CONFIG -.-> LOOP
+    STORE --> GATE
+    STORE --> ASM
+    ROUTER --> STORE
     LOOP --> THREADS
     LOOP --> RESUME
     ROUTER --> THREADS
@@ -175,15 +182,17 @@ flowchart TB
     MCP["External MCP servers<br/>stdio · http · sse · websocket"]
   end
 
-  DB[("Plugin database<br/>threads · messages")]
+  DB[("Plugin database<br/>threads · messages · assistants")]
   SIG["Backstage Signals<br/>real-time push (per user)"]
 
   RUNTIME ==>|"POST /chat · resume"| ROUTER
   RUNTIME <==>|"threads + history"| ROUTER
+  EDITOR ==>|"manage · capabilities (canManage)"| ROUTER
   LOOP <-->|"model + tool calls"| PROV
   LOOP -->|"invoke — as the user"| ACTIONS
   LOOP -->|"call — as configured"| MCP
   THREADS <-->|"per-user rows"| DB
+  STORE <-->|"assistants rows"| DB
   LOOP -.->|"turn-started / -finished / updated"| SIG
   ROUTER -.->|"read"| SIG
   SIG -.->|"working + unread"| CHROME
@@ -193,10 +202,10 @@ flowchart TB
   classDef ext fill:#fbf6ec,stroke:#9a7b3f,color:#3d2f12,stroke-dasharray:4 3;
   classDef store fill:#eef0fb,stroke:#3b4b8a,color:#1c244a;
 
-  class CHROME,SURF,RUNTIME,ROUTER,CONFIG,ASM,LOOP,THREADS,RESUME,SIG plugin;
+  class CHROME,SURF,EDITOR,RUNTIME,ROUTER,CONFIG,ASM,LOOP,THREADS,RESUME,SIG plugin;
   class GATE gate;
   class PROV,ACTIONS,MCP ext;
-  class DB store;
+  class DB,STORE store;
 
   style FE fill:#f4faf9,stroke:#0b6b6b
   style BE fill:#f4faf9,stroke:#0b6b6b
@@ -214,6 +223,7 @@ flowchart TB
           </div>
         </div>
         <p class="note"><b>One tool set, two identities.</b> The loop receives Backstage Actions and MCP tools as a single tool list, but they execute under different credentials — see §5. A tool may also pause for the user before running — see §4.</p>
+        <p class="note"><b>Config ↔ DB seam.</b> <code>readConfig()</code> now carries only <b>platform, secrets, and the safety floor</b> — providers (<code>apiKey</code>), MCP connections (<code>headers</code> / <code>env</code>), runtime guards, the <code>admins</code> allowlist, and the global <code>requireApproval</code> floor — things that hold secrets or must not be weakenable at runtime. Assistant <b>definitions</b> (name · color · prompt · access · <code>allowedTools</code> · models · per-assistant UI) live in the <code>assistants</code> table and are read from the <b>AssistantStore snapshot</b> by the access gate and tool assembly. The admin editor edits the store; config never holds assistant content (§8).</p>
       </section>
 
       <!-- 3 · CHAT TURN --------------------------------------------------- -->
@@ -237,7 +247,7 @@ sequenceDiagram
   U->>R: POST /chat { assistantId, modelId, threadId, messages }
   R->>G: resolve user (httpAuth/userInfo) + check access policy
   G-->>R: identity + groups — deny by default
-  R->>A: actions.list(credentials) ∩ allowlist + MCP allowlist
+  R->>A: allowedTools → actions.list(credentials) ∩ allowlist + MCP tools
   A-->>L: tools — Actions (as user) · MCP (as configured)
   R->>D: persist the user's message — durable immediately
   loop reasoning, up to maxSteps
@@ -273,7 +283,7 @@ sequenceDiagram
 flowchart TB
   CALL["model emits a tool call"]
   Q1{"client-side tool?<br/>(no server execute)"}
-  Q2{"needsApproval?<br/>(profile requireApproval)"}
+  Q2{"needsApproval?<br/>(global requireApproval floor<br/>∩ allowedTools)"}
   FORM["render_form — render RJSF inline<br/>scaffolder Form + field-extension registry"]
   SUBMIT["user fills + submits, or cancels / ignores"]
   RES["addResult → tool result (or dismissed)"]
@@ -304,7 +314,7 @@ flowchart TB
           </div>
         </div>
         <p class="note"><b>Interactive forms — <code>render_form</code>.</b> A <b>client-side tool</b>: declared with a schema but <b>no server <code>execute</code></b>, so <code>streamText</code> emits the call and yields to the browser. The surface renders it inline (<code>makeAssistantToolUI</code>) through scaffolder's own RJSF <code>&lt;Form&gt;</code>, fed the live field-extension registry from <code>formFieldsApiRef.loadFormFields()</code> — so any built-in or app-registered scaffolder picker (<code>OwnerPicker</code>, <code>EntityPicker</code>, <code>RepoUrlPicker</code>, …) renders by name, with no per-field code here. <code>ui:*</code> keys embedded in the schema (the scaffolder-template convention) are hoisted into the uiSchema via scaffolder's <code>extractSchemaFromStep</code>, so a template's parameter block works verbatim. The user's submit becomes the tool result via <code>addResult</code> and the turn auto-resumes; cancelling — or ignoring the form and sending a new message — resolves it as <i>dismissed</i>, never as a value. Use it whenever structured / multi-field / multiple-choice input beats a bulleted question in chat.</p>
-        <p class="note"><b>Deterministic approval gate — <code>requireApproval</code>.</b> A per-profile allowlist of tool names that must be confirmed before they run. For each, the backend sets the AI SDK's <code>needsApproval</code> <i>predicate</i>; the SDK then emits a <code>tool-approval-request</code> and <b>skips the tool's <code>execute</code></b> until the user answers. The surface shows an <b>Allow / Always allow / Deny</b> card with the exact tool input (<code>respondToApproval</code>, bridged to the SDK's <code>addToolApprovalResponse</code> by <code>useAISDKRuntime</code>); <b>Allow</b> runs the action server-side under its normal identity, <b>Deny</b> returns an <code>execution-denied</code> result to the model. The gate is enforced in the loop — not a prompt the model can route around — and is <b>orthogonal to authorization</b> (§5): a human checkpoint, while Backstage's per-user permissions still apply when an approved Action invokes. Names not in the assistant's tool set are logged and skipped.</p>
+        <p class="note"><b>Deterministic approval gate — global <code>requireApproval</code>.</b> A <b>safety floor in config</b>, not a per-assistant setting: the top-level <code>requireApproval</code> (Backstage action ids) plus each MCP server's <code>requireApproval</code> (tool names) name the tools that must be confirmed before they run, for <b>every</b> assistant. The backend sets the AI SDK's <code>needsApproval</code> <i>predicate</i> to the <b>intersection of that global floor and the assistant's <code>allowedTools</code></b>; the SDK then emits a <code>tool-approval-request</code> and <b>skips the tool's <code>execute</code></b> until the user answers. The surface shows an <b>Allow / Always allow / Deny</b> card with the exact tool input (<code>respondToApproval</code>, bridged to the SDK's <code>addToolApprovalResponse</code> by <code>useAISDKRuntime</code>); <b>Allow</b> runs the action server-side under its normal identity, <b>Deny</b> returns an <code>execution-denied</code> result to the model. The gate is enforced in the loop — not a prompt the model can route around — and is <b>orthogonal to authorization</b> (§5): a human checkpoint, while Backstage's per-user permissions still apply when an approved Action invokes. Because the floor lives in config, runtime assistant-editing can never weaken it — the editor shows a read-only 🔒 badge on a globally-gated tool. Names not in any assistant's tool set are simply never reached.</p>
         <p class="note"><b>Batch ergonomics.</b> Two affordances keep a long agentic run from becoming a wall of clicks, both deterministic. <b>Always allow</b> records a standing grant — an approval response tagged <code>always:&lt;tool&gt;</code>; the <code>needsApproval</code> predicate reads it back from the conversation history (persisted, so it survives reloads) and skips the prompt for that tool for the rest of the chat — per-tool, so granting one never auto-approves another. And when the agent fires several gated calls of the <i>same</i> tool in one step (parallel), the surface <b>collapses them into one card with a count</b>; the lowest-index pending call leads and the rest mirror its decision, so a single Allow / Always allow / Deny resolves the whole batch.</p>
         <p class="note"><b>Both resume the same turn.</b> The form result and the approval response are written onto the latest assistant step; the composer's <code>sendAutomaticallyWhen</code> flushes once that step is fully settled (every tool part submitted or approved/denied) and at least one is a client-driven resolution — so a <i>server</i> tool truncated at <code>maxSteps</code> is never auto-resumed. The model then continues with the new tool results in context.</p>
       </section>
@@ -312,33 +322,37 @@ flowchart TB
       <!-- 5 · IDENTITY ---------------------------------------------------- -->
       <section id="identity">
         <h2><span class="n">5</span>Identity &amp; authorization</h2>
-        <p class="lead">The trust model. Tools reach the model from two sources with two different identities — this is the single most important property to get right.</p>
+        <p class="lead">The trust model. Tools reach the model from two sources with two different identities — this is the single most important property to get right. A separate axis, admin management, decides who may edit assistant definitions at all.</p>
         <div class="frame">
           <table>
             <tr><th>Tool source</th><th>Runs as</th><th>Authorization gates</th></tr>
             <tr>
               <td class="k">Backstage Action<br/><span class="pill">in-process</span></td>
               <td><span class="tag user">as the user</span><br/>the caller's own Backstage credentials</td>
-              <td>(1) the assistant's <code>actions[]</code> allowlist <b>∩</b> (2) the user's Backstage permissions, enforced natively at <code>actions.list</code> (visibility) and <code>actions.invoke</code> (per-resource).</td>
+              <td>(1) the assistant's <code>allowedTools</code> (the bare action id) <b>∩</b> (2) the user's Backstage permissions, enforced natively at <code>actions.list</code> (visibility) and <code>actions.invoke</code> (per-resource).</td>
             </tr>
             <tr>
               <td class="k">External MCP tool<br/><span class="pill">over MCP</span></td>
               <td><span class="tag cfg">as configured</span><br/>one static per-server credential (<code>headers</code> / <code>env</code>) — the same identity for every user, <b>not</b> the caller</td>
-              <td>(1) the assistant's <code>access</code> policy + (2) its per-profile <code>mcpServers</code> allowlist + (3) an optional per-tool allowlist. <b>No per-user check on this path.</b></td>
+              <td>(1) the assistant's <code>access</code> policy + (2) its <code>allowedTools</code> namespaced entries (<code>&lt;serverId&gt;__&lt;toolName&gt;</code>) — explicit only, no wildcard. <b>No per-user check on this path.</b></td>
             </tr>
           </table>
         </div>
         <p class="note">
-          <b>Deny by default.</b> Omitting an Action allowlist yields no Action tools; omitting <code>mcpServers</code> yields no MCP tools. The <code>access</code> policy gates whether a user may use the assistant at all.
+          <b>Unified <code>allowedTools</code>.</b> One <code>string[]</code> per assistant replaces the old split <code>actions[]</code> + <code>mcpServers[]</code>. Each entry is either a bare Backstage action id (e.g. <code>search-catalog</code>) or a namespaced MCP tool (<code>&lt;serverId&gt;__&lt;toolName&gt;</code>); the backend derives which MCP servers to connect from the prefixes present. Entries are <b>explicit only</b> — there is no <code>serverId__*</code> wildcard in v1, so a future tool added to a server is never auto-granted. This is exactly the merged namespace the loop already builds its tool list from (§2).
+          <br/><b>Deny by default.</b> An empty <code>allowedTools</code> yields no tools at all. The <code>access</code> policy gates whether a user may use the assistant at all (resolved server-side against <code>userEntityRef</code> / <code>ownershipEntityRefs</code>).
           <br/><b>Consequence.</b> A low-privilege user chatting with an assistant wired to a powerful MCP server gets that server's full configured access — Backstage's per-user permissions do not apply on the MCP path. Choose MCP servers and the scope of their credentials deliberately.
-          <br/><b>Approval is a separate axis.</b> A profile's <code>requireApproval</code> list (§4) adds an orthogonal human checkpoint <i>before</i> a tool runs — it never grants access, it withholds execution pending an explicit Allow. Pair it with the MCP path above when a shared-credential tool warrants a per-call confirmation.
+          <br/><b>Approval is a separate axis.</b> The global <code>requireApproval</code> floor (§4) adds an orthogonal human checkpoint <i>before</i> a tool runs — it never grants access, it withholds execution pending an explicit Allow. It is config-only and applies to every assistant.
+        </p>
+        <p class="note">
+          <b>Admin management is its own gate.</b> Who may create / edit assistants is the config <code>assistants.admins</code> allowlist (<code>users[]</code> / <code>groups[]</code>), evaluated server-side with the <i>same</i> ownership-ref check used for assistant access (<code>userEntityRef</code> / <code>ownershipEntityRefs</code>) and <b>default-deny</b> when unset or empty. <code>GET /status</code> returns <code>canManage</code> (which gates the header gear), and the <code>manage</code> + <code>capabilities</code> endpoints independently <b>403</b> non-admins. It is deliberately <b>independent of the Backstage permission framework</b> and of <code>permission.enabled</code> — so disabling permissions can never silently open assistant management to everyone. Admin membership lives in config precisely because it cannot live in the editable DB without enabling privilege escalation. See §8.
         </p>
       </section>
 
       <!-- 6 · PERSISTENCE ------------------------------------------------- -->
       <section id="persistence">
         <h2><span class="n">6</span>Persistence &amp; data model</h2>
-        <p class="lead">Conversations live server-side, scoped to their owner. The frontend is a pure view through two assistant-ui adapters; the server is the single source of truth and the only writer of messages.</p>
+        <p class="lead">Conversations live server-side, scoped to their owner; assistant definitions live alongside them in their own table. The frontend is a pure view through assistant-ui adapters; the server is the single source of truth and the only writer of messages.</p>
         <div class="cols">
           <div class="frame">
             <table>
@@ -367,10 +381,25 @@ flowchart TB
             </table>
           </div>
         </div>
+        <div class="frame" style="margin-top:24px;">
+          <table>
+            <tr><th colspan="2">assistants — definitions (content + assignment), edited at runtime (§8)</th></tr>
+            <tr><td class="k">id</td><td>server-generated UUID (primary key, immutable)</td></tr>
+            <tr><td class="k">title</td><td>column — for admin-list sorting (also mirrored inside the blob)</td></tr>
+            <tr><td class="k">definition_json</td><td><code>TEXT</code> — <code>JSON.stringify</code>, portable across SQLite/Postgres (<b>not</b> pg <code>jsonb</code>). Holds title · description? · color? · prompt · access {allowAuthenticated, users[], groups[]} · allowedTools[] · models[] (allowlist; empty = full pool) · defaultModel (nullable; null = platform default) · ui? (placeholder + suggestions)</td></tr>
+            <tr><td class="k">created_by · created_at</td><td>audit columns — who / when created</td></tr>
+            <tr><td class="k">updated_by · updated_at</td><td>audit columns — who / when last edited (no separate change-log table)</td></tr>
+          </table>
+        </div>
         <p class="note">
           <b>Adapters (the only glue).</b> <code>RemoteThreadListAdapter</code> backs the thread list (list / create / rename / archive / delete / title) over <code>/threads</code>; <code>ThreadHistoryAdapter</code> loads a thread's messages over <code>/threads/:id/messages</code>. Message <i>writes</i> are not a client concern — the server persists the user message at turn start and the full turn on finish (§3). <code>useRemoteThreadListRuntime</code> provides the switcher, active-thread state, and (de)serialization for free.
           <br/><b>Unread</b> is server-computed (<code>updated_at</code> vs <code>last_read_at</code>) and surfaced through thread metadata — no client-side unread store.
           <br/><b>Metadata edits don't touch <code>updated_at</code>.</b> Rename / model / pin / archive update only their own fields; <code>updated_at</code> moves solely when a turn lands (<code>replaceMessages</code>). So it tracks activity + recency, not edits — editing a conversation never falsely marks it unread or reorders the list.
+        </p>
+        <p class="note">
+          <b>AssistantStore — snapshot + write-through.</b> The <code>assistants</code> table is fronted by an <b>AssistantStore</b> (mirrors <code>ThreadService</code>: Knex over <code>coreServices.database</code>) that keeps an <b>in-memory snapshot</b> rebuilt on every write (write-through). The single-replica assumption makes write-through instant; a lazy ~60 s safety refresh is insurance. The hot path — <code>assistants.get</code> and the router's iteration in the access gate and tool assembly — reads the snapshot <b>synchronously</b>. Snapshot build is where <i>derived-at-read</i> lives: <code>hasModelAllowlist</code> = models non-empty; effective models = the allowlist or the full pool; effective <code>defaultModel</code> = stored value ?? the platform default (never a hardcoded provider:model).
+          <br/><b>Seed-once.</b> First init inserts one neutral default assistant plus a marker, and never resurrects it — a deleted or edited default stays that way. The default is <code>allowAuthenticated: true</code> (the deliberate all-users exception), <code>defaultModel: null</code> (resolves to the platform default at read), and <code>allowedTools</code> = the three built-in read-only actions (<code>search-catalog</code> / <code>search-techdocs</code> / <code>read-techdocs</code>, tolerated if <code>builtinActions</code> is off).
+          <br/><b>Tolerate-on-read drift.</b> Reads skip unknown tools and models rather than failing, and threads that reference an old profile-key assistant id (from before definitions moved to the DB) orphan and are filtered out — recreate the assistant via the admin UI (§8).
         </p>
       </section>
 
@@ -402,6 +431,64 @@ flowchart TB
           <br/><b>Signals invalidate; they don't drive state.</b> The backend emits the four signals on the per-user <code>assistants:threads</code> channel; the client simply <i>refetches</i> the snapshot (debounced) — plus on tab-visible, never on window focus, so indicators stay live while the tab is backgrounded. <i>working</i> is the backend's in-flight set; <i>unread</i> is server-authoritative in the DB (<code>updated_at</code> vs <code>last_read_at</code>). <b>Access-filtered:</b> the snapshot only includes agents the caller can access — remove an agent or revoke access and its conversations and unread vanish.
           <br/><b>Live resume, keyed by thread.</b> Each <code>/chat</code> turn buffers its SSE under the <i>thread id</i>. On entering a thread the client checks the server <code>working</code> flag and, if a turn is in flight, rejoins via <code>GET /chat/resume/:threadId</code> — replaying buffered + live chunks — with no fragile per-turn id to capture. Because the user message is persisted at turn start, re-entry always shows the conversation even mid-flight. In-memory buffer ⇒ single backend replica; the completed turn is durable in the DB regardless.
           <br/><b>Context-usage gauge.</b> The same <code>GET /threads/status</code> snapshot carries each conversation's last-turn <code>tokens</code> (final-step input+output, recorded server-side). The composer's 2-level layout renders a circular gauge — <i>used / the model's <code>contextWindow</code></i> (from <code>/status</code>, configured per model; absent ⇒ no limit shown) — tinted the assistant color. Switching a conversation to a model whose window is smaller than its history shows a "Context exceeded" warning (the model picker is never filtered).
+        </p>
+      </section>
+
+      <!-- 8 · ASSISTANT MANAGEMENT ---------------------------------------- -->
+      <section id="management">
+        <h2><span class="n">8</span>Assistant management</h2>
+        <p class="lead">Assistants are created and edited at runtime — no redeploy to add one or tweak a prompt. The admin editor reads the <b>live capability inventory</b>, only ever offers items that actually exist, and writes back to the AssistantStore, whose snapshot rebuild immediately surfaces the change in <code>/status</code> and the next <code>/chat</code>. Config keeps only platform / secrets / safety; the database holds every definition.</p>
+        <div class="frame">
+          <div class="diagram">
+            <pre class="mermaid">
+flowchart TB
+
+  GEAR["ChatChrome gear (canManage only)<br/>opens full-screen Dialog · master-detail"]
+  CAP["GET /capabilities (canManage)<br/>actions[{id,description}] · models[{id,provider,model,contextWindow?}]<br/>mcpServers[{id,reachable,error?,tools[]}] — 5-min cache, manual refresh"]
+  EDIT["Edit form<br/>prompt · color (live avatar) · models + default · access (user/group pickers)<br/>allowedTools grouped checklist (Actions on top, MCP below) · per-assistant ui"]
+  VALID{"delta-validation<br/>only live items addable · pre-existing grandfathered<br/>removals always allowed · stale shown RED / AMBER"}
+  WRITE["POST / PUT / DELETE /manage/assistants[/:id] (canManage)<br/>zod-strict structure · users/groups lenient · never auto-strip stale"]
+  STORE[("AssistantStore (Knex)<br/>+ in-memory snapshot · write-through")]
+  SNAP["snapshot rebuild<br/>derived-at-read · tolerate-on-read"]
+  SERVE["/status (browser-safe) · /chat<br/>titles · models · ui · tool-summaries"]
+
+  GEAR --> CAP --> EDIT --> VALID
+  VALID -->|"valid + dirty"| WRITE --> STORE --> SNAP --> SERVE
+  VALID -.->|"stale: prune on demand (✕)"| EDIT
+
+  classDef plugin fill:#e7f3f2,stroke:#0b6b6b,color:#10312f;
+  classDef gate fill:#ffffff,stroke:#0b6b6b,color:#10312f;
+  classDef store fill:#eef0fb,stroke:#3b4b8a,color:#1c244a;
+
+  class GEAR,CAP,EDIT,WRITE,SERVE plugin;
+  class VALID gate;
+  class STORE,SNAP store;
+            </pre>
+          </div>
+          <div class="legend">
+            <span><span class="sw plugin"></span>this plugin / surface</span>
+            <span><span class="sw gate"></span>validation / decision</span>
+            <span><span class="sw store"></span>store + snapshot</span>
+            <span>every write rebuilds the snapshot · reads are synchronous</span>
+          </div>
+        </div>
+        <p class="note">
+          <b>Source of truth = DB-only.</b> The old <code>assistants.profiles</code> config block is removed entirely — there is no import of old profiles. Assistants are created in the editor. What remains in config under <code>assistants:</code> is platform / secrets / safety: <code>defaultModel</code>, <code>maxSteps</code>, <code>toolResultMaxChars</code>, <code>requestBodyLimit</code> (unchanged guards); <code>builtinActions</code> (renamed from <code>registerCoreActions</code> — registers this plugin's three built-in read-only actions, default false); <code>providers.{id}</code> (<code>type</code> / <code>apiKey</code> / <code>baseUrl</code> / <code>options</code> unchanged, with <code>models: [{ name, contextWindow? }]</code> now a list of objects — the old parallel <code>contextWindows</code> map is gone); <code>mcp.servers.{id}</code> (connection unchanged, plus a per-server <code>requireApproval: [toolName…]</code>); the global <code>ui</code> defaults (composer placeholder + suggestions, deep-merged <i>under</i> each assistant's own ui); the new <code>admins: { users, groups }</code> (default-deny); and the new top-level <code>requireApproval: [actionId…]</code> floor (§4). Everything else — name · color · description · prompt · access · <code>allowedTools</code> · models · per-assistant ui — is a DB definition.
+        </p>
+        <p class="note">
+          <b>Capabilities — the live assignable inventory.</b> <code>GET /api/assistants/capabilities</code> (admin-gated) feeds the editor pickers: <code>actions</code> from <code>actions.list(credentials)</code> (scoped to the admin's visibility — assistants run as the requesting user, so "assignable" can be a superset of "runnable by every user", tolerated at runtime), the model <code>pool</code>, and <code>mcpServers</code> from the existing cached <code>listServerToolsRaw</code> (5-min TTL) with <b>per-server reachability surfaced</b> (<code>reachable</code> + <code>error?</code>) rather than silently empty on failure. A manual refresh busts the cache.
+        </p>
+        <p class="note">
+          <b>Delta-validation, never destructive.</b> The pickers offer <b>only live items</b> — no free typing, no ad-hoc names. <i>New</i> additions are validated against live capabilities (client and server); <i>pre-existing</i> assignments are grandfathered and never re-checked; removals are always allowed. Structure is zod-strict server-side; users/groups are lenient (a dangling group simply grants nobody). Stale assignments are highlighted: <b>RED</b> = definitively gone (model not in pool / action not in registry / MCP server removed / tool absent from a <i>reachable</i> server); <b>AMBER</b> = unverifiable (a tool whose MCP server is currently unreachable — don't advise pruning something that may be fine). Save is <b>never blocked by stale entries and never auto-strips</b> — a transient outage must not delete a good assignment — so the admin prunes on demand (✕).
+        </p>
+        <p class="note">
+          <b>Editor surface &amp; controls.</b> A full-screen <b>Dialog</b>, master-detail (assistant list left, edit form right), opened from a gear in the ChatChrome header shown only when <code>canManage</code>. Controls: <b>Prompt</b> multiline; <b>Color</b> hex + preset swatches + a live avatar preview (reuses <code>resolveAssistantColor</code> / <code>AssistantAvatar</code>); <b>Models</b> chip multi-select (lab <code>Autocomplete</code>) from the pool (empty = all models) plus a default-model dropdown (options = the allowlist or the full pool) with a "Platform default" (null) entry; <b>Access</b> an "Available to all signed-in users" switch, and when off, catalog user + group pickers (<code>catalogApiRef</code> + lab <code>Autocomplete</code>, kind User/Group — not the scaffolder RJSF pickers); <b>Tools</b> the live grouped checklist from <code>/capabilities</code> (Backstage actions group on top, MCP servers below; each row = name + description + an Allow toggle, a read-only 🔒 when globally approval-gated, per-server reachability, and stale assigned tools flagged RED/AMBER with a prune ✕), surfacing the <b>run-as-user (Actions) vs shared-credential / not-run-as-user (MCP)</b> distinction right in the panel (§5); a <b>per-assistant UI</b> editor (placeholder + suggestions, deep-merged over the global ui). <b>Save</b> is dirty-tracked (disabled until changed and valid), switching away with unsaved edits prompts "Discard changes?", validation is inline per-field (structural + the new-add-not-live delta rule), and success shows a toast and refreshes the snapshot.
+        </p>
+        <p class="note">
+          <b>Lifecycle.</b> The <code>id</code> is a server-generated UUID and immutable; the <code>title</code> is editable. A <b>new</b> assistant defaults to <b>access-deny</b> (<code>allowAuthenticated: false</code>, no users/groups) so a draft is not exposed before review — the seeded default's all-users access is the deliberate exception. A <b>Duplicate</b> action clones to a new id with a "(copy)" title; <b>delete</b> is a hard delete behind an "N conversations will become inaccessible" confirm, and deleting to zero is allowed (an empty state). The assistant list is ordered alphabetically; initial selection is the last-used assistant, else the first.
+        </p>
+        <p class="note">
+          <b>Write API &amp; the public seam.</b> Under <code>/api/assistants</code>, admin-gated: <code>GET /manage/assistants</code> returns <b>full</b> definitions for the editor, <code>POST</code> / <code>PUT</code> / <code>DELETE /manage/assistants[/:id]</code> mutate, and <code>GET /capabilities</code> serves the inventory above. The public <code>GET /status</code> stays browser-safe — titles / summaries / models / ui / tool-summaries, plus <code>canManage</code> — and <b>never</b> exposes a prompt or the access policy.
         </p>
       </section>
 

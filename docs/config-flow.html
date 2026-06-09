@@ -8,7 +8,7 @@
     <style>
       :root {
         --ink:#1f2933; --muted:#5b6675; --rule:#d6dce3; --paper:#fff; --panel:#f7f9fb;
-        --plugin:#0b6b6b; --secret:#b42318; --safe:#0a7d52;
+        --plugin:#0b6b6b; --secret:#b42318; --safe:#0a7d52; --store:#3949ab;
         --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
       }
       * { box-sizing:border-box; }
@@ -36,6 +36,7 @@
       .legend .sw { display:inline-block; width:22px; height:13px; vertical-align:middle; margin-right:7px; border-radius:2px; }
       .sw.safe { background:#e9f6ef; border:1px solid var(--safe); }
       .sw.secret { background:#fbece9; border:1px solid var(--secret); }
+      .sw.store { background:#e8eaf6; border:1px solid var(--store); }
       .sw.line { border:0; height:0; border-top:4px solid var(--ink); width:22px; }
       .sw.line.dash { border-top:2px dashed var(--muted); }
       pre.code { margin:0; padding:18px; background:var(--panel); border-radius:6px; overflow-x:auto;
@@ -50,6 +51,7 @@
       .tag { font-family:var(--mono); font-size:11px; font-weight:700; padding:1px 7px; border-radius:3px; white-space:nowrap; }
       .tag.secret { background:#fbece9; color:var(--secret); }
       .tag.safe { background:#e9f6ef; color:var(--safe); }
+      .tag.db { background:#e8eaf6; color:var(--store); }
       .note { color:var(--muted); font-size:13px; margin:12px 0 0; max-width:88ch; }
       .note b { color:var(--ink); }
       ol { margin:0; padding-left:20px; } ol li { margin:7px 0; }
@@ -60,10 +62,13 @@
     <header>
       <h1>backstage-assistants — config flow</h1>
       <p>
-        One declarative <code>assistants:</code> block defines global settings, providers, MCP servers, and many
-        assistant profiles. This traces how that config is validated, split into <b>secret / backend-only</b> vs
-        <b>browser-safe</b>, exposed via <code>/status</code>, and applied at <code>/chat</code>. Sister doc:
-        <a href="architecture.html">architecture</a>.
+        The <code>assistants:</code> block defines <b>platform, secrets, and safety</b> — providers, MCP server
+        connections, runtime guards, the admin allowlist, and the global approval floor. <b>Assistant definitions</b>
+        — title, prompt, access, tools, models, per-assistant UI — live in the plugin's own database and are
+        created and edited at runtime through the in-plugin <a href="architecture.html#management">admin editor</a>.
+        This traces the config↔DB seam: how config is validated and split into <b>secret / backend-only</b> vs
+        <b>browser-safe</b>, how definitions are stored and snapshotted, and how the two merge at <code>/status</code>
+        and <code>/chat</code>. Sister doc: <a href="architecture.html">architecture</a>.
       </p>
     </header>
 
@@ -79,34 +84,48 @@
       <!-- 1 · FLOW -------------------------------------------------------- -->
       <section id="flow">
         <h2><span class="n">1</span>Flow</h2>
-        <p class="lead">Config is parsed once on the backend, split by visibility, and only the browser-safe half ever reaches the client. Secrets — prompts, API keys, MCP credentials, access rules — stay server-side.</p>
+        <p class="lead">Two sources meet at the runtime. Config carries platform, secrets, and the safety floor; the database carries the editable assistant definitions, rebuilt into an in-memory snapshot on every write. Both are split by visibility, and only the browser-safe half ever reaches the client — prompts, API keys, MCP credentials, and access rules stay server-side.</p>
         <div class="frame">
           <div class="diagram">
             <pre class="mermaid">
 flowchart LR
 
-  subgraph SRC["app-config.yaml — assistants:"]
+  subgraph SRC["app-config.yaml — assistants: (platform · secrets · safety)"]
     direction TB
-    G["global<br/>defaultModel · maxSteps · toolResultMaxChars<br/>requestBodyLimit · registerCoreActions"]
-    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options · models[] · contextWindows"]
-    MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*"]
+    G["global<br/>defaultModel · maxSteps · toolResultMaxChars<br/>requestBodyLimit · builtinActions"]
+    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options<br/>models: [{ name · contextWindow? }]"]
+    MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*<br/>requireApproval[] (per-server floor)"]
     UIG["ui (global defaults)<br/>composer.placeholder · suggestions[]"]
-    PROF["profiles.{id} — many<br/>title · description · color · prompt* · access*<br/>actions[] · requireApproval[] · mcpServers[] · models[] · defaultModel · ui"]
+    ADM["admins<br/>users[] · groups[] (default-deny)"]
+    APR["requireApproval[]<br/>global action floor"]
+  end
+
+  subgraph EDIT["admin editor (canManage)"]
+    direction TB
+    WRITE["write API<br/>POST/PUT/DELETE /manage/assistants"]
+    CAPS["GET /capabilities<br/>live actions · models · MCP tools + reachability"]
+  end
+
+  subgraph STORE["AssistantStore — Knex over coreServices.database"]
+    direction TB
+    DB["assistants table<br/>id · title · definition_json · audit cols"]
+    SNAP["in-memory snapshot (write-through)<br/>effective models · defaultModel · tolerate-on-read"]
+    DB --> SNAP
   end
 
   subgraph BE["backend — config.d.ts + readConfig()"]
     direction TB
-    PARSE["validate · build provider/model registry<br/>resolve ui = deepMerge(global, profile)<br/>check model allowlist + default"]
+    PARSE["validate · build provider/model registry<br/>resolve admin allowlist + approval floor<br/>(no profiles parsed)"]
     SPLIT{"split by visibility"}
     PARSE --> SPLIT
   end
 
-  STATUS["GET /status — browser-safe<br/>profiles[ id · title · description · color · models · defaultModel · ui · tools[] ]"]
-  CHAT["POST /chat — backend applies<br/>system = prompt · tools = Actions(as user) + MCP(as configured)<br/>gate: requireApproval → needsApproval (Allow/Deny before run)"]
+  STATUS["GET /status — browser-safe<br/>assistants[ id · title · description · color · models · defaultModel · ui · tools[] ] · canManage"]
+  CHAT["POST /chat — backend applies (config ⊕ snapshot)<br/>system = prompt · tools = Actions(as user) + MCP(as configured)<br/>gate: needsApproval = (global floor) ∩ allowedTools → Allow/Deny before run"]
 
   subgraph FE["browser — usePluginStatus"]
     direction TB
-    PICK["assistant rail · conversations · model picker (per-profile allowlist)"]
+    PICK["assistant rail · conversations · model picker (per-assistant allowlist) · gear if canManage"]
     APPLY["ui → composer placeholder · suggestions"]
   end
 
@@ -114,10 +133,15 @@ flowchart LR
   PROV --> PARSE
   MCP --> PARSE
   UIG --> PARSE
-  PROF --> PARSE
+  ADM --> PARSE
+  APR --> PARSE
+  WRITE --> DB
+  CAPS -.->|"live inventory"| WRITE
+  SNAP ==>|"assistant definitions"| SPLIT
   SPLIT ==>|"browser-safe"| STATUS
   SPLIT -.->|"backend-only: prompt · access · apiKey · headers · env"| CHAT
   STATUS --> PICK --> APPLY
+  PICK -.->|"gear (canManage)"| EDIT
   APPLY -.->|"{ assistantId, modelId, threadId, messages }"| CHAT
 
   classDef src fill:#eef2f7,stroke:#5b6675,color:#1f2933;
@@ -125,19 +149,22 @@ flowchart LR
   classDef gate fill:#ffffff,stroke:#0b6b6b,color:#10312f;
   classDef safe fill:#e9f6ef,stroke:#0a7d52,color:#08311f;
   classDef secret fill:#fbece9,stroke:#b42318,color:#4a120c;
+  classDef store fill:#e8eaf6,stroke:#3949ab,color:#1a237e;
   classDef fe fill:#eef2f7,stroke:#5b6675,color:#1f2933;
 
-  class G,PROV,MCP,UIG,PROF src;
+  class G,PROV,MCP,UIG,ADM,APR src;
   class PARSE be;
   class SPLIT gate;
   class STATUS safe;
   class CHAT secret;
+  class WRITE,CAPS,DB,SNAP store;
   class PICK,APPLY fe;
             </pre>
           </div>
           <div class="legend">
             <span><span class="sw safe"></span>browser-safe (via /status)</span>
             <span><span class="sw secret"></span>secret / backend-only</span>
+            <span><span class="sw store"></span>assistant definitions (DB + snapshot)</span>
             <span><span class="sw line"></span>browser-safe exposure</span>
             <span><span class="sw line dash"></span>stays server-side / request body</span>
             <span><code>*</code> = secret field (never sent to the browser)</span>
@@ -148,16 +175,16 @@ flowchart LR
       <!-- 2 · SURFACE ----------------------------------------------------- -->
       <section id="surface">
         <h2><span class="n">2</span>Config surface</h2>
-        <p class="lead">One block, many profiles. Secrets marked <span class="tag secret">*</span>.</p>
+        <p class="lead">Platform, secrets, and safety only — no assistant profiles. Per-assistant definitions are created in the admin editor, not here. Secrets marked <span class="tag secret">*</span>.</p>
         <div class="frame">
 <pre class="code"><span class="c"># app-config.yaml</span>
 assistants:
   <span class="c"># ---- global ----</span>
-  defaultModel: openai:gpt-5.5          <span class="c"># required</span>
+  defaultModel: openai:gpt-5.5          <span class="c"># required — resolves a null per-assistant default</span>
   maxSteps: 10                          <span class="c"># max tool-call steps per turn (default 10)</span>
   toolResultMaxChars: 30000             <span class="c"># cap one tool result; head+tail truncate (default 30000, 0 = off)</span>
   requestBodyLimit: 10mb                <span class="c"># Express body limit for /chat + /title (default 10mb)</span>
-  registerCoreActions: true             <span class="c"># register this plugin's built-in Actions (default false)</span>
+  builtinActions: true                  <span class="c"># register this plugin's 3 read-only Actions (default false)</span>
 
   providers:
     openai:
@@ -165,9 +192,9 @@ assistants:
       apiKey: <span class="s">${OPENAI_API_KEY}</span>          <span class="c"># * secret — backend only</span>
       baseUrl: https://api.openai.com/v1
       options: {}                       <span class="c"># passthrough, spread verbatim into the factory</span>
-      models: [gpt-5.5, gpt-4o-mini]    <span class="c"># model ids namespaced as openai:&lt;model&gt;</span>
-      contextWindows:                   <span class="c"># optional per-model max input tokens — drives the composer gauge</span>
-        gpt-5.5: 400000                 <span class="c"># omit a model = gauge shows the count without a limit</span>
+      models:                           <span class="c"># list of objects; ids namespaced as openai:&lt;name&gt;</span>
+        - { name: gpt-5.5, contextWindow: 400000 }   <span class="c"># contextWindow drives the composer gauge</span>
+        - { name: gpt-4o-mini }                      <span class="c"># omit contextWindow = gauge shows count without a limit</span>
 
   <span class="c"># ---- external MCP servers (optional) ----</span>
   mcp:
@@ -177,6 +204,8 @@ assistants:
         url: https://mcp.internal/github
         headers:                        <span class="c"># * secret — static per-server credential, NOT run-as-user</span>
           Authorization: <span class="s">${GITHUB_MCP_TOKEN}</span>
+        requireApproval:                <span class="c"># per-server approval floor — these tools always gate, for every assistant</span>
+          - delete_repo
       filesystem:                       <span class="c"># local process</span>
         transport: stdio
         command: npx
@@ -184,55 +213,30 @@ assistants:
         env:                            <span class="c"># * secret</span>
           TOKEN: <span class="s">${FS_TOKEN}</span>
 
-  ui:                                   <span class="c"># global UI defaults — deep-merged into every profile</span>
+  ui:                                   <span class="c"># global UI defaults — the platform default, deep-merged UNDER each assistant's ui</span>
     composer: { placeholder: "Send a message…" }
     suggestions: []
 
-  <span class="c"># ---- profiles (one per assistant) ----</span>
-  profiles:
-    general:
-      title: General Assistant
-      description: Catalog + TechDocs helper.
-      color: "#0b6b6b"                  <span class="c"># optional avatar tint — browser-safe, cosmetic</span>
-      prompt: |                         <span class="c"># * secret — system prompt, never sent to browser</span>
-        <span class="s">You are a Backstage developer-portal assistant…</span>
-      access: { allowAuthenticated: true }   <span class="c"># * secret — who may use this assistant</span>
-      actions: [search-catalog, search-techdocs, read-techdocs]  <span class="c"># run as the user</span>
-      mcpServers:                       <span class="c"># opt in to MCP servers + optional per-tool allowlist</span>
-        - { server: github, tools: ["search_issues", "get_file"] }
-        - { server: filesystem }        <span class="c"># omit tools = all tools from that server</span>
-      ui:
-        suggestions:
-          - { title: "Who owns…", prompt: "Who owns the payments service?" }
+  <span class="c"># ---- who may manage assistants (default-deny if unset/empty) ----</span>
+  admins:
+    users: [user:default/jdoe]
+    groups: [group:default/platform-admins]
 
-    docs:
-      title: Docs Assistant
-      prompt: |
-        <span class="s">…</span>
-      access: { groups: [group:default/platform] }     <span class="c"># *</span>
-      actions: [search-techdocs, read-techdocs]
-      models: [openai:gpt-4o-mini]      <span class="c"># optional allowlist (subset of pool; omit = full pool)</span>
-      defaultModel: openai:gpt-4o-mini  <span class="c"># required when the allowlist excludes the global default</span>
+  <span class="c"># ---- global approval floor for Backstage actions (a safety floor, not weakenable at runtime) ----</span>
+  requireApproval:                      <span class="c"># a listed action always needs Allow/Deny before it runs, for EVERY assistant</span>
+    - register-entity
+    - unregister-entity
 
-    devops:                             <span class="c"># write-capable assistant with a human checkpoint</span>
-      title: DevOps Assistant
-      color: "#e3a008"
-      prompt: |
-        <span class="s">…</span>
-      access: { groups: [group:default/platform] }     <span class="c"># *</span>
-      actions: [get-catalog-entity, register-entity, unregister-entity, execute-template]
-      requireApproval:                  <span class="c"># deterministic Allow/Deny in chat before these run</span>
-        - register-entity               <span class="c"># names match `actions` (or namespaced MCP tools)</span>
-        - unregister-entity             <span class="c"># read-only tools above are NOT gated</span>
-        - execute-template</pre>
+  <span class="c"># NOTE: per-assistant definitions — title · prompt · access · allowedTools · models · defaultModel · ui · color</span>
+  <span class="c"># are created and edited in the admin UI and stored in the plugin DB, NOT in this file. No profiles: block.</span></pre>
         </div>
-        <p class="note"><b>No <code>assistants.database</code> key.</b> Conversation persistence uses Backstage's standard <code>backend.database</code> — the same database the catalog and search already require. No operator action beyond having one configured. <b>No <code>theme</code> key</b> — see §4.</p>
+        <p class="note"><b>No <code>assistants.profiles</code> key.</b> Assistant definitions are stored in the plugin database and managed through the admin editor (<a href="architecture.html#management">architecture: assistant management</a>); config keeps only platform, secrets, and the safety floor — the parts that carry secrets or must not be weakenable at runtime. <b>No <code>assistants.database</code> key</b> — conversations and assistant definitions both use Backstage's standard <code>backend.database</code> (the same database the catalog and search already require). <b>No <code>theme</code> key</b> — see §4.</p>
       </section>
 
       <!-- 3 · EXPOSURE ---------------------------------------------------- -->
       <section id="exposure">
         <h2><span class="n">3</span>Field exposure</h2>
-        <p class="lead">Where each field goes, and whether it crosses to the browser. The browser receives only the <span class="tag safe">browser</span> rows and sends back only <code>{ assistantId, modelId, threadId, messages }</code>.</p>
+        <p class="lead">Where each field goes, and whether it crosses to the browser. Config rows split <span class="tag safe">browser</span> vs <span class="tag secret">backend</span>; assistant definitions are served from the <span class="tag db">DB</span> (full defs via the admin-gated <code>/manage/assistants</code>; browser-safe summaries via <code>/status</code>). The browser sends back only <code>{ assistantId, modelId, threadId, messages }</code>.</p>
         <div class="frame">
           <table>
             <tr><th>Field</th><th>Scope</th><th>Consumed by</th></tr>
@@ -240,24 +244,24 @@ assistants:
             <tr><td class="k">providers.* (type · baseUrl · options)</td><td><span class="tag secret">backend</span></td><td>provider registry (server)</td></tr>
             <tr><td class="k">mcp.servers.*.headers · env</td><td><span class="tag secret">secret</span></td><td>MCP transport auth (server)</td></tr>
             <tr><td class="k">mcp.servers.* (transport · url · command · args · cwd)</td><td><span class="tag secret">backend</span></td><td>MCP connection (server)</td></tr>
-            <tr><td class="k">profiles.*.prompt</td><td><span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code></td></tr>
-            <tr><td class="k">profiles.*.access</td><td><span class="tag secret">backend</span></td><td>access gate — <code>/status</code> filter, <code>/chat</code> + <code>/title</code>, and <code>/threads</code> list/status filter + <code>POST /threads</code></td></tr>
-            <tr><td class="k">profiles.*.actions[]</td><td><span class="tag secret">backend</span></td><td>Action tool allowlist at <code>/chat</code> (run as user)</td></tr>
-            <tr><td class="k">profiles.*.requireApproval[]</td><td><span class="tag secret">backend</span></td><td>tools gated behind an Allow/Deny prompt — sets the AI SDK <code>needsApproval</code> flag at <code>/chat</code> (see <a href="architecture.html#hitl">architecture §4</a>)</td></tr>
-            <tr><td class="k">profiles.*.mcpServers[]</td><td><span class="tag secret">backend</span></td><td>MCP tool selection at <code>/chat</code> (run as configured)</td></tr>
+            <tr><td class="k">mcp.servers.*.requireApproval[]</td><td><span class="tag secret">backend</span></td><td>per-server approval floor — folds into the <code>needsApproval</code> set at <code>/chat</code> (see <a href="architecture.html#hitl">architecture §4</a>)</td></tr>
+            <tr><td class="k">admins (users · groups)</td><td><span class="tag secret">backend</span></td><td>admin allowlist — gates <code>/manage/*</code> + <code>/capabilities</code> and resolves <code>canManage</code> on <code>/status</code> (default-deny, independent of <code>permission.enabled</code>)</td></tr>
+            <tr><td class="k">requireApproval[] (top-level)</td><td><span class="tag secret">backend</span></td><td>global action approval floor — folds into the <code>needsApproval</code> set at <code>/chat</code></td></tr>
             <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code> (default 10)</td></tr>
             <tr><td class="k">toolResultMaxChars</td><td><span class="tag secret">backend</span></td><td>cap per tool result — head+tail truncate at the tool boundary (default 30000, <code>0</code> off)</td></tr>
             <tr><td class="k">requestBodyLimit</td><td><span class="tag secret">backend</span></td><td>Express body-parser limit for <code>/chat</code> + <code>/title</code> (default <code>10mb</code>)</td></tr>
-            <tr><td class="k">title · description</td><td><span class="tag safe">browser</span></td><td>assistant rail / welcome</td></tr>
-            <tr><td class="k">profiles.*.color</td><td><span class="tag safe">browser</span></td><td>assistant avatar tint (cosmetic)</td></tr>
-            <tr><td class="k">models (pool + per-profile allowlist)</td><td><span class="tag safe">browser</span></td><td>model picker (filtered per profile)</td></tr>
-            <tr><td class="k">defaultModel (global + per-profile)</td><td><span class="tag safe">browser</span></td><td>model picker default</td></tr>
-            <tr><td class="k">providers.*.contextWindows</td><td><span class="tag safe">browser</span></td><td>per-model max input tokens on <code>models[].contextWindow</code> — composer context-usage gauge</td></tr>
-            <tr><td class="k">ui (resolved)</td><td><span class="tag safe">browser</span></td><td>composer placeholder + suggestions</td></tr>
+            <tr><td class="k">definition.prompt</td><td><span class="tag db">DB</span> <span class="tag secret">backend</span></td><td><code>system</code> at <code>/chat</code>; full def via <code>/manage/assistants</code> — never on <code>/status</code></td></tr>
+            <tr><td class="k">definition.access</td><td><span class="tag db">DB</span> <span class="tag secret">backend</span></td><td>access gate — <code>/status</code> filter, <code>/chat</code> + <code>/title</code>, and <code>/threads</code> list/status filter + <code>POST /threads</code></td></tr>
+            <tr><td class="k">definition.allowedTools[]</td><td><span class="tag db">DB</span> <span class="tag secret">backend</span></td><td>unified tool allowlist at <code>/chat</code> — Action ids + namespaced MCP tools (<code>&lt;serverId&gt;__&lt;tool&gt;</code>); derives which MCP servers to connect</td></tr>
+            <tr><td class="k">definition.title · description</td><td><span class="tag db">DB</span> <span class="tag safe">browser</span></td><td>assistant rail / welcome (summary via <code>/status</code>)</td></tr>
+            <tr><td class="k">definition.color</td><td><span class="tag db">DB</span> <span class="tag safe">browser</span></td><td>assistant avatar tint (cosmetic)</td></tr>
+            <tr><td class="k">definition.models[] · defaultModel</td><td><span class="tag db">DB</span> <span class="tag safe">browser</span></td><td>model picker (per-assistant allowlist; empty = full pool) + its default (null = platform default)</td></tr>
+            <tr><td class="k">providers.*.models[].contextWindow</td><td><span class="tag safe">browser</span></td><td>per-model max input tokens — composer context-usage gauge</td></tr>
+            <tr><td class="k">definition.ui (resolved)</td><td><span class="tag db">DB</span> <span class="tag safe">browser</span></td><td>composer placeholder + suggestions (deep-merged over global <code>ui</code>)</td></tr>
             <tr><td class="k">tools (resolved summaries)</td><td><span class="tag safe">browser</span></td><td>tool list / detail — name · description · source, for both Actions and MCP</td></tr>
           </table>
         </div>
-        <p class="note"><b>Tool summaries are browser-safe; tool execution is not.</b> <code>/status</code> lists each assistant's effective tools (Action + MCP) so the UI can show them; the actual invoke happens only at <code>/chat</code>, under the identities described in the <a href="architecture.html#identity">architecture trust model</a>.</p>
+        <p class="note"><b>Tool summaries are browser-safe; tool execution is not.</b> <code>/status</code> lists each assistant's effective tools (Action + MCP) so the UI can show them; the actual invoke happens only at <code>/chat</code>, under the identities described in the <a href="architecture.html#identity">architecture trust model</a>. <b>Definition reads split too:</b> the public <code>/status</code> serves only browser-safe summaries (titles · models · ui · tool-summaries — never prompt or access), while the full definitions reach the editor via the admin-gated <code>GET /manage/assistants</code>.</p>
       </section>
 
       <!-- 4 · FACTS ------------------------------------------------------- -->
@@ -265,16 +269,22 @@ assistants:
         <h2><span class="n">4</span>Settled facts</h2>
         <div class="frame" style="padding:16px 20px;">
           <ol>
-            <li><b>Block shape</b> — <code>assistants.profiles.{id}</code>: global settings + a named map of profiles, one per assistant.</li>
+            <li><b>Block shape</b> — <code>assistants:</code> holds platform, secrets, and safety only (global settings · providers · mcp · ui · admins · requireApproval). There is no <code>profiles</code> map; assistant definitions live in the plugin database and are created in the admin editor.</li>
             <li><b>Providers</b> — a <code>type</code> discriminator selects the <code>@ai-sdk/*</code> factory; <code>options</code> is spread verbatim; the union of all <code>models</code> is the pool; a model id is <code>&lt;providerId&gt;:&lt;model&gt;</code>.</li>
-            <li><b>MCP</b> — <code>assistants.mcp.servers.{id}</code> defines connections; profiles opt in via <code>mcpServers: [{ server, tools? }]</code>. Each server uses one static credential (<code>headers</code> / <code>env</code>) — a shared identity, not run-as-user.</li>
-            <li><b>Approval gate</b> — per-profile <code>requireApproval: [toolName…]</code> lists tools that must be confirmed before they run. The backend sets the AI SDK <code>needsApproval</code> predicate, so execution pauses for an Allow/Deny in chat — deterministic, enforced in the loop, not prompt-driven. Names match <code>actions</code> entries (or namespaced MCP tools); a name not in the assistant's tool set is logged and ignored. Orthogonal to <code>access</code>/authorization — it withholds execution, it does not grant it. The chat adds an <b>Always allow</b> action (a standing per-tool grant for the rest of the conversation, read back from history) and collapses parallel same-tool prompts into one counter card — both UI behaviours, no extra config (<a href="architecture.html#hitl">architecture §4</a>).</li>
+            <li><b>MCP</b> — <code>assistants.mcp.servers.{id}</code> defines connections; assistants opt in by listing namespaced tools (<code>&lt;serverId&gt;__&lt;tool&gt;</code>) in <code>allowedTools</code>, and the backend derives which servers to connect from the prefixes present. Each server uses one static credential (<code>headers</code> / <code>env</code>) — a shared identity, not run-as-user.</li>
+            <li><b>Approval is global</b> — the safety floor lives in config: top-level <code>requireApproval: [actionId…]</code> for Backstage actions plus per-server <code>mcp.servers.*.requireApproval: [tool…]</code>. A listed tool always pauses for an Allow/Deny before it runs, for <i>every</i> assistant. The backend sets the AI SDK <code>needsApproval</code> predicate to <code>(global approval set) ∩ (the assistant's allowedTools)</code> — deterministic, enforced in the loop, not prompt-driven, and not weakenable by runtime assistant-editing. The editor shows a read-only 🔒 badge on globally-gated tools. Orthogonal to <code>access</code>/authorization — it withholds execution, it does not grant it. The chat adds an <b>Always allow</b> action (a standing per-tool grant for the rest of the conversation, read back from history) and collapses parallel same-tool prompts into one counter card — both UI behaviours, no extra config (<a href="architecture.html#hitl">architecture §4</a>).</li>
             <li><b>Interactive forms need no config</b> — the <code>render_form</code> tool is always available to the model (a client-side tool resolved in the browser); there is no config key for it. It renders any scaffolder field extension the host app has registered (<a href="architecture.html#hitl">architecture §4</a>).</li>
-            <li><b>Models</b> — global pool + optional per-profile <code>models</code> allowlist (subset of pool; omit = all) + per-profile <code>defaultModel</code>. A profile's effective default must lie within its allowlist. Optional per-provider <code>contextWindows: { &lt;model&gt;: tokens }</code> rides through to <code>models[].contextWindow</code> (browser-safe) to drive the composer's context-usage gauge; omit a model to leave its limit unknown.</li>
-            <li><b>UI merge</b> — <code>deepMerge(global ui, profile.ui)</code>: objects deep-merge, arrays replace (so a profile can clear inherited values). Welcome text is derived from <code>title</code> / <code>description</code>.</li>
+            <li><b>Models</b> — each provider's <code>models</code> is a list of objects <code>[{ name, contextWindow? }]</code> (the old parallel <code>contextWindows</code> map is gone); the union is the pool. A per-assistant <code>models</code> allowlist (in the DB; empty = full pool) and a nullable <code>defaultModel</code> (null = platform default) are resolved at snapshot-build time: effective models = allowlist or pool, effective default = stored ?? platform default. <code>contextWindow</code> rides through to <code>models[].contextWindow</code> (browser-safe) to drive the composer's context-usage gauge; omit it to leave a model's limit unknown.</li>
+            <li><b>Assistants live in the DB + admin editor</b> — definitions are rows in an <code>assistants</code> table (id = immutable server-generated UUID, editable <code>title</code> column for sorting, <code>definition_json</code> blob, audit columns who/when). The blob holds title · description? · color? · prompt · access · allowedTools[] · models[] · defaultModel · ui?. New assistants default to <b>access-deny</b> (so a draft isn't exposed before review); a <b>seed-once</b> marker inserts one all-users default — read-only catalog/TechDocs tools (tolerated if <code>builtinActions</code> is off), on the platform-default model — on first init and never resurrects it once deleted or edited. No redeploy to add an assistant or tweak a prompt.</li>
+            <li><b>AssistantStore + snapshot</b> — a Knex store over <code>coreServices.database</code> (mirrors ThreadService) does CRUD and rebuilds an <b>in-memory snapshot</b> write-through on every write; the hot path (router iteration, <code>assistants.get</code>) reads the snapshot synchronously. A lazy ~60s refresh is insurance under the single-replica assumption. The snapshot is where derived-at-read lives, and it <b>tolerates on read</b> — unknown tools/models are skipped rather than fatal.</li>
+            <li><b>Admin allowlist + canManage</b> — <code>assistants.admins</code> (users/groups) is evaluated server-side with the same ownership-ref check used for assistant access, <b>default-deny</b>, and <b>independent of <code>permission.enabled</code></b> (so disabling permissions can't silently open management to everyone). <code>/status</code> returns <code>canManage</code> to gate the gear; the <code>/manage/*</code> and <code>/capabilities</code> endpoints independently 403 non-admins. Admin membership lives in config precisely because it can't live in the editable DB (privilege escalation).</li>
+            <li><b>/capabilities feeds the editor live</b> — the admin-gated <code>GET /api/assistants/capabilities</code> returns the live assignable inventory for the editor pickers: actions (from <code>actions.list</code>), the model pool, and MCP servers with their tools and <b>per-server reachability</b> (from the cached <code>listServerToolsRaw</code>, 5-min TTL — unreachable is surfaced, not silently empty). A manual refresh busts the cache. The action list is scoped to the admin's visibility, so "assignable" can be a superset of "runnable by every user" (tolerated at runtime).</li>
+            <li><b>Delta-validation, never blocks save</b> — pickers offer only live items (no free typing). New additions are validated against live capabilities (client and server); pre-existing assignments are grandfathered; removals are always allowed; structural (zod) validation is strict; users/groups are lenient (a dangling group simply grants nobody). Stale assignments are highlighted — <b>RED</b> = definitively gone (model not in pool / action not in registry / MCP server removed / tool absent from a <i>reachable</i> server), <b>AMBER</b> = unverifiable (tool whose MCP server is currently unreachable). Save never auto-strips stale entries (a transient outage must not delete a good assignment); the admin prunes on demand.</li>
+            <li><b>The config↔DB seam</b> — secrets and the safety floor stay in config (providers, MCP credentials, runtime guards, the admin allowlist, the approval floor) because they carry secrets or must not be weakenable at runtime; assistant content and assignment (title · prompt · access · allowedTools · models · ui · color) live in the editable DB. The two merge at the snapshot/runtime: config provides the pool, the floor, and the platform UI default; the DB provides the definition that selects from them.</li>
+            <li><b>UI merge</b> — <code>deepMerge(global ui, assistant.ui)</code>: objects deep-merge, arrays replace (so an assistant can clear inherited values). The global <code>ui</code> is the platform default, merged <i>under</i> each assistant's own. Welcome text is derived from <code>title</code> / <code>description</code>.</li>
             <li><b>Theme</b> — one built-in palette that follows Backstage light/dark automatically. Not configurable, by design.</li>
-            <li><b>Persistence</b> — conversations are stored server-side via Backstage's <code>backend.database</code>; no new config key (see <a href="architecture.html#persistence">architecture §5</a>).</li>
-            <li><b>Access is the boundary</b> — every conversation is scoped to its owner (<code>user_ref</code>) AND filtered to currently-accessible agents: <code>/threads</code> + <code>/threads/status</code> only return chats for agents the caller can access, and <code>POST /threads</code> is gated — so removing an agent (or revoking access) removes its conversations and its unread.</li>
+            <li><b>Persistence</b> — conversations and assistant definitions are both stored server-side via Backstage's <code>backend.database</code>; no new config key (see <a href="architecture.html#persistence">architecture §6</a>).</li>
+            <li><b>Access is the boundary</b> — every conversation is scoped to its owner (<code>user_ref</code>) AND filtered to currently-accessible agents: <code>/threads</code> + <code>/threads/status</code> only return chats for agents the caller can access, and <code>POST /threads</code> is gated — so removing an agent (or revoking access) removes its conversations and its unread. Threads that reference a deleted assistant orphan and are filtered out on read; recreate the assistant via the admin UI.</li>
             <li><b>Runtime guards</b> — global, backend-only: <code>maxSteps</code> (tool-call steps/turn, default 10), <code>toolResultMaxChars</code> (cap one tool result, head+tail truncate, default 30000, <code>0</code> disables), <code>requestBodyLimit</code> (Express body limit, default <code>10mb</code>).</li>
           </ol>
         </div>
