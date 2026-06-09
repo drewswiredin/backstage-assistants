@@ -4673,7 +4673,7 @@ __metadata:
     "@backstage/plugin-search-common": "npm:^1.2.24"
     "@backstage/plugin-signals-node": "npm:^0.2.1"
     "@backstage/types": "npm:^1.2.2"
-    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.5.4"
+    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.5.5"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/express": "npm:^4.17.23"
     "@types/turndown": "npm:^5.0.6"
@@ -4685,7 +4685,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@drewswiredin/backstage-plugin-assistants-common@npm:0.5.4, @drewswiredin/backstage-plugin-assistants-common@workspace:^, @drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common":
+"@drewswiredin/backstage-plugin-assistants-common@npm:0.5.5, @drewswiredin/backstage-plugin-assistants-common@workspace:^, @drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common":
   version: 0.0.0-use.local
   resolution: "@drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common"
   dependencies:
@@ -4710,7 +4710,7 @@ __metadata:
     "@backstage/plugin-scaffolder-react": "npm:^2.0.0"
     "@backstage/plugin-signals-react": "npm:^0.0.22"
     "@backstage/ui": "npm:^0.15.0"
-    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.5.4"
+    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.5.5"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
     "@remixicon/react": "npm:^4.5.0"
@@ -4719,6 +4719,7 @@ __metadata:
     "@rjsf/validator-ajv8": "npm:^5.24.0"
     "@types/react": "npm:^18.0.0"
     ai: "npm:^6.0.192"
+    marked: "npm:^15.0.0"
     mermaid: "npm:^11.0.0"
     react: "npm:^18.0.0"
     react-dom: "npm:^18.0.0"
@@ -24336,7 +24337,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"marked@npm:^15.0.12":
+"marked@npm:^15.0.0, marked@npm:^15.0.12":
   version: 15.0.12
   resolution: "marked@npm:15.0.12"
   bin:

@@ -20,10 +20,12 @@ import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
   ModelId,
+  ModelOption,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 import { fetchThreadStatus } from './threadListAdapter';
 import { markTurnEnded } from './interruptedTurns';
+import { createAttachmentAdapter } from './attachmentAdapters';
 
 /**
  * True when an assistant turn legitimately paused for the user (a `render_form`
@@ -56,6 +58,12 @@ interface RuntimeHookOptions {
   getActiveAssistantId: () => AssistantId;
   /** The currently selected model id (kept in a ref so the transport reads it live). */
   modelIdRef: RefObject<ModelId>;
+  /**
+   * The currently-selected model's option (read live), so the attachment adapter
+   * can gate image upload on its `vision` capability and honor a mid-thread model
+   * switch without rebuilding the runtime.
+   */
+  getActiveModelOption: () => ModelOption | undefined;
 }
 
 /**
@@ -113,7 +121,8 @@ function createInjectingFetch(
  * the server says the thread is working.
  */
 export function makeRuntimeHook(options: RuntimeHookOptions) {
-  const { api, baseUrl, getActiveAssistantId, modelIdRef } = options;
+  const { api, baseUrl, getActiveAssistantId, modelIdRef, getActiveModelOption } =
+    options;
 
   return function useRuntimeHook() {
     const threadChatId = useAuiState(state => state.threadListItem.id);
@@ -244,7 +253,18 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
         return formResolved || approvalResolved;
       },
     });
-    const runtime = useAISDKRuntime(chat);
+    // Composer file/image upload. Built once per thread; the image adapter reads
+    // the selected model's `vision` capability LIVE via getActiveModelOption, so a
+    // mid-thread model switch is honored without rebuilding the runtime (which
+    // would drop an in-flight stream). Replaces the AI-SDK default wildcard
+    // attachment adapter (which sent any file ignoring model capability).
+    const attachments = useMemo(
+      () => createAttachmentAdapter(getActiveModelOption),
+      // getActiveModelOption is a stable getter for the life of this hook.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [],
+    );
+    const runtime = useAISDKRuntime(chat, { adapters: { attachments } });
 
     // Wire the transport to the runtime + this thread's list item so it can
     // initialize() the server thread and tag requests with its remoteId.

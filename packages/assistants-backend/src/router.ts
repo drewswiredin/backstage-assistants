@@ -197,6 +197,73 @@ function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
 }
 
 /**
+ * Inline text/code file attachments into text parts for the model.
+ *
+ * The composer sends text/code files as `file` parts (a base64 data URL) so the
+ * chat renders them as a compact chip instead of dumping the contents into the
+ * message. Many providers won't read a non-image file part, so here — only for what
+ * is sent to the model — each non-image file part is decoded and replaced with a
+ * text part wrapping the file contents. Image file parts are left untouched
+ * (forwarded to vision models). The persisted UI message keeps the original file
+ * part, so the chip survives reloads; this transform is per-turn and model-only.
+ */
+function inlineTextFileAttachments(messages: unknown[]): unknown[] {
+  const decode = (url: string): string | null => {
+    const base64 = /^data:[^,]*;base64,(.*)$/s.exec(url);
+    if (base64) {
+      try {
+        return Buffer.from(base64[1], 'base64').toString('utf8');
+      } catch {
+        return null;
+      }
+    }
+    const plain = /^data:[^,]*,(.*)$/s.exec(url);
+    if (plain) {
+      try {
+        return decodeURIComponent(plain[1]);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  return messages.map(message => {
+    const m = message as {
+      role?: unknown;
+      parts?: Array<Record<string, unknown>>;
+    };
+    if (m.role !== 'user' || !Array.isArray(m.parts)) return message;
+    let changed = false;
+    const parts = m.parts.flatMap(part => {
+      const mediaType = part?.mediaType;
+      const url = part?.url;
+      if (
+        part?.type === 'file' &&
+        typeof mediaType === 'string' &&
+        !mediaType.startsWith('image/') &&
+        typeof url === 'string'
+      ) {
+        const text = decode(url);
+        if (text !== null) {
+          changed = true;
+          const name =
+            typeof part.filename === 'string' ? part.filename : 'attachment';
+          return [
+            {
+              type: 'text',
+              text: `<attachment name="${name}">\n${text}\n</attachment>`,
+            },
+          ];
+        }
+      }
+      return [part];
+    });
+    return changed ? { ...m, parts } : message;
+  });
+}
+
+/**
  * Builds the Express router for the AI Assistants backend plugin.
  *
  * This mounts `GET /status`, `POST /chat`, and `POST /title`. `/chat` resolves
@@ -556,6 +623,46 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         }),
         // No `execute`: resolved on the client via the form's submit (addResult).
       }),
+      // Generative download tool — a CLIENT-side tool (no `execute`): the model
+      // calls it with file content, the frontend (DownloadFileTool) renders a
+      // download chip and acknowledges it. Lets the assistant hand back a generated
+      // artifact (CSV/JSON/code/etc.) as a saveable file instead of inline text.
+      download_file: tool({
+        description:
+          'Deliver a downloadable file to the user. Use when the user asks for a ' +
+          'file, export, or download, or when a downloadable artifact is more ' +
+          'useful than inline text (e.g. a CSV, JSON, Markdown, code, or config ' +
+          'file you generated). Provide `filename` (with extension), `content` ' +
+          '(the COMPLETE file text), and optionally `mimeType`. The file appears ' +
+          'in the chat as a download chip the user can save or copy — put the full ' +
+          'content in `content`, do not also paste it into your message.',
+        inputSchema: jsonSchema<{
+          filename: string;
+          content: string;
+          mimeType?: string;
+        }>({
+          type: 'object',
+          properties: {
+            filename: {
+              type: 'string',
+              description: 'File name including extension, e.g. "report.csv".',
+            },
+            content: {
+              type: 'string',
+              description: 'The complete file contents, as text.',
+            },
+            mimeType: {
+              type: 'string',
+              description:
+                'Optional MIME type, e.g. "text/csv". Inferred from the ' +
+                'filename extension when omitted.',
+            },
+          },
+          required: ['filename', 'content'],
+          additionalProperties: false,
+        }),
+        // No `execute`: rendered + acknowledged on the client (DownloadFileTool).
+      }),
     };
 
     // 6b. Deterministic approval gate. For every tool named in the assistant's
@@ -621,9 +728,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       );
     }
 
-    // 7. Convert UI messages → model messages.
+    // 7. Convert UI messages → model messages. Text/code file attachments (sent
+    //    as file parts so the chat shows a chip) are decoded back to inline text
+    //    here so every model can read them; image file parts pass through.
     let modelMessages = await convertToModelMessages(
-      messages as Omit<UIMessage, 'id'>[],
+      inlineTextFileAttachments(messages) as Omit<UIMessage, 'id'>[],
     );
 
     // 8. Anthropic-only tool-args sanitizer (see sanitizeAnthropicToolArgs).

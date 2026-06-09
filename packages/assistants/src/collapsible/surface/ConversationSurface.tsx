@@ -20,7 +20,6 @@ import { BackstageLogo } from './BackstageLogo';
 import { DEFAULT_AVATAR_COLOR, resolveAssistantColor } from './AssistantAvatar';
 import { ThreadPrimitive } from '@assistant-ui/react';
 import {
-  AssistantActionBar,
   AssistantMessage,
   BranchPicker,
   Composer,
@@ -28,9 +27,12 @@ import {
   ThreadWelcome,
   UserMessage,
 } from '@assistant-ui/react-ui';
+import { AssistantActionBar } from './AssistantActionBar';
 import { MarkdownText } from './MarkdownText';
 import { ContextGauge } from './ContextGauge';
 import { RenderFormTool } from './RenderFormTool';
+import { DownloadFileTool } from './DownloadFileTool';
+import { AttachmentChip } from './DownloadChip';
 import {
   MessageError,
   MessageInterrupted,
@@ -377,7 +379,7 @@ function UserMessageWithAvatar() {
 
   return (
     <UserMessage.Root className={classes.userMessageWithAvatar}>
-      <UserMessage.Attachments />
+      <UserMessage.Attachments components={{ Attachment: AttachmentChip }} />
       <div className={classes.userMessageBody}>
         <UserMessage.Content />
         <UserChatAvatar />
@@ -506,6 +508,8 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
           {/* Registers the inline RJSF renderer for the `render_form` tool — the
               form appears in the message stream where the tool call is. */}
           <RenderFormTool />
+          {/* Registers the inline download chip for the `download_file` tool. */}
+          <DownloadFileTool />
           <Thread
             strings={
               composerPlaceholder

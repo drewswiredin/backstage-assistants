@@ -318,6 +318,10 @@ export function readConfig(config: Config): AssistantsConfig {
     const contextWindows = providerConfig.getOptional('contextWindows') as
       | Record<string, number>
       | undefined;
+    // Optional per-model vision capability, read raw for the same dotted-name reason.
+    const vision = providerConfig.getOptional('vision') as
+      | Record<string, boolean>
+      | undefined;
     for (const model of modelNames) {
       const contextWindow = contextWindows?.[model];
       models.push({
@@ -325,6 +329,7 @@ export function readConfig(config: Config): AssistantsConfig {
         provider: providerId,
         model,
         ...(typeof contextWindow === 'number' ? { contextWindow } : {}),
+        ...(vision?.[model] ? { vision: true } : {}),
       });
     }
   }
