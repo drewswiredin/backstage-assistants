@@ -1,4 +1,13 @@
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import {
+  KeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import mermaid from 'mermaid';
 import {
   CircularProgress,
@@ -9,6 +18,9 @@ import {
 } from '@material-ui/core';
 import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
+import AddIcon from '@material-ui/icons/Add';
+import RemoveIcon from '@material-ui/icons/Remove';
+import CropFreeIcon from '@material-ui/icons/CropFree';
 import { useAuiState } from '@assistant-ui/react';
 
 /**
@@ -157,41 +169,66 @@ const useStyles = makeStyles(theme => ({
     backdropFilter: 'blur(2px)',
   },
   dialogPaper: {
-    backgroundColor: theme.palette.background.default,
+    // Match the chat thread surface (ConversationSurface threadHost
+    // `--aui-background`) so the fullscreen view reproduces the chat backdrop.
+    // If this were left at background.default it would equal mermaid's clusterBkg
+    // (also background.default), so subgraph shading would blend into the backdrop
+    // and look like it vanished while the borders (divider) remained — which is
+    // exactly the discrepancy reported between the inline and fullscreen views.
+    backgroundColor:
+      theme.palette.type === 'dark' ? 'hsl(0, 0%, 18%)' : 'hsl(0, 0%, 100%)',
   },
   dialogBody: {
     position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100vh',
-    padding: theme.spacing(7, 3, 3),
-    overflow: 'auto',
+    width: '100%',
+    height: '100vh',
+    overflow: 'hidden',
   },
-  closeButton: {
-    position: 'fixed',
+  // Pan/zoom viewport: clips the (possibly oversized) transformed diagram and
+  // captures wheel-to-zoom + drag-to-pan.
+  fullscreenViewport: {
+    position: 'absolute',
+    inset: 0,
+    overflow: 'hidden',
+    touchAction: 'none',
+    cursor: 'grab',
+    userSelect: 'none',
+    '&:active': {
+      cursor: 'grabbing',
+    },
+  },
+  // The diagram itself, positioned at the viewport origin and moved/scaled purely
+  // via a CSS transform (transformOrigin 0,0 so cursor-anchored zoom math is exact).
+  // The box gets a definite width/height (from the SVG viewBox) inline; the SVG
+  // fills it. Without a definite box, mermaid's width:100%/max-width svg collapses
+  // to 0 in this absolutely-positioned container and the view goes blank.
+  fullscreenContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    transformOrigin: '0 0',
+    willChange: 'transform',
+    color: theme.palette.text.primary,
+    '& svg': {
+      display: 'block',
+      width: '100%',
+      height: '100%',
+      maxWidth: 'none',
+    },
+  },
+  controls: {
+    position: 'absolute',
     top: theme.spacing(1.5),
     right: theme.spacing(1.5),
-    zIndex: 1,
+    zIndex: 2,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+  },
+  controlButton: {
     backgroundColor: theme.palette.background.paper,
     '&:hover': {
       backgroundColor: theme.palette.action.hover,
-    },
-  },
-  fullscreenDiagram: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: '100%',
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: 'transparent',
-    color: theme.palette.text.primary,
-    '& svg': {
-      width: 'auto',
-      height: 'auto',
-      maxWidth: 'calc(100vw - 48px)',
-      maxHeight: 'calc(100vh - 96px)',
     },
   },
   error: {
@@ -208,6 +245,179 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.caption.fontSize,
   },
 }));
+
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 8;
+const clampZoom = (s: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s));
+
+/**
+ * Fullscreen diagram viewer with wheel-to-zoom and drag-to-pan.
+ *
+ * The same rendered `svg` string is shown here as inline (so the fills are
+ * identical — see `dialogPaper` for why the backdrop must match the chat surface).
+ * Mounted only while the dialog is open, so it re-fits each time it opens.
+ */
+function FullscreenDiagram({
+  svg,
+  classes,
+  onClose,
+}: {
+  svg: string;
+  classes: ReturnType<typeof useStyles>;
+  onClose: () => void;
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
+
+  // Mermaid sizes its <svg> with max-width / width:100%, which collapses to 0 in an
+  // absolutely-positioned shrink-wrap container (→ a blank fullscreen). Read the
+  // natural size from the viewBox and give the content a definite box so it lays
+  // out; the SVG then fills that box.
+  const dims = useMemo(() => {
+    const m = svg.match(/viewBox="\s*[\d.-]+\s+[\d.-]+\s+([\d.-]+)\s+([\d.-]+)/);
+    return m ? { w: parseFloat(m[1]), h: parseFloat(m[2]) } : null;
+  }, [svg]);
+
+  // Center the diagram in the viewport, shrinking large diagrams to fit but never
+  // upscaling on open (avoids a blurry start). Prefer the viewBox dims; fall back
+  // to the measured layout size (both are untransformed, independent of zoom).
+  const fit = useCallback(() => {
+    const vp = viewportRef.current;
+    const content = contentRef.current;
+    if (!vp || !content) return;
+    const w = dims?.w || content.offsetWidth;
+    const h = dims?.h || content.offsetHeight;
+    const vw = vp.clientWidth;
+    const vh = vp.clientHeight;
+    if (!w || !h || !vw || !vh) return;
+    const scale = Math.min(vw / w, vh / h, 1);
+    setView({ scale, tx: (vw - w * scale) / 2, ty: (vh - h * scale) / 2 });
+  }, [dims]);
+
+  useLayoutEffect(() => {
+    fit();
+  }, [fit, svg]);
+
+  // Zoom anchored at a viewport point (cursor for wheel, center for buttons): keep
+  // the point under (cx,cy) fixed as scale changes. transformOrigin is 0,0.
+  const zoomAt = useCallback((factor: number, cx: number, cy: number) => {
+    setView(v => {
+      const scale = clampZoom(v.scale * factor);
+      const ratio = scale / v.scale;
+      return {
+        scale,
+        tx: cx - ratio * (cx - v.tx),
+        ty: cy - ratio * (cy - v.ty),
+      };
+    });
+  }, []);
+
+  // Wheel = zoom. A native non-passive listener is required: React's onWheel is
+  // passive, so it can't preventDefault and the dialog would scroll instead.
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return undefined;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = vp.getBoundingClientRect();
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
+    };
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    return () => vp.removeEventListener('wheel', onWheel);
+  }, [zoomAt]);
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.x;
+    const dy = e.clientY - dragRef.current.y;
+    dragRef.current = { x: e.clientX, y: e.clientY };
+    setView(v => ({ ...v, tx: v.tx + dx, ty: v.ty + dy }));
+  };
+  const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+  };
+
+  const zoomFromCenter = (factor: number) => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    zoomAt(factor, vp.clientWidth / 2, vp.clientHeight / 2);
+  };
+
+  return (
+    <div
+      ref={viewportRef}
+      className={classes.fullscreenViewport}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerLeave={endDrag}
+      onDoubleClick={fit}
+    >
+      <div
+        ref={contentRef}
+        className={classes.fullscreenContent}
+        style={{
+          width: dims?.w,
+          height: dims?.h,
+          transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`,
+        }}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+
+      {/* stopPropagation so clicking a control doesn't also start a pan drag */}
+      <div className={classes.controls} onPointerDown={e => e.stopPropagation()}>
+        <Tooltip title="Zoom in">
+          <IconButton
+            className={classes.controlButton}
+            aria-label="Zoom in"
+            onClick={() => zoomFromCenter(1.2)}
+          >
+            <AddIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Zoom out">
+          <IconButton
+            className={classes.controlButton}
+            aria-label="Zoom out"
+            onClick={() => zoomFromCenter(1 / 1.2)}
+          >
+            <RemoveIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Reset / fit">
+          <IconButton
+            className={classes.controlButton}
+            aria-label="Reset zoom and fit diagram"
+            onClick={fit}
+          >
+            <CropFreeIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Close">
+          <IconButton
+            className={classes.controlButton}
+            aria-label="Close fullscreen diagram"
+            onClick={onClose}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Streaming-safe Mermaid renderer.
@@ -395,18 +605,10 @@ export function MermaidDiagram({ code }: { code: string }) {
         PaperProps={{ className: classes.dialogPaper }}
       >
         <div className={classes.dialogBody}>
-          <Tooltip title="Close">
-            <IconButton
-              className={classes.closeButton}
-              aria-label="Close fullscreen diagram"
-              onClick={() => setOpen(false)}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Tooltip>
-          <div
-            className={classes.fullscreenDiagram}
-            dangerouslySetInnerHTML={{ __html: svg }}
+          <FullscreenDiagram
+            svg={svg}
+            classes={classes}
+            onClose={() => setOpen(false)}
           />
         </div>
       </Dialog>
