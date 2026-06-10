@@ -70,6 +70,15 @@ const assertSize = (file: File) => {
 const isImage = (file: { type?: string }) => (file.type ?? '').startsWith('image/');
 
 /**
+ * Monotonic counter for unique attachment ids. The browser names EVERY pasted
+ * clipboard image `image.png`, so keying an attachment by `file.name` made a
+ * second paste collide with the first id and replace it (the composer dedupes
+ * pending attachments by id). A per-add sequence keeps each attachment distinct
+ * while leaving the human-facing `name` as the real filename.
+ */
+let attachmentSeq = 0;
+
+/**
  * Sends any attachment as a `file` content part with its real mime type. Images
  * preview as a thumbnail; everything else as a chip and is re-inlined as text by
  * the backend. No capability gate — the provider is the source of truth.
@@ -79,8 +88,11 @@ class FileAttachmentAdapter implements AttachmentAdapter {
 
   async add({ file }: { file: File }): Promise<PendingAttachment> {
     assertSize(file);
+    attachmentSeq += 1;
     return {
-      id: file.name,
+      // Unique per add — NOT `file.name`: pasted images are all named
+      // "image.png", which would collide and replace the previous paste.
+      id: `${file.name}#${attachmentSeq}`,
       type: isImage(file) ? 'image' : 'document',
       name: file.name,
       contentType: file.type,
