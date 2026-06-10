@@ -55,6 +55,9 @@ e2e-test-report/
 # Cache
 .cache/
 
+# Local dev SQLite database (persistent better-sqlite3 dir; see app-config.yaml)
+.local-db/
+
 # AI assistant & editor tooling (per-developer, not shared project config)
 .claude/
 .cursor/

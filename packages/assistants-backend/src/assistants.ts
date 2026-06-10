@@ -433,6 +433,23 @@ function stringArray(raw: unknown): string[] {
 }
 
 /**
+ * A timestamp column value as an ISO string. Postgres returns a `Date` for
+ * `timestamp` columns while SQLite returns the stored text — normalize both to
+ * ISO. Critical for portability: a raw `Date.toString()` (e.g.
+ * "… GMT-0400 (Eastern Daylight Time)") is NOT valid timestamp input, so a
+ * pg `Date` round-tripped through `String()` would be rejected on the next write.
+ */
+function toIsoTimestamp(v: unknown): string | undefined {
+  if (v === null || v === undefined) {
+    return undefined;
+  }
+  if (v instanceof Date) {
+    return v.toISOString();
+  }
+  return String(v);
+}
+
+/**
  * Parse a DB row into a full definition, merging the audit columns over the
  * stored content. NORMALIZES the critical fields (access → deny default,
  * allowedTools/models → string[], defaultModel → string|null) so a
@@ -472,12 +489,8 @@ function toDefinition(
     ui:
       content.ui && typeof content.ui === 'object' ? content.ui : undefined,
     created_by: (row.created_by as string) ?? content.created_by,
-    created_at:
-      (row.created_at ? String(row.created_at) : undefined) ??
-      content.created_at,
+    created_at: toIsoTimestamp(row.created_at) ?? content.created_at,
     updated_by: (row.updated_by as string) ?? content.updated_by,
-    updated_at:
-      (row.updated_at ? String(row.updated_at) : undefined) ??
-      content.updated_at,
+    updated_at: toIsoTimestamp(row.updated_at) ?? content.updated_at,
   };
 }
