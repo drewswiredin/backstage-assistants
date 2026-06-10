@@ -2,78 +2,57 @@
  * The assistant admin editor: a full-screen MUI master-detail dialog. The left
  * rail lists the managed assistants (ordered by title); the right pane edits the
  * selected one's full {@link AssistantDefinition}. Implements the full lifecycle
- * — Create (blank, access-deny default), Duplicate (clone → "(copy)"), Delete
+ * — Create (blank, open to any signed-in user), Duplicate (clone → "(copy)"), Delete
  * (confirm) and Save (dirty-tracked, title required) — over the `/manage` API,
  * with the delta-aware tool checklist + live model/access pickers and inline
  * server-400 validation. On save/delete it refreshes BOTH the manage list and
  * `/status` (via `onChanged`) so the chat rail reflects the change.
  *
- * Sub-components (own files): {@link ToolChecklist} (delta-aware tool allowlist),
- * {@link AccessPickers} (catalog-backed user/group refs), {@link SuggestionsEditor}
- * (per-assistant starter prompts). Pure draft/dirty/stale logic lives in
- * {@link ./adminModel}.
+ * Sub-components (own files): {@link ToolsTransfer} (compact tool allowlist),
+ * {@link ModelsTransfer} (compact model allowlist + default star),
+ * {@link AccessList} (one principal list), {@link SuggestionsEditor}
+ * (per-assistant starter prompts). All three share the {@link AssignList}
+ * primitive (a bare row list + an "＋ Add" search popover). Pure
+ * draft/dirty/stale logic lives in {@link ./adminModel}.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { makeStyles, useTheme, fade } from '@material-ui/core/styles';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { makeStyles, fade } from '@material-ui/core/styles';
 import { alertApiRef, useApi } from '@backstage/core-plugin-api';
 import Dialog from '@material-ui/core/Dialog';
 import Button from '@material-ui/core/Button';
+import ButtonBase from '@material-ui/core/ButtonBase';
 import IconButton from '@material-ui/core/IconButton';
+import Popover from '@material-ui/core/Popover';
 import Typography from '@material-ui/core/Typography';
 import TextField from '@material-ui/core/TextField';
-import Switch from '@material-ui/core/Switch';
-import FormControlLabel from '@material-ui/core/FormControlLabel';
-import Select from '@material-ui/core/Select';
-import MenuItem from '@material-ui/core/MenuItem';
-import InputLabel from '@material-ui/core/InputLabel';
-import FormControl from '@material-ui/core/FormControl';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemText from '@material-ui/core/ListItemText';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Tooltip from '@material-ui/core/Tooltip';
-import Chip from '@material-ui/core/Chip';
 import Divider from '@material-ui/core/Divider';
-import Autocomplete from '@material-ui/lab/Autocomplete';
 import CloseIcon from '@material-ui/icons/Close';
 import AddIcon from '@material-ui/icons/Add';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
+import EditIcon from '@material-ui/icons/Edit';
 import {
   AssistantDefinition,
   CapabilitiesResponse,
-  ModelId,
   ModelOption,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../../api';
 import { AssistantAvatar, DEFAULT_AVATAR_COLOR } from '../surface/AssistantAvatar';
-import { AccessPickers } from './AccessPickers';
-import { ToolChecklist } from './ToolChecklist';
+import { AccessList } from './AccessList';
+import { ModelsTransfer } from './ModelsTransfer';
+import { ToolsTransfer } from './ToolsTransfer';
 import { SuggestionsEditor } from './SuggestionsEditor';
-import {
-  blankDraft,
-  cloneDraft,
-  duplicateDraft,
-  isDirty,
-  isValid,
-  modelLabel,
-} from './adminModel';
+import { blankDraft, cloneDraft, duplicateDraft, isDirty, isValid } from './adminModel';
 
-/** Sentinel Select value for "fall back to the platform default" (maps to null). */
-const PLATFORM_DEFAULT = '__platform_default__';
-
-/** A few preset avatar swatches, plus the brand default. */
-const PRESET_COLORS = [
-  DEFAULT_AVATAR_COLOR,
-  '#c2410c',
-  '#2563eb',
-  '#7c3aed',
-  '#16a34a',
-  '#db2777',
-  '#0891b2',
-];
+/** A complete 6-digit hex — the only shape a native color input accepts. */
+const HEX6 = /^#[0-9a-f]{6}$/i;
 
 const useStyles = makeStyles(theme => ({
   paper: {
@@ -164,61 +143,119 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(2),
   },
+  // The compact Models + Access sections pair into two columns on wider panes.
+  sectionGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr',
+    columnGap: theme.spacing(3),
+    [theme.breakpoints.up('md')]: {
+      gridTemplateColumns: '1fr 1fr',
+    },
+  },
+  // A visible divider between the paired Models | Access columns (vertical when
+  // side-by-side, horizontal when they stack on a narrow pane).
+  accessCol: {
+    [theme.breakpoints.up('md')]: {
+      borderLeft: `1px solid ${theme.palette.divider}`,
+      paddingLeft: theme.spacing(3),
+    },
+    [theme.breakpoints.down('sm')]: {
+      borderTop: `1px solid ${theme.palette.divider}`,
+      paddingTop: theme.spacing(2),
+    },
+  },
   sectionLabel: {
     display: 'block',
     color: theme.palette.text.secondary,
     fontWeight: 600,
-    fontSize: '0.7rem',
+    fontSize: '0.78rem',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: theme.spacing(1),
   },
-  helper: {
-    color: theme.palette.text.hint,
-    fontSize: '0.72rem',
-    marginTop: theme.spacing(0.25),
-    display: 'block',
-  },
-  colorRow: {
+  // Identity "employee card": a large logo on the left, title + description right.
+  identityCard: {
     display: 'flex',
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: theme.spacing(3),
+    padding: theme.spacing(2, 1, 2.5),
+    marginBottom: theme.spacing(1),
+  },
+  identityFields: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
     gap: theme.spacing(1.5),
   },
-  colorPreview: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '50%',
-    padding: theme.spacing(0.75),
-    flexShrink: 0,
-  },
   colorField: {
-    width: 140,
+    flex: 1,
+    minWidth: 0,
   },
-  swatches: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.75),
+  // The click-to-open color picker — a focus/hover ring + corner edit badge make
+  // it discoverable as an interactive control.
+  colorTrigger: {
+    borderRadius: '50%',
+    cursor: 'pointer',
+    position: 'relative',
+    transition: 'box-shadow 120ms ease',
+    '&:hover': {
+      boxShadow: `0 0 0 2px ${theme.palette.action.active}`,
+    },
+    '&:focus-visible': {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: 2,
+    },
   },
-  swatch: {
+  editBadge: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
     width: 22,
     height: 22,
     borderRadius: '50%',
-    border: `2px solid ${theme.palette.background.paper}`,
-    boxShadow: `0 0 0 1px ${theme.palette.divider}`,
-    cursor: 'pointer',
-    padding: 0,
-    outline: 'none',
-  },
-  swatchActive: {
-    boxShadow: `0 0 0 2px ${theme.palette.primary.main}`,
-  },
-  inlineRow: {
+    backgroundColor: theme.palette.background.paper,
+    border: `1px solid ${theme.palette.divider}`,
     display: 'flex',
-    gap: theme.spacing(2),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  modelDefault: {
-    minWidth: 220,
+  editBadgeIcon: {
+    fontSize: '0.85rem',
+    color: theme.palette.text.secondary,
+  },
+  colorPopover: {
+    padding: theme.spacing(1.5),
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.25),
+    width: 220,
+  },
+  colorPickRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  },
+  // The native OS color picker, shown as a square swatch.
+  nativeColor: {
+    width: 44,
+    height: 44,
+    flexShrink: 0,
+    padding: 0,
+    border: 'none',
+    borderRadius: 8,
+    background: 'none',
+    cursor: 'pointer',
+    '&::-webkit-color-swatch-wrapper': { padding: 0 },
+    '&::-webkit-color-swatch': {
+      border: `1px solid ${theme.palette.divider}`,
+      borderRadius: 6,
+    },
+    '&::-moz-color-swatch': {
+      border: `1px solid ${theme.palette.divider}`,
+      borderRadius: 6,
+    },
   },
   footer: {
     display: 'flex',
@@ -284,6 +321,80 @@ export interface AssistantAdminDialogProps {
   onChanged?: () => void;
 }
 
+/**
+ * Avatar color control: shows the colored logo with a small corner edit badge;
+ * clicking it opens a popover with a native color picker + a hex field (flagged
+ * when the hex is malformed). Collapses back to the logo.
+ */
+function AvatarColorPicker({
+  color,
+  onChange,
+  size = 40,
+}: {
+  color?: string;
+  onChange: (color: string) => void;
+  size?: number;
+}) {
+  const classes = useStyles();
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const hexRef = useRef<HTMLInputElement>(null);
+  const current = color || DEFAULT_AVATAR_COLOR;
+  const hexInvalid = Boolean(color) && !HEX6.test(color as string);
+
+  return (
+    <>
+      <ButtonBase
+        className={classes.colorTrigger}
+        style={{
+          backgroundColor: fade(HEX6.test(current) ? current : DEFAULT_AVATAR_COLOR, 0.15),
+          padding: Math.round(size * 0.18),
+        }}
+        aria-label="Change avatar color"
+        onClick={e => setAnchor(e.currentTarget)}
+      >
+        <AssistantAvatar color={color || undefined} size={size} />
+        <span className={classes.editBadge}>
+          <EditIcon className={classes.editBadgeIcon} />
+        </span>
+      </ButtonBase>
+      <Popover
+        open={Boolean(anchor)}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        TransitionProps={{ onEntered: () => hexRef.current?.focus() }}
+      >
+        <div className={classes.colorPopover}>
+          <div className={classes.colorPickRow}>
+            <input
+              type="color"
+              className={classes.nativeColor}
+              value={HEX6.test(current) ? current : DEFAULT_AVATAR_COLOR}
+              onChange={e => onChange(e.target.value)}
+              aria-label="Pick a color"
+            />
+            <TextField
+              className={classes.colorField}
+              label="Hex"
+              size="small"
+              variant="outlined"
+              value={current}
+              error={hexInvalid}
+              helperText={hexInvalid ? 'Use #rrggbb' : undefined}
+              inputRef={hexRef}
+              onChange={e => onChange(e.target.value)}
+            />
+          </div>
+          <Button size="small" onClick={() => setAnchor(null)}>
+            Done
+          </Button>
+        </div>
+      </Popover>
+    </>
+  );
+}
+
 /** A small confirm dialog used for discard + delete prompts. */
 function ConfirmDialog({
   open,
@@ -341,7 +452,6 @@ export function AssistantAdminDialog({
   onChanged,
 }: AssistantAdminDialogProps) {
   const classes = useStyles();
-  const theme = useTheme();
   const alertApi = useApi(alertApiRef);
 
   // Loaded server state.
@@ -461,8 +571,7 @@ export function AssistantAdminDialog({
   };
 
   const doCreate = useCallback(() => {
-    // New draft: blank, access-deny default (server is the source of truth, we
-    // mirror it). Unsaved → selectedId ''.
+    // New draft: blank, open to any signed-in user (see blankDraft). Unsaved → selectedId ''.
     selectInto('', blankDraft());
   }, [selectInto]);
 
@@ -588,24 +697,7 @@ export function AssistantAdminDialog({
     }
   };
 
-  // ---- Derived model picker state ----
-
-  // The chosen allowlist (draft.models); empty = all models.
-  const modelAllowlist = useMemo(() => draft?.models ?? [], [draft]);
-  // The default-model Select options: the chosen allowlist, or the full pool if
-  // empty (mirrors the runtime "empty = all" rule).
-  const defaultModelOptions: ModelId[] = useMemo(() => {
-    if (modelAllowlist.length > 0) {
-      return modelAllowlist;
-    }
-    return modelPool.map(m => m.id);
-  }, [modelAllowlist, modelPool]);
-
-  const modelOptionIds = useMemo(() => modelPool.map(m => m.id), [modelPool]);
-
   // ---- Render ----
-
-  const color = draft?.color || DEFAULT_AVATAR_COLOR;
 
   const renderForm = () => {
     if (!draft || !capabilities) {
@@ -621,218 +713,36 @@ export function AssistantAdminDialog({
     return (
       <>
         <div className={classes.form}>
-          {/* Identity */}
-          <TextField
-            className={classes.field}
-            label="Title"
-            required
-            fullWidth
-            variant="outlined"
-            value={draft.title}
-            error={draft.title.trim().length === 0}
-            helperText={
-              draft.title.trim().length === 0 ? 'Title is required.' : undefined
-            }
-            onChange={e => patch({ title: e.target.value })}
-          />
-          <TextField
-            className={classes.field}
-            label="Description"
-            fullWidth
-            variant="outlined"
-            value={draft.description ?? ''}
-            onChange={e => patch({ description: e.target.value })}
-          />
-
-          {/* Color */}
-          <div className={classes.field}>
-            <Typography variant="caption" className={classes.sectionLabel}>
-              Avatar color
-            </Typography>
-            <div className={classes.colorRow}>
-              <span
-                className={classes.colorPreview}
-                style={{ backgroundColor: fade(color, 0.15) }}
-              >
-                <AssistantAvatar color={draft.color || undefined} size={40} />
-              </span>
+          {/* Identity — an "employee card": large logo left, title + description right. */}
+          <div className={classes.identityCard}>
+            <AvatarColorPicker
+              color={draft.color}
+              size={96}
+              onChange={c => patch({ color: c })}
+            />
+            <div className={classes.identityFields}>
               <TextField
-                className={classes.colorField}
-                label="Hex"
-                size="small"
+                label="Title"
+                required
+                fullWidth
                 variant="outlined"
-                placeholder={DEFAULT_AVATAR_COLOR}
-                value={draft.color ?? ''}
-                onChange={e => patch({ color: e.target.value })}
+                value={draft.title}
+                error={draft.title.trim().length === 0}
+                helperText={
+                  draft.title.trim().length === 0
+                    ? 'Title is required.'
+                    : undefined
+                }
+                onChange={e => patch({ title: e.target.value })}
               />
-              <div className={classes.swatches}>
-                {PRESET_COLORS.map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={`Use color ${c}`}
-                    className={`${classes.swatch} ${
-                      (draft.color || DEFAULT_AVATAR_COLOR).toLowerCase() ===
-                      c.toLowerCase()
-                        ? classes.swatchActive
-                        : ''
-                    }`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => patch({ color: c })}
-                  />
-                ))}
-              </div>
+              <TextField
+                label="Description"
+                fullWidth
+                variant="outlined"
+                value={draft.description ?? ''}
+                onChange={e => patch({ description: e.target.value })}
+              />
             </div>
-            <span className={classes.helper}>
-              Leave blank for the default brand tint.
-            </span>
-          </div>
-
-          {/* Prompt */}
-          <TextField
-            className={classes.field}
-            label="System prompt"
-            fullWidth
-            multiline
-            minRows={6}
-            maxRows={20}
-            variant="outlined"
-            value={draft.prompt}
-            onChange={e => patch({ prompt: e.target.value })}
-          />
-
-          <Divider className={classes.section} />
-
-          {/* Models */}
-          <div className={classes.section}>
-            <Typography variant="caption" className={classes.sectionLabel}>
-              Models
-            </Typography>
-            <Autocomplete<ModelId, true, false, false>
-              multiple
-              size="small"
-              options={modelOptionIds}
-              value={modelAllowlist}
-              getOptionLabel={modelLabel}
-              filterSelectedOptions
-              onChange={(_e, next) => {
-                const ids = next as ModelId[];
-                // Keep the default valid: clear it if it's no longer allowed
-                // (and the allowlist is non-empty).
-                const stillAllowed =
-                  ids.length === 0 ||
-                  (draft.defaultModel !== null &&
-                    ids.includes(draft.defaultModel));
-                patch({
-                  models: ids,
-                  defaultModel: stillAllowed ? draft.defaultModel : null,
-                });
-              }}
-              renderTags={(tagValue, getTagProps) =>
-                tagValue.map((id, index) => (
-                  <Chip
-                    size="small"
-                    label={modelLabel(id)}
-                    {...getTagProps({ index })}
-                    key={id}
-                  />
-                ))
-              }
-              renderInput={params => (
-                <TextField
-                  {...params}
-                  variant="outlined"
-                  label="Allowed models"
-                  placeholder={
-                    modelAllowlist.length === 0 ? 'Empty = all models' : undefined
-                  }
-                />
-              )}
-            />
-            <span className={classes.helper}>
-              Empty = all models. Leave empty to allow the full pool.
-            </span>
-
-            <FormControl
-              variant="outlined"
-              size="small"
-              className={classes.modelDefault}
-              style={{ marginTop: theme.spacing(1.5) }}
-            >
-              <InputLabel id="default-model-label">Default model</InputLabel>
-              <Select
-                labelId="default-model-label"
-                label="Default model"
-                value={draft.defaultModel ?? PLATFORM_DEFAULT}
-                onChange={e => {
-                  const v = e.target.value as string;
-                  patch({
-                    defaultModel: v === PLATFORM_DEFAULT ? null : (v as ModelId),
-                  });
-                }}
-              >
-                <MenuItem value={PLATFORM_DEFAULT}>
-                  <em>Platform default</em>
-                </MenuItem>
-                {defaultModelOptions.map(id => (
-                  <MenuItem key={id} value={id}>
-                    {modelLabel(id)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </div>
-
-          <Divider className={classes.section} />
-
-          {/* Access */}
-          <div className={classes.section}>
-            <Typography variant="caption" className={classes.sectionLabel}>
-              Access
-            </Typography>
-            <FormControlLabel
-              control={
-                <Switch
-                  color="primary"
-                  checked={draft.access.allowAuthenticated}
-                  onChange={e =>
-                    patch({
-                      access: {
-                        ...draft.access,
-                        allowAuthenticated: e.target.checked,
-                      },
-                    })
-                  }
-                />
-              }
-              label="Available to all signed-in users"
-            />
-            {!draft.access.allowAuthenticated && (
-              <AccessPickers
-                users={draft.access.users}
-                groups={draft.access.groups}
-                onUsersChange={users =>
-                  patch({ access: { ...draft.access, users } })
-                }
-                onGroupsChange={groups =>
-                  patch({ access: { ...draft.access, groups } })
-                }
-              />
-            )}
-          </div>
-
-          <Divider className={classes.section} />
-
-          {/* Tools */}
-          <div className={classes.section}>
-            <Typography variant="caption" className={classes.sectionLabel}>
-              Tools
-            </Typography>
-            <ToolChecklist
-              capabilities={capabilities}
-              allowedTools={draft.allowedTools}
-              onChange={allowedTools => patch({ allowedTools })}
-            />
           </div>
 
           <Divider className={classes.section} />
@@ -869,6 +779,64 @@ export function AssistantAdminDialog({
             />
           </div>
 
+          <Divider className={classes.section} />
+
+          {/* Models + Access — paired into two columns on wider panes. */}
+          <div className={classes.sectionGrid}>
+            <div className={classes.section}>
+              <Typography variant="caption" className={classes.sectionLabel}>
+                Models
+              </Typography>
+              <ModelsTransfer
+                pool={modelPool}
+                models={draft.models}
+                defaultModel={draft.defaultModel}
+                platformDefault={status.defaultModel}
+                onModelsChange={models => patch({ models })}
+                onDefaultChange={defaultModel => patch({ defaultModel })}
+              />
+            </div>
+
+            <div className={`${classes.section} ${classes.accessCol}`}>
+              <Typography variant="caption" className={classes.sectionLabel}>
+                Access
+              </Typography>
+              <AccessList
+                access={draft.access}
+                onChange={access => patch({ access })}
+              />
+            </div>
+          </div>
+
+          <Divider className={classes.section} />
+
+          {/* Prompt */}
+          <TextField
+            className={classes.field}
+            label="System prompt"
+            fullWidth
+            multiline
+            minRows={24}
+            maxRows={48}
+            variant="outlined"
+            value={draft.prompt}
+            onChange={e => patch({ prompt: e.target.value })}
+          />
+
+          <Divider className={classes.section} />
+
+          {/* Tools */}
+          <div className={classes.section}>
+            <Typography variant="caption" className={classes.sectionLabel}>
+              Tools
+            </Typography>
+            <ToolsTransfer
+              capabilities={capabilities}
+              allowedTools={draft.allowedTools}
+              onChange={allowedTools => patch({ allowedTools })}
+            />
+          </div>
+
           {(draft.created_by || draft.updated_by) && (
             <Typography variant="caption" className={classes.audit}>
               {draft.created_by && (
@@ -888,7 +856,7 @@ export function AssistantAdminDialog({
         {/* Detail footer: Save / Delete / Duplicate. */}
         <div className={classes.footer}>
           {validationError && (
-            <Typography className={classes.validationError}>
+            <Typography role="alert" className={classes.validationError}>
               {validationError}
             </Typography>
           )}

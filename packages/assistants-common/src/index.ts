@@ -108,7 +108,7 @@ export interface AssistantSummary {
    * wildcard included). Name + description; no schemas.
    */
   tools?: ToolSummary[];
-  /** Resolved UI options (deep-merge of global + per-profile `ui`). */
+  /** Resolved UI options (deep-merge of global + per-assistant `ui`). */
   ui?: UiOptions;
 }
 
@@ -279,7 +279,7 @@ export interface CapabilityAction {
 
 /**
  * One MCP server's reachability + tool inventory for the editor pickers,
- * derived from the cached `listServerToolsRaw`. Per-server reachability is
+ * derived from the cached `probeServerTools` probe. Per-server reachability is
  * surfaced rather than silently empty on failure: an unreachable server yields
  * `reachable: false` with `error` set and no `tools`.
  *
@@ -316,4 +316,11 @@ export interface CapabilitiesResponse {
   models: ModelOption[];
   /** MCP servers with reachability + tool inventories. */
   mcpServers: McpServerCapability[];
+  /**
+   * Tool ids in the global approval floor: the top-level `requireApproval`
+   * action ids ∪ each MCP server's per-server `requireApproval` namespaced
+   * `<serverId>__<tool>`. The editor flags any assigned tool in this set; the
+   * effective per-turn approval set is this ∩ the assistant's `allowedTools`.
+   */
+  requireApproval: string[];
 }

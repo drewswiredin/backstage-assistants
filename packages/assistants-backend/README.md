@@ -2,8 +2,11 @@
 
 Backend for the Backstage AI Assistants plugin: serves assistant metadata,
 streams chat completions, and runs Backstage actions as tools **on behalf of the
-calling user** (respecting their permissions). Configuration lives entirely in
-`app-config.yaml`; prompts, access policies, and API keys never reach the
+calling user** (respecting their permissions). Assistant definitions (prompt,
+access, tools, models) live in the plugin **database** and are managed in an
+in-app admin editor; `app-config.yaml` holds only the platform/safety surface
+(providers, MCP servers, the `admins` allowlist, the `requireApproval` floor, UI
+defaults, limits). Prompts, access policies, and API keys never reach the
 browser.
 
 Pairs with the frontend plugin
@@ -24,65 +27,49 @@ Requires the new backend system (`@backstage/backend-defaults`).
 
 ## Configuration
 
-All options live under `assistants` in `app-config.yaml`.
+All options live under `assistants` in `app-config.yaml`. This block now holds
+only the platform/safety surface — there is **no `profiles:` block**.
+
+### Assistant definitions (database + admin editor)
+
+Assistant definitions (title, description, prompt, access, tools, models) persist
+in the plugin `assistants` table (`definition_json` TEXT, portable across SQLite
+and Postgres). The table is seeded with one default assistant on first run.
+Definitions are created, edited, and deleted at runtime via the **admin editor**
+(a gear in the chat sidebar) — never in `app-config.yaml`. The
+`assistants.admins` allowlist controls who may manage them.
 
 ```yaml
 assistants:
-  # Initial model (provider:model). Must exist in a provider's models.
-  defaultModel: openrouter:google/gemini-2.5-flash
+  defaultModel: openrouter:google/gemini-2.5-flash # provider:model; must exist in a provider
+  maxSteps: 8 # max tool-call steps per turn (default 10)
+  builtinActions: true # register built-in catalog/TechDocs read tools
 
-  # Max tool-call steps per turn (default 10).
-  maxSteps: 8
+  # Who may create/edit/delete assistants in the in-app editor (default-deny if unset).
+  admins:
+    users: [user:default/jdoe]
+    groups: [group:default/platform]
 
-  # Register the built-in catalog/TechDocs tools (search-catalog,
-  # search-techdocs, read-techdocs) under the `assistants` action source.
-  registerCoreActions: true
+  # Global approval floor: these tools always pause for Allow/Deny in chat.
+  requireApproval:
+    - register-entity
+    - unregister-entity
+    - execute-template
 
-  # One or more LLM providers. The union of all `models` is the global pool.
   providers:
     openrouter:
       type: openai-compatible # openai | anthropic | azure | openai-compatible
-      apiKey: ${OPENROUTER_API_KEY} # secret — redacted everywhere
-      baseUrl: https://openrouter.ai/api/v1 # optional override
-      # options: { ... }              # passthrough opts spread into the AI-SDK factory
-      models:
-        - google/gemini-2.5-flash
-        - anthropic/claude-3.5-sonnet
-      # Optional per-model context windows (max input tokens) — drives the
-      # composer's context-usage gauge. Omit a model to show only its count.
-      contextWindows:
-        google/gemini-2.5-flash: 1048576
+      apiKey: ${OPENROUTER_API_KEY} # @visibility secret
+      baseUrl: https://openrouter.ai/api/v1 # optional
+      models: # object list: required name, optional contextWindow (drives the gauge)
+        - name: google/gemini-2.5-flash
+          contextWindow: 1048576
+        - name: anthropic/claude-3.5-sonnet
 
-  # Global UI defaults, deep-merged into every profile (browser-safe).
-  ui:
+  ui: # global UI defaults, deep-merged UNDER each assistant's own ui
     composer:
       placeholder: 'Send a message…'
     suggestions: []
-
-  # Assistant profiles, keyed by id. At least one is required.
-  profiles:
-    general:
-      title: General Assistant
-      description: Catalog + TechDocs helper for your developer portal.
-      color: '#7df3e1' # optional avatar tint (hex)
-      prompt: | # system prompt — backend-only
-        You are a Backstage developer-portal assistant. Use your tools to look
-        up catalog entities and documentation before answering.
-      access:
-        allowAuthenticated: true # any signed-in user
-        # users:  [user:default/jdoe]
-        # groups: [group:default/platform]
-      actions: # tool allowlist (action names); '*' allows all visible
-        - search-catalog
-        - search-techdocs
-        - read-techdocs
-      models: # optional per-profile allowlist (subset of the pool)
-        - openrouter:google/gemini-2.5-flash
-      defaultModel: openrouter:google/gemini-2.5-flash
-      ui:
-        suggestions:
-          - title: 'Who owns a service?'
-            prompt: 'Who owns the payments service?'
 ```
 
 ### Config reference
@@ -91,37 +78,16 @@ assistants:
 | --- | --- | --- |
 | `defaultModel` | yes | Initial `provider:model`; must exist in a provider. |
 | `maxSteps` | no | Max tool-call steps per turn (default `10`). |
-| `registerCoreActions` | no | Register built-in catalog/TechDocs tools (default `false`). |
+| `builtinActions` | no | Register built-in catalog/TechDocs read tools (default `false`). |
+| `toolResultMaxChars` | no | Max chars of a single tool result (head+tail truncation; `0` disables; default `30000`). |
+| `admins.users` / `admins.groups` | no | Entity refs allowed to manage assistants in the editor (default-deny). |
+| `requireApproval` | no | Global approval floor: action ids gated by Allow/Deny in chat. |
 | `providers.<id>.type` | yes | `openai` \| `anthropic` \| `azure` \| `openai-compatible`. |
 | `providers.<id>.apiKey` | yes | Provider key (`@visibility secret`). |
 | `providers.<id>.baseUrl` | no | Base URL override. |
-| `providers.<id>.options` | no | Passthrough opts spread into the AI-SDK factory. |
-| `providers.<id>.models` | yes | Models exposed by this provider. |
-| `providers.<id>.contextWindows` | no | Per-model max input tokens (e.g. `{ "gpt-4o": 128000 }`) — drives the composer's context-usage gauge; omit a model to show only its token count. |
-| `ui` | no | Global composer placeholder + starter suggestions. |
-| `profiles.<id>.title` | yes | Display name. |
-| `profiles.<id>.description` | no | Shown in the picker / detail modal. |
-| `profiles.<id>.color` | no | Avatar tint (hex). |
-| `profiles.<id>.prompt` | yes | System prompt (backend-only). |
-| `profiles.<id>.access` | yes | `allowAuthenticated` and/or `users` / `groups` entity refs. |
-| `profiles.<id>.actions` | no | Tool allowlist (action names), or `'*'`. |
-| `profiles.<id>.requireApproval` | no | Tool names that must be confirmed (Allow/Deny in chat) before they run — see [Human-in-the-loop](#human-in-the-loop-approvals--forms). |
-| `profiles.<id>.models` | no | Per-profile model allowlist (subset of pool). |
-| `profiles.<id>.defaultModel` | conditional | Required if the allowlist excludes the global `defaultModel`. |
-| `profiles.<id>.ui` | no | Per-profile UI overrides. |
-
-> **Tip — externalize long prompts.** `prompt` (and any string field) can use
-> Backstage's built-in file reference instead of an inline block:
->
-> ```yaml
-> profiles:
->   general:
->     prompt:
->       $file: ./prompts/general.md # relative to this config file; read at startup
-> ```
->
-> Keeps `app-config.yaml` readable and lets you author prompts in Markdown. Ship
-> the `prompts/` files alongside your `app-config.yaml` on the backend.
+| `providers.<id>.models` | yes | Object list; each `{ name, contextWindow? }`. |
+| `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
+| `ui` | no | Global composer placeholder + starter suggestions (deep-merged under each assistant). |
 
 ### Example operating instructions
 
@@ -134,21 +100,8 @@ install they're at
 - `devops-assistant.md` — adds write/scaffolding tools with a confirm-before-acting
   policy.
 
-Copy one into your app and reference it with `$file` (install does **not** write
-into your source tree):
-
-```bash
-mkdir -p packages/backend/prompts
-cp node_modules/@drewswiredin/backstage-plugin-assistants-backend/examples/prompts/general-assistant.md \
-   packages/backend/prompts/general-assistant.md
-```
-
-```yaml
-profiles:
-  general:
-    prompt:
-      $file: ./packages/backend/prompts/general-assistant.md
-```
+Open one and **paste** it into an assistant's prompt field in the admin editor —
+prompts are no longer set in `app-config.yaml`.
 
 ## Providers
 
@@ -213,18 +166,18 @@ providers:
 Assistants call Backstage **actions** as tools, executed with the caller's
 credentials. Availability depends on what's registered in your backend:
 
-- `registerCoreActions: true` provides `search-catalog`, `search-techdocs`, and
+- `builtinActions: true` provides `search-catalog`, `search-techdocs`, and
   `read-techdocs`.
 - Additional actions (e.g. `query-catalog-entities`, `get-catalog-entity`,
   `register-entity`, `unregister-entity`, `execute-template`) come from the
   relevant action-providing plugins (catalog / scaffolder / TechDocs action
-  modules, `@backstage/plugin-mcp-actions-backend`). List the action names you
-  want in a profile's `actions`.
+  modules, `@backstage/plugin-mcp-actions-backend`). Assign the action ids you
+  want to an assistant's tool list in the editor.
 
 > **Required:** Backstage's actions service only exposes actions from the plugin
 > sources you allow. You **must** add `assistants` (and any other source whose
 > actions you use, e.g. `catalog`, `scaffolder`) to
-> `backend.actions.pluginSources` — otherwise a profile's tools resolve to an
+> `backend.actions.pluginSources` — otherwise an assistant's tools resolve to an
 > empty list:
 >
 > ```yaml
@@ -233,19 +186,20 @@ credentials. Availability depends on what's registered in your backend:
 >     pluginSources:
 >       - catalog
 >       - scaffolder
->       - assistants # <-- needed for registerCoreActions / this plugin's tools
+>       - assistants # <-- needed for builtinActions / this plugin's tools
 > ```
 
-A profile only ever sees the intersection of its `actions` allowlist and the
-actions the **calling user** is permitted to see/run.
+An assistant only sees the intersection of its `allowedTools` and the actions
+the **calling user** may see/run.
 
 ## MCP servers (external tools)
 
 Assistants can also call tools from external **MCP (Model Context Protocol)**
 servers (GitHub, Atlassian, Azure DevOps, internal servers, …). Declare servers
-under `assistants.mcp.servers` and opt an assistant in via its `mcpServers`
-allowlist. Their tools appear in the assistant's tool set (and the detail modal),
-namespaced `<serverId>__<tool>`.
+under `assistants.mcp.servers`. An assistant opts in to individual MCP tools by
+**selecting them in the editor**; each becomes a unified `allowedTools` entry
+namespaced `<serverId>__<tool>` (and shows in the detail modal). There is no
+per-assistant server allowlist in config.
 
 Transports (the full `@modelcontextprotocol/sdk` client set):
 
@@ -264,6 +218,8 @@ assistants:
         url: https://api.githubcopilot.com/mcp/
         headers:
           Authorization: Bearer ${GITHUB_MCP_TOKEN} # @visibility secret
+        # un-namespaced tool names that join the global approval floor as github__<tool>
+        requireApproval: [create_pull_request]
       # local process over stdio
       filesystem:
         transport: stdio
@@ -272,33 +228,21 @@ assistants:
         env:
           SOME_TOKEN: ${SOME_TOKEN} # @visibility secret
         # cwd: /optional/working/dir
-  profiles:
-    devops:
-      # ...title / access / models
-      mcpServers:
-        - github # string form = all of github's tools
-        - server: filesystem # object form = curate which tools
-          tools: [read_file, list_directory]
 ```
 
-**Per-tool allowlist** (`mcpServers[].tools`) — important when a server exposes
-dozens/hundreds of tools (don't hand them all to the model):
+A server's tools are assigned to an assistant individually in the editor; the
+selection lives in that assistant's unified `allowedTools` as namespaced
+`<serverId>__<tool>` entries, applied to both `/chat` and the `/status` tool
+listing (so the detail modal shows only the selected tools).
 
-| `tools` value | Result |
-| --- | --- |
-| omitted (or the string form `- github`) | all of that server's tools |
-| `['*']` | all (explicit) |
-| `[]` | none |
-| `['a','b']` | exactly those (un-namespaced tool names) |
-
-The allowlist is **per assistant** — each profile curates its own subset of a
-shared server connection. Applied to both `/chat` and the `/status` tool listing
-(so the detail modal shows only the allowed tools).
+> **Per-server approval floor.** `assistants.mcp.servers.<id>.requireApproval`
+> lists un-namespaced tool names that join the global approval floor as
+> `<serverId>__<tool>` — see [Human-in-the-loop](#human-in-the-loop-approvals--forms).
 
 > **Auth is a single static credential** (the configured `headers`) — i.e. one
 > shared identity for all users, **not run-as-user**. Gate access with the
-> assistant's `access` policy and the `mcpServers` allowlist. (Per-user identity
-> propagation — e.g. Entra OBO for Azure DevOps — is a planned enhancement.)
+> assistant's `access` policy. (Per-user identity propagation — e.g. Entra OBO
+> for Azure DevOps — is a planned enhancement.)
 
 Notes: tool listings for `/status` are cached briefly; a server that's
 unreachable is logged and skipped (it never breaks a turn or `/status`).
@@ -311,27 +255,29 @@ enforced in the model loop, not requested of the model.
 
 ### Approval gate (`requireApproval`)
 
-List tool names in a profile's `requireApproval` and they are gated behind an
-explicit **Allow / Deny** in the chat before they ever run:
+The approval gate is **global**, not per-assistant. List tool ids in top-level
+`assistants.requireApproval` and/or a server's `mcp.servers.<id>.requireApproval`
+and they are gated behind an explicit **Allow / Deny** in the chat before they
+ever run:
 
 ```yaml
-profiles:
-  devops:
-    title: DevOps Assistant
-    access: { groups: [group:default/platform] }
-    actions: [get-catalog-entity, register-entity, unregister-entity, execute-template]
-    requireApproval: # confirmed before running; read-only tools above are not gated
-      - register-entity
-      - unregister-entity
-      - execute-template
+assistants:
+  requireApproval: # confirmed before running, for every assistant allowed them
+    - register-entity
+    - unregister-entity
+    - execute-template
 ```
 
-For each listed tool the backend sets the AI SDK's `needsApproval` flag, so
+These form a global approval floor; the effective set for an assistant is the
+floor ∩ its `allowedTools` (a floored tool an assistant isn't given is simply
+never hit). There is no per-assistant approval field.
+
+For each gated tool the backend sets the AI SDK's `needsApproval` flag, so
 `streamText` emits an approval request and **skips the tool's execution** until
 the user answers — Allow runs it (under the same run-as-user identity), Deny
 returns an `execution-denied` result to the model. This is deterministic and
 code-enforced: it does not depend on the model choosing to ask. Names match
-`actions` entries (or namespaced `<server>__<tool>` MCP tools); a name not in the
+action ids or namespaced `<server>__<tool>` MCP tools; a name not in the
 assistant's tool set is logged and ignored. It's a confirmation checkpoint,
 **orthogonal to authorization** — Backstage's per-user permissions still apply
 when an approved action invokes.
@@ -354,6 +300,21 @@ scaffolder template's parameter block verbatim. See the
 - The browser receives only a projection over `GET /status`: titles,
   descriptions, the model pool/defaults, the resolved tool list (name +
   description), and `ui`.
+
+### Admin / management API
+
+The admin editor is backed by `GET /capabilities` and the
+`GET`/`POST`/`PUT`/`DELETE` `/manage/assistants` endpoints — all under
+`/api/assistants`. Every one is gated by `canManage` (the `assistants.admins`
+ownership-ref check, evaluated independently of the Backstage permission
+framework) and returns **403** for non-admins.
+
+- `GET /capabilities` returns the live, assignable inventory — Backstage actions,
+  the model pool, each MCP server's reachability + tools, and the global approval
+  floor — that feeds the editor's pickers.
+- `GET`/`POST`/`PUT`/`DELETE /manage/assistants` read and mutate the full
+  assistant definitions, including the prompt, access policy, and audit fields
+  (creator/editor + timestamps).
 
 ## License
 

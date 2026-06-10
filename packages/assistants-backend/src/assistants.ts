@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 import { randomUUID } from 'crypto';
 import { resolvePackagePath } from '@backstage/backend-plugin-api';
 import type {
+  AssistantAccess,
   AssistantDefinition,
   AssistantSummary,
   ModelId,
@@ -157,11 +158,20 @@ export class AssistantStore {
   }
 
   /**
-   * The effective default model: the stored value when set, otherwise the
-   * platform default. Derived, never stored.
+   * The effective default model. With no allowlist: the stored default, else the
+   * platform default. With a restricted allowlist: the stored default when it is
+   * in the list, otherwise the first allowlisted model — never a platform default
+   * the assistant is not allowed to use. Derived, never stored.
    */
   effectiveDefaultModel(assistant: AssistantDefinition): ModelId {
-    return assistant.defaultModel ?? this.platformDefault;
+    const { defaultModel, models } = assistant;
+    if (models.length === 0) {
+      return defaultModel ?? this.platformDefault;
+    }
+    if (defaultModel && models.includes(defaultModel)) {
+      return defaultModel;
+    }
+    return models[0];
   }
 
   /**
@@ -397,10 +407,38 @@ function toRow(def: AssistantDefinition): Record<string, unknown> {
   };
 }
 
+/** Normalize a possibly-malformed stored access blob to a SAFE (deny) default. */
+function normalizeAccess(raw: unknown): AssistantAccess {
+  const a = (raw && typeof raw === 'object' ? raw : {}) as Partial<
+    AssistantAccess
+  >;
+  return {
+    // Default to DENY when missing/malformed — a corrupt row is closed, not open.
+    allowAuthenticated:
+      typeof a.allowAuthenticated === 'boolean' ? a.allowAuthenticated : false,
+    users: Array.isArray(a.users)
+      ? a.users.filter((u): u is string => typeof u === 'string')
+      : [],
+    groups: Array.isArray(a.groups)
+      ? a.groups.filter((g): g is string => typeof g === 'string')
+      : [],
+  };
+}
+
+/** An array of strings, or `[]` for anything malformed. */
+function stringArray(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((v): v is string => typeof v === 'string')
+    : [];
+}
+
 /**
  * Parse a DB row into a full definition, merging the audit columns over the
- * stored content. Returns null when `definition_json` is missing/unparseable so
- * the snapshot rebuild can tolerantly skip it.
+ * stored content. NORMALIZES the critical fields (access → deny default,
+ * allowedTools/models → string[], defaultModel → string|null) so a
+ * malformed-but-parseable row can never throw on the synchronous `/chat` hot
+ * path. Returns null when the row is fundamentally unusable (unparseable JSON,
+ * non-object content, or no id/title) so the snapshot rebuild skips it.
  */
 function toDefinition(
   row: Record<string, unknown>,
@@ -414,15 +452,32 @@ function toDefinition(
   if (!content || typeof content !== 'object') {
     return null;
   }
+  const id = row.id as string;
+  const title = ((row.title as string) ?? content.title) as string;
+  if (!id || typeof title !== 'string' || title.length === 0) {
+    return null;
+  }
   return {
-    ...(content as AssistantDefinition),
-    id: row.id as string,
-    title: (row.title as string) ?? content.title,
+    id,
+    title,
+    description:
+      typeof content.description === 'string' ? content.description : undefined,
+    color: typeof content.color === 'string' ? content.color : undefined,
+    prompt: typeof content.prompt === 'string' ? content.prompt : '',
+    access: normalizeAccess(content.access),
+    allowedTools: stringArray(content.allowedTools),
+    models: stringArray(content.models),
+    defaultModel:
+      typeof content.defaultModel === 'string' ? content.defaultModel : null,
+    ui:
+      content.ui && typeof content.ui === 'object' ? content.ui : undefined,
     created_by: (row.created_by as string) ?? content.created_by,
-    created_at: (row.created_at ? String(row.created_at) : undefined) ??
+    created_at:
+      (row.created_at ? String(row.created_at) : undefined) ??
       content.created_at,
     updated_by: (row.updated_by as string) ?? content.updated_by,
-    updated_at: (row.updated_at ? String(row.updated_at) : undefined) ??
+    updated_at:
+      (row.updated_at ? String(row.updated_at) : undefined) ??
       content.updated_at,
   };
 }

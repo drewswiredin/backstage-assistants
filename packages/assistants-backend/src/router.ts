@@ -532,9 +532,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       messages: unknown[];
     };
 
-    // 3. Resolve the assistant from the store snapshot (sync); unknown →
-    //    InputError (400). Tolerates a missing assistant exactly as before.
-    const assistant = assistantStore.get(assistantId);
+    // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
+    //    per-turn access decision reflects edits/deletes immediately, even on a
+    //    replica that didn't serve the write; unknown → InputError (400).
+    const assistant = await assistantStore.getById(assistantId);
     if (!assistant) {
       throw new InputError(`Unknown assistantId '${assistantId}'`);
     }
@@ -1036,9 +1037,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       messages: unknown[];
     };
 
-    // 3. Resolve the assistant from the store snapshot (sync); unknown →
-    //    InputError (400). Tolerates a missing assistant exactly as before.
-    const assistant = assistantStore.get(assistantId);
+    // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
+    //    per-turn access decision reflects edits/deletes immediately, even on a
+    //    replica that didn't serve the write; unknown → InputError (400).
+    const assistant = await assistantStore.getById(assistantId);
     if (!assistant) {
       throw new InputError(`Unknown assistantId '${assistantId}'`);
     }

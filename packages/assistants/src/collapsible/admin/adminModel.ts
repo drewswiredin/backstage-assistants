@@ -18,18 +18,19 @@ export const MCP_SEP = '__';
 
 /**
  * A blank assistant draft for the Create flow. The server assigns the real
- * `id` and is the source of truth for the access-deny default; we mirror that
- * default here (allowAuthenticated:false, no users/groups) so the form reads
- * truthfully before the first save. `id` is empty until persisted.
+ * `id`; new assistants start open to any signed-in user (allowAuthenticated:true,
+ * no explicit users/groups) so the access list reads "Any signed-in user" before
+ * the first save — the create route persists this access as-is. `id` is empty
+ * until persisted.
  */
 export function blankDraft(): AssistantDefinition {
   return {
     id: '',
     title: '',
     description: '',
-    color: '',
+    color: '#7df3e1', // DEFAULT_AVATAR_COLOR (brand teal) — new assistants default to it
     prompt: '',
-    access: { allowAuthenticated: false, users: [], groups: [] },
+    access: { allowAuthenticated: true, users: [], groups: [] },
     allowedTools: [],
     models: [],
     defaultModel: null,

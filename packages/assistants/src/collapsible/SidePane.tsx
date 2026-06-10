@@ -2,6 +2,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import { IconButton, Tooltip, Typography } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
+import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantsList } from './AssistantsList';
 import { ConversationsPanel } from './ConversationsPanel';
@@ -16,6 +17,28 @@ const useStyles = makeStyles(theme => ({
     minHeight: 44,
     padding: theme.spacing(0, 1),
     borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  // Flex column so the manage footer pins to the bottom while the list scrolls.
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+  },
+  body: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+  },
+  footer: {
+    flexShrink: 0,
+    borderTop: `1px solid ${theme.palette.divider}`,
+    padding: theme.spacing(0.5),
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  manageItem: {
+    color: theme.palette.text.secondary,
   },
   sectionHeader: {
     display: 'flex',
@@ -57,6 +80,10 @@ export interface SidePaneProps {
   onPin: (id: string) => void;
   onDelete: (id: string) => void;
   onCollapse: () => void;
+  /** Whether the caller may manage assistants (gates the manage gear). */
+  canManage?: boolean;
+  /** Open the assistant management editor. */
+  onManage?: () => void;
 }
 
 /**
@@ -81,11 +108,13 @@ export function SidePane(props: SidePaneProps) {
     onPin,
     onDelete,
     onCollapse,
+    canManage,
+    onManage,
   } = props;
   const classes = useStyles();
 
   return (
-    <div>
+    <div className={classes.root}>
       <div className={classes.header}>
         <Tooltip title="Collapse" placement="bottom">
           <IconButton
@@ -98,33 +127,48 @@ export function SidePane(props: SidePaneProps) {
         </Tooltip>
       </div>
 
-      <AssistantsList
-        assistants={assistants}
-        activeId={activeAssistantId}
-        onSelect={onSelectAssistant}
-        agentStatus={agentStatus}
-      />
+      <div className={classes.body}>
+        <AssistantsList
+          assistants={assistants}
+          activeId={activeAssistantId}
+          onSelect={onSelectAssistant}
+          agentStatus={agentStatus}
+        />
 
-      <div className={classes.divider} />
+        <div className={classes.divider} />
 
-      <div className={classes.sectionHeader}>
-        <Typography variant="caption" className={classes.sectionLabel}>
-          Conversations
-        </Typography>
-        <Tooltip title="New chat" placement="bottom">
-          <IconButton size="small" aria-label="New chat" onClick={onNew}>
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <div className={classes.sectionHeader}>
+          <Typography variant="caption" className={classes.sectionLabel}>
+            Conversations
+          </Typography>
+          <Tooltip title="New chat" placement="bottom">
+            <IconButton size="small" aria-label="New chat" onClick={onNew}>
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </div>
+        <ConversationsPanel
+          conversations={conversations}
+          activeId={activeId}
+          onSelect={onSelect}
+          onRename={onRename}
+          onPin={onPin}
+          onDelete={onDelete}
+        />
       </div>
-      <ConversationsPanel
-        conversations={conversations}
-        activeId={activeId}
-        onSelect={onSelect}
-        onRename={onRename}
-        onPin={onPin}
-        onDelete={onDelete}
-      />
+
+      {canManage && onManage && (
+        <div className={classes.footer}>
+          <IconButton
+            size="small"
+            className={classes.manageItem}
+            aria-label="Manage assistants"
+            onClick={onManage}
+          >
+            <SettingsOutlinedIcon fontSize="small" />
+          </IconButton>
+        </div>
+      )}
     </div>
   );
 }

@@ -76,9 +76,10 @@ export interface AssistantsApi {
 
   /**
    * Create a new assistant (`POST /manage/assistants`). The server assigns the
-   * `id` and applies the access-deny default; the returned definition is the
-   * persisted row. Rejects with the server's message on a 400 delta-validation
-   * violation (a newly-added tool/model that is not live).
+   * `id` and persists the submitted access as-is (new assistants are seeded open
+   * to any signed-in user); the returned definition is the persisted row. Rejects
+   * with the server's message on a 400 delta-validation violation (a newly-added
+   * tool/model that is not live).
    */
   createAssistant(
     definition: AssistantDefinition,
@@ -170,7 +171,11 @@ export class AssistantsClient implements AssistantsApi {
     if (!response.ok) {
       throw await this.toError(response);
     }
-    return (await response.json()) as AssistantDefinition[];
+    // The endpoint wraps the list as `{ assistants: [...] }`.
+    const body = (await response.json()) as {
+      assistants?: AssistantDefinition[];
+    };
+    return body.assistants ?? [];
   }
 
   async createAssistant(

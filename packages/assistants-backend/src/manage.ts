@@ -76,6 +76,7 @@ async function buildCapabilities(
     actions: available.map(a => ({ id: a.name, description: a.description })),
     models: assistants.models,
     mcpServers,
+    requireApproval: [...assistants.requireApproval],
   };
 }
 
@@ -138,8 +139,8 @@ function parseDefinitionBody(
   const prompt = requireString(b.prompt, 'prompt');
 
   // Access defaults to deny (allowAuthenticated false, no users/groups) when
-  // absent; create overrides to the deny default regardless (see the create
-  // route). When present it is structurally validated.
+  // absent; when present it is structurally validated and persisted as-is (both
+  // create and update).
   let access: AssistantDefinition['access'] = {
     allowAuthenticated: false,
     users: [],
@@ -180,19 +181,35 @@ function parseDefinitionBody(
     defaultModel,
   };
 
+  // description/color are OPTIONAL: accept any string, treat '' as unset (the
+  // editor always sends them, blank when the admin leaves the field empty).
   if (b.description !== undefined) {
-    def.description = requireString(b.description, 'description');
+    if (typeof b.description !== 'string') {
+      throw new InputError("'description' must be a string");
+    }
+    if (b.description) {
+      def.description = b.description;
+    }
   }
   if (b.color !== undefined) {
-    def.color = requireString(b.color, 'color');
+    if (typeof b.color !== 'string') {
+      throw new InputError("'color' must be a string");
+    }
+    if (b.color) {
+      def.color = b.color;
+    }
   }
   if (b.ui !== undefined) {
     if (typeof b.ui !== 'object' || b.ui === null) {
       throw new InputError("'ui' must be an object");
     }
     // The UI block is browser-cosmetic; pass it through structurally (the
-    // shared UiOptions shape is enforced by the editor, lenient here).
-    def.ui = b.ui as AssistantDefinition['ui'];
+    // shared UiOptions shape is enforced by the editor, lenient here). Omit an
+    // empty object so /status doesn't carry a redundant `ui: {}` (absent = use
+    // the global UI defaults).
+    if (Object.keys(b.ui).length > 0) {
+      def.ui = b.ui as AssistantDefinition['ui'];
+    }
   }
 
   return def;
@@ -232,10 +249,15 @@ function validateDelta(
     }
   }
 
-  // A newly-set defaultModel must be live unless it was already the default.
+  // A newly-set defaultModel must be live UNLESS it was already the default, or
+  // it is a member of the (already delta-validated) models allowlist — an
+  // allowlisted default is covered by the grandfathering above, so a
+  // stale-but-allowlisted default (e.g. auto-promoted when the prior default was
+  // removed) is accepted rather than 400-ing an otherwise-legitimate save.
   if (
     next.defaultModel !== null &&
     next.defaultModel !== (previous?.defaultModel ?? null) &&
+    !next.models.includes(next.defaultModel) &&
     !modelIds.has(next.defaultModel)
   ) {
     throw new InputError(
@@ -286,19 +308,13 @@ export function createManageRouter(options: ManageRouterOptions): express.Router
     })().catch(next);
   });
 
-  // POST /manage/assistants — create. Server-generated uuid; NEW assistants
-  // default to access-deny (allowAuthenticated false, no users/groups) unless
-  // the body says otherwise. Create => every tool/model must be live.
+  // POST /manage/assistants — create. Server-generated uuid; the submitted
+  // access is persisted as-is (consistent with update) — the editor seeds new
+  // assistants open to any signed-in user. Create => every tool/model must be live.
   router.post('/manage/assistants', (req, res, next) => {
     (async () => {
       const { credentials, user } = await requireAdmin(req);
-      const parsed = parseDefinitionBody(req.body);
-      // NEW assistants are access-deny by default — never accidentally open. An
-      // admin opens access in a subsequent edit.
-      const def = {
-        ...parsed,
-        access: { allowAuthenticated: false, users: [], groups: [] },
-      };
+      const def = parseDefinitionBody(req.body);
       const capabilities = await buildCapabilities(options, credentials);
       validateDelta(def, undefined, capabilities);
       const created = await assistantStore.create(def, user.userEntityRef);

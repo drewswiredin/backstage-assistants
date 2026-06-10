@@ -1,8 +1,9 @@
 # @drewswiredin/backstage-plugin-assistants
 
 AI Assistants for Backstage — a polished, configurable chat experience for your
-developer portal. Define one or more assistants in `app-config.yaml` (each with
-its own prompt, tools, models, access policy, and color); users chat with them
+developer portal. Create one or more assistants in the in-app admin editor (each
+with its own prompt, tools, models, access policy, and color; stored in the
+plugin database); users chat with them
 in a collapsible, multi-conversation UI with streaming responses, tool calls,
 Markdown/Mermaid rendering, per-conversation model selection, and background
 (concurrent) conversations with unread indicators.
@@ -73,35 +74,29 @@ backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
 
 ## Configure
 
-Add an `assistants` block to `app-config.yaml`. Minimal working example
-(OpenRouter + one assistant open to all signed-in users, with the built-in
-catalog/TechDocs read tools):
+Add an `assistants` block to `app-config.yaml` — this is the platform/safety
+surface only (providers, the admin allowlist, the safety floor). Minimal working
+example (OpenRouter + the built-in catalog/TechDocs read tools):
 
 ```yaml
 assistants:
   defaultModel: openrouter:google/gemini-2.5-flash
-  registerCoreActions: true # registers the built-in search/read tools
+  builtinActions: true # registers the built-in catalog/TechDocs read tools
+  admins: # who may create/edit assistants in the in-app editor
+    groups: [group:default/platform]
   providers:
     openrouter:
       type: openai-compatible
       apiKey: ${OPENROUTER_API_KEY}
       baseUrl: https://openrouter.ai/api/v1
       models:
-        - google/gemini-2.5-flash
-  profiles:
-    general:
-      title: General Assistant
-      description: Catalog + TechDocs helper for your developer portal.
-      prompt: |
-        You are a Backstage developer-portal assistant. Use your tools to look
-        up systems, services, teams, APIs, and documentation before answering.
-      access:
-        allowAuthenticated: true
-      actions:
-        - search-catalog
-        - search-techdocs
-        - read-techdocs
+        - name: google/gemini-2.5-flash
+          contextWindow: 1048576
 ```
+
+Assistants themselves are **not** configured here — sign in as an admin and use
+the gear in the chat sidebar to create one (it seeds open to all signed-in users
+with the built-in read tools).
 
 Set the key in your environment (never commit it):
 
@@ -110,7 +105,7 @@ export OPENROUTER_API_KEY=sk-or-...
 ```
 
 Also add `assistants` to the backend actions service so the tools are exposed
-(otherwise a profile's tools resolve to empty):
+(otherwise an assistant's tools resolve to empty):
 
 ```yaml
 backend:
@@ -121,10 +116,19 @@ backend:
 
 See the
 [backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
-for the full configuration reference (providers, per-assistant access policies,
-model allowlists, additional tools, and UI options). Tool/action availability
+for the full configuration reference — the **platform** settings (model
+providers, MCP servers, the `assistants.admins` allowlist, the approval floor,
+and global UI defaults). Per-assistant settings (prompt, access, tools, models)
+are not config; they're managed in the in-app editor. Tool/action availability
 depends on which action-providing plugins are installed in your backend; the
-three tools above are provided by `registerCoreActions`.
+built-in read tools are provided by `builtinActions`.
+
+## Manage assistants
+
+Users in the `assistants.admins` allowlist (config) see a gear in the chat
+sidebar that opens the editor — create, edit, and delete assistants there.
+Without an `admins` entry nobody can manage assistants and only the seeded
+default exists.
 
 ## License
 

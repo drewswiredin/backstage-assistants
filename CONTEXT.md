@@ -9,8 +9,8 @@ A configured persona — its system prompt, access policy, tool allowlist, allow
 _Avoid_: Agent, Bot, Persona
 
 **Profile**:
-The YAML location that defines an Assistant (`assistants.profiles.{id}`). A naming-only term for the config entry — not a separate runtime concept from Assistant.
-_Avoid_: using "profile" to mean a distinct domain object
+Not a config concept. Assistant definitions live in the plugin DB (the `assistants` table) and are edited in the in-app admin editor — not config. There is no `profiles` config key.
+_Avoid_: using "profile" to mean a distinct domain object, or a `profiles` config block
 
 **Agent**:
 Not a v1 concept. Deliberately excluded to avoid ambiguity with Assistant.
@@ -24,17 +24,17 @@ _Avoid_: Tool (at the config/registry layer — see Tool)
 An AI SDK `tool()` handed to the model loop. Produced by adapting an Action that is in both the Assistant's allowlist and the caller's visible set. "Tool" is the model-facing word; "Action" is the Backstage-registry word for the same underlying capability.
 
 **Allowlist**:
-The Assistant's `actions[]` config — the set of Actions it is permitted to offer as tools. Explicit action names, or a wildcard. **Omitting it = no tools** (careful-by-default; never an implicit "all"). One of the two independent gates.
+The Assistant's unified `allowedTools: string[]` — the set of tools it is permitted to offer. Each entry is a bare Backstage action id or a namespaced `<serverId>__<tool>` MCP tool; explicit only, no wildcard. **Empty = no tools** (careful-by-default; never an implicit "all"). One of the two independent gates.
 
 **Effective tools**:
-What the model actually receives for a request = `Allowlist ∩ actions the caller can see`. The intersection of the two gates, computed per request.
+What the model actually receives for a request, resolved per turn from the Assistant's `allowedTools`. Backstage action entries are intersected with the actions the caller can see (the two gates); MCP-tool entries are added directly — they run as a configured shared credential (not the calling user), so there is no per-user gate on that path.
 
 **Two gates**:
-The two independent authorization checks. (1) The Assistant **Allowlist** — what this Assistant may offer. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every tool runs as the user.
+The two independent authorization checks (Backstage action tools). (1) The Assistant **Allowlist** — the `allowedTools` entries that name Backstage actions. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every Backstage action runs as the user. MCP tools in `allowedTools` bypass this user gate — they run as the configured shared server credential, not the caller.
 
 **Approval gate**:
-A per-Assistant allowlist (`requireApproval[]`) of tool names that must be confirmed — an explicit Allow/Deny in chat — before they run. Sets the AI SDK `needsApproval` flag so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
-_Avoid_: treating it as authorization (it is a checkpoint, not a permission)
+A GLOBAL config floor of tool ids that must be confirmed — an explicit Allow/Deny in chat — before they run: the top-level `assistants.requireApproval` (action ids) ∪ each per-server `mcp.servers.*.requireApproval` (tool names). The per-turn approval set = this floor ∩ the Assistant's `allowedTools`. Sets the AI SDK `needsApproval` flag so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Not per-Assistant; config-only, so runtime assistant-editing can never weaken it. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
+_Avoid_: treating it as authorization (it is a checkpoint, not a permission), or as a per-Assistant setting
 
 **Interactive form** (`render_form`):
 A client-side tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No server `execute`: the model composes the form (JSON Schema + uiSchema), the surface renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. The in-plugin generative UI, distinct from the broader **gen-ui library**.

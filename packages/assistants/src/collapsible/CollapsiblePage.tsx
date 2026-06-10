@@ -96,8 +96,9 @@ const useStyles = makeStyles(theme => ({
     width: 320,
     flexShrink: 0,
     minHeight: 0,
-    overflowY: 'auto',
-    overflowX: 'hidden',
+    // SidePane is an internal flex column (scrolling body + pinned manage footer),
+    // so the aside itself doesn't scroll.
+    overflow: 'hidden',
   },
   sidePaneRail: {
     width: 56,
@@ -150,6 +151,15 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(0.5),
     overflowY: 'auto',
     overflowX: 'hidden',
+  },
+  // Pinned to the bottom of the collapsed rail (the chats nav above is flex:1).
+  sidePaneRailFooter: {
+    flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'center',
+    width: '100%',
+    paddingTop: theme.spacing(0.5),
+    borderTop: `1px solid ${theme.palette.divider}`,
   },
   sidePaneRailButton: {
     color: theme.palette.text.secondary,
@@ -892,6 +902,18 @@ function ChatChrome({
                   </Tooltip>
                 ))}
               </nav>
+              {status.canManage && (
+                <div className={classes.sidePaneRailFooter}>
+                  <IconButton
+                    size="small"
+                    className={classes.sidePaneRailButton}
+                    aria-label="Manage assistants"
+                    onClick={() => setAdminOpen(true)}
+                  >
+                    <SettingsOutlinedIcon fontSize="small" />
+                  </IconButton>
+                </div>
+              )}
             </aside>
           ) : (
             <aside className={classes.sidePane} aria-label="AI chat sidepane">
@@ -908,6 +930,8 @@ function ChatChrome({
                 onPin={handlePin}
                 onDelete={handleDelete}
                 onCollapse={() => setSidePaneCollapsed(true)}
+                canManage={status.canManage}
+                onManage={() => setAdminOpen(true)}
               />
             </aside>
           )}
@@ -929,21 +953,7 @@ function ChatChrome({
                   </Typography>
                 )}
               </div>
-              <div className={classes.headerControls}>
-                {modelPicker}
-                {status.canManage && (
-                  <Tooltip title="Manage assistants">
-                    <IconButton
-                      size="small"
-                      className={classes.manageButton}
-                      aria-label="Manage assistants"
-                      onClick={() => setAdminOpen(true)}
-                    >
-                      <SettingsOutlinedIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </div>
+              <div className={classes.headerControls}>{modelPicker}</div>
             </div>
             <div className={classes.threadBody}>
               {isBlankDraft ? (
