@@ -1,0 +1,61 @@
+# In-product Backstage "Extensions" / Marketplace catalog entity for this plugin
+# (Red Hat Developer Hub & the community marketplace plugin). Register it in a
+# consuming instance by pointing a catalog Location at this file, e.g. in
+# app-config.yaml:
+#
+#   catalog:
+#     locations:
+#       - type: url
+#         target: https://github.com/drewswiredin/backstage-assistants/blob/v1.0.0/docs/marketplace/extensions-plugin-entity.yaml
+#         rules: [{ allow: [Plugin] }]
+#
+# Schema + docs: https://github.com/redhat-developer/rhdh-plugins/tree/main/workspaces/extensions
+# yaml-language-server: $schema=https://raw.githubusercontent.com/redhat-developer/rhdh-plugins/main/workspaces/extensions/json-schema/plugins.json
+apiVersion: extensions.backstage.io/v1alpha1
+kind: Plugin
+metadata:
+  name: assistants
+  title: AI Assistants
+  description: AI chat assistants whose tools are your Backstage actions, run as the signed-in user.
+  tags:
+    - ai
+    - chatbot
+    - llm
+  links:
+    - url: https://github.com/drewswiredin/backstage-assistants
+      title: Source & docs
+spec:
+  author: drewswiredin
+  support:
+    provider: drewswiredin
+    level: community
+  lifecycle: production
+  categories:
+    - AI
+  # npm package names — used to detect install status in the catalog.
+  packages:
+    - '@drewswiredin/backstage-plugin-assistants'
+    - '@drewswiredin/backstage-plugin-assistants-backend'
+  icon: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/icon.png
+  # Screenshots/gallery (type: image) shown on the plugin detail page.
+  assets:
+    - type: image
+      filename: chat.png
+      originUri: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/chat.png
+    - type: image
+      filename: editor.png
+      originUri: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/editor.png
+  # Markdown body shown on the detail page.
+  description: |
+    AI chat assistants in a collapsible Backstage side panel. Their tools are
+    your Backstage actions, executed as the signed-in user. Admins create and
+    manage assistants — prompt, tools, models, and access — in an in-app editor
+    backed by the plugin database (no redeploy to add or change an assistant).
+
+    ![Chat](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/chat.png)
+  # Markdown shown on the install page.
+  installation: |
+    Install the frontend (`@drewswiredin/backstage-plugin-assistants`) and backend
+    (`@drewswiredin/backstage-plugin-assistants-backend`) packages and configure a
+    model provider under `assistants:` in app-config. See the project README for
+    the full setup.

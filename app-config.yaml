@@ -149,89 +149,42 @@ mcpActions:
 # AI Assistants
 # -----------------------------------------------------------------------------
 assistants:
-  defaultModel: openrouter:deepseek/deepseek-v4-pro
-  maxSteps: 8
-  registerCoreActions: true
+  # Assistant DEFINITIONS (prompt, tools, models, access) are created and edited
+  # in the in-app admin editor and stored in the plugin database — NOT here. This
+  # block carries only the platform / safety surface.
+  defaultModel: openrouter:google/gemini-2.5-flash # provider:model; must exist in a provider below
+  maxSteps: 8 # max tool-call steps per turn (default 10)
+  builtinActions: true # register the built-in catalog/TechDocs read-only actions
+
+  # Who may create/edit/delete assistants in the in-app editor (default-deny if
+  # unset). The dev app's guest user is included so a fresh clone can manage
+  # assistants out of the box.
+  admins:
+    users:
+      - user:development/guest
+
+  # Global approval floor: these tools always pause for an Allow/Deny in chat,
+  # for any assistant that has them. (Intersected with each assistant's tools.)
+  requireApproval:
+    - register-entity
+    - unregister-entity
+    - execute-template
+
   providers:
-    # OpenRouter — an OpenAI-compatible gateway. Key lives in the gitignored
+    # OpenRouter — an OpenAI-compatible gateway. The key lives in the gitignored
     # .env (OPENROUTER_API_KEY); never commit it. Model ids are
     # `openrouter:<openrouter-model-slug>`.
     openrouter:
-      type: openai-compatible
+      type: openai-compatible # openai | anthropic | azure | openai-compatible
       apiKey: ${OPENROUTER_API_KEY}
       baseUrl: https://openrouter.ai/api/v1
-      models:
-        - deepseek/deepseek-v4-pro
-        - google/gemini-2.5-flash
-        - anthropic/claude-3.5-sonnet
+      models: # object list: required `name`, optional `contextWindow` (drives the composer gauge)
+        - name: google/gemini-2.5-flash
+          contextWindow: 1048576
+        - name: anthropic/claude-3.5-sonnet
+
+  # Global UI defaults, deep-merged UNDER each assistant's own ui.
   ui:
     composer:
       placeholder: 'Send a message…'
     suggestions: []
-  profiles:
-    # General-purpose assistant. Open to every signed-in user, read-only tools,
-    # restricted to the cheaper/faster model. Default color.
-    general:
-      title: General Assistant
-      description: Catalog + TechDocs helper for your developer portal.
-      prompt: |
-        You are a Backstage developer-portal assistant for this organization.
-        Help users find information about systems, services, teams, APIs, and
-        documentation in the software catalog and TechDocs. Use your tools to
-        gather information before answering, and do not speculate beyond what
-        the tools return.
-      access:
-        allowAuthenticated: true
-      actions:
-        - search-catalog
-        - search-techdocs
-        - read-techdocs
-      # Subset of the pool. Excludes the global defaultModel, so a per-profile
-      # defaultModel is required.
-      models:
-        - openrouter:google/gemini-2.5-flash
-      defaultModel: openrouter:google/gemini-2.5-flash
-      ui:
-        suggestions:
-          - title: 'Who owns a service?'
-            prompt: 'Who owns the payments service?'
-          - title: 'Find documentation'
-            prompt: 'Where are the TechDocs for the catalog?'
-
-    # Privileged assistant. Restricted to group:default/guests (a non-member is
-    # filtered from /status and rejected at /chat), has write/edit tools, and is
-    # allowed the higher-capability models. Amber/warning color.
-    devops:
-      title: DevOps Assistant
-      description: Catalog + scaffolding operations, with edit tools.
-      color: '#e3a008'
-      prompt: |
-        You are a DevOps assistant for this Backstage portal. In
-        addition to answering catalog and documentation questions, you can make
-        changes on the user's behalf — registering/unregistering catalog
-        entities and executing software templates. Confirm intent before any
-        destructive or write action, and report exactly what you changed.
-      access:
-        groups:
-          - group:default/guests
-        users:
-          - user:development/guest
-      actions:
-        - search-catalog
-        - search-techdocs
-        - read-techdocs
-        - query-catalog-entities
-        - get-catalog-entity
-        - register-entity
-        - unregister-entity
-        - execute-template
-      models:
-        - openrouter:deepseek/deepseek-v4-pro
-        - openrouter:anthropic/claude-3.5-sonnet
-      defaultModel: openrouter:deepseek/deepseek-v4-pro
-      ui:
-        suggestions:
-          - title: 'Register a component'
-            prompt: 'Register a new component in the catalog from a catalog-info.yaml URL.'
-          - title: 'Available templates'
-            prompt: 'What software templates are available to scaffold?'

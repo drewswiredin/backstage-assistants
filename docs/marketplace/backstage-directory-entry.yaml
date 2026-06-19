@@ -1,0 +1,18 @@
+# Entry for the backstage.io plugin directory (https://backstage.io/plugins).
+#
+# To submit: copy this file into the backstage/backstage repo at
+#   microsite/data/plugins/assistants.yaml
+# then from that repo run:
+#   yarn install && node ./scripts/verify-plugin-directory.js
+# and open a PR. The directory CARD shows only the icon — screenshots live in
+# this plugin's README (linked via `documentation`).
+title: AI Assistants
+description: AI chat assistants in a collapsible side panel; their tools are your Backstage actions, run as the signed-in user. Created and managed in an in-app editor.
+author: drewswiredin
+authorUrl: https://github.com/drewswiredin
+category: Machine Learning
+documentation: https://github.com/drewswiredin/backstage-assistants#readme
+npmPackageName: '@drewswiredin/backstage-plugin-assistants'
+iconUrl: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/icon.png
+addedDate: '2026-06-10'
+status: active

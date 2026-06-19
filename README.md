@@ -10,6 +10,14 @@ the safety/approval floor — lives in `app-config.yaml`.
 It aims to be the most complete open-source AI chat plugin for Backstage — the
 alternatives today are either minimal or hosted and paid.
 
+## Screenshots
+
+<!-- Drop docs/images/chat.png and editor.png (see docs/images/README.md). Referenced by raw URL pinned to the release tag so they also render on the npm package page. -->
+
+![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/chat.png)
+
+![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/editor.png)
+
 ## Features
 
 - **Multiple assistants** — created and edited in an in-app admin editor (stored
@@ -63,6 +71,15 @@ decision principles, updated alongside the code:
 
 Install + wiring: [frontend README](packages/assistants/README.md). Full
 configuration reference: [backend README](packages/assistants-backend/README.md).
+
+## Publishing to the marketplace
+
+Ready-to-use listing metadata lives in [`docs/marketplace/`](docs/marketplace): an
+entry for the [backstage.io plugin directory](https://backstage.io/plugins) (submit
+as a PR to `backstage/backstage`) and a `Plugin` entity for the in-product Backstage
+**Extensions** / Marketplace catalog. Screenshots for both come from
+[`docs/images/`](docs/images). The packages carry the `backstage` role metadata and
+`backstage` / `backstage-plugin` keywords for npm/ecosystem discovery.
 
 ## License
 
