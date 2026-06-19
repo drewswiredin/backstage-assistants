@@ -37,6 +37,7 @@ export const assistantsPlugin = createBackendPlugin({
         httpRouter: coreServices.httpRouter,
         httpAuth: coreServices.httpAuth,
         userInfo: coreServices.userInfo,
+        permissions: coreServices.permissions,
         auth: coreServices.auth,
         discovery: coreServices.discovery,
         // Actions registry (REGISTER our core actions) + actions service
@@ -53,6 +54,7 @@ export const assistantsPlugin = createBackendPlugin({
         httpRouter,
         httpAuth,
         userInfo,
+        permissions,
         auth,
         discovery,
         actionsRegistry,
@@ -93,6 +95,7 @@ export const assistantsPlugin = createBackendPlugin({
           config,
           httpAuth,
           userInfo,
+          permissions,
           actions,
           assistants,
           assistantStore,

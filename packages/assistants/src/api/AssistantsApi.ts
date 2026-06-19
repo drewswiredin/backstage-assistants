@@ -62,7 +62,7 @@ export interface AssistantsApi {
    * Fetch the live, assignable capability inventory that feeds the editor's
    * pickers (Backstage actions, the model pool, and MCP servers with their
    * reachability + tools). Admin-gated server-side — rejects (403) for
-   * non-admins; only call when `status.canManage` is true.
+   * non-admins; only call when the caller has the `assistant.manage` permission.
    */
   getCapabilities(): Promise<CapabilitiesResponse>;
 

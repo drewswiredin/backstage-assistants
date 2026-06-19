@@ -5,9 +5,9 @@ between the [frontend](https://www.npmjs.com/package/@drewswiredin/backstage-plu
 and [backend](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
 packages: `AssistantDefinition` (the canonical assistant shape used by the admin
 editor and `/manage` API), `AssistantSummary` and `StatusResponse` (the
-browser-safe `/status` projection, now incl. `canManage`),
-`CapabilitiesResponse` (the editor's assignable inventory), plus `ToolSummary`,
-`ModelOption`, `AssistantAccess`, `UiOptions`.
+browser-safe `/status` projection), `CapabilitiesResponse` (the editor's
+assignable inventory), the `assistant.use` / `assistant.manage` permissions, plus
+`ToolSummary`, `ModelOption`, `AssistantAccess`, `UiOptions`.
 
 You normally don't install this directly — it comes in transitively with the
 frontend and backend plugins.

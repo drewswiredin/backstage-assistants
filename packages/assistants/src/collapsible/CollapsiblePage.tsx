@@ -42,6 +42,11 @@ import type {
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef, type AssistantsApi } from '../api';
+import { usePermission } from '@backstage/plugin-permission-react';
+import {
+  assistantUsePermission,
+  assistantManagePermission,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import { ConversationSurface } from './surface';
 import { AssistantAdminDialog } from './admin/AssistantAdminDialog';
 import { AssistantAvatar } from './surface/AssistantAvatar';
@@ -340,13 +345,24 @@ export function CollapsiblePage() {
   const [searchParams] = useSearchParams();
   const requestedAssistant = searchParams.get('assistant');
 
+  // Plugin-access gate: the `assistant.use` permission. Denied users never load
+  // the surface (the backend enforces the same on every route).
+  const canUse = usePermission({ permission: assistantUsePermission });
+
   // `useAsyncRetry` so the admin editor can refetch `/status` after a
   // create/rename/delete: `retry()` re-runs `getStatus`, re-rendering the rail
   // (and the active-assistant fallback handles a now-deleted active agent).
   const status = useAsyncRetry(() => api.getStatus(), [api]);
 
-  if (status.loading) {
+  if (canUse.loading || status.loading) {
     return <Progress />;
+  }
+  if (!canUse.allowed) {
+    return (
+      <ResponseErrorPanel
+        error={new Error('You are not permitted to use assistants.')}
+      />
+    );
   }
   if (status.error) {
     return <ResponseErrorPanel error={status.error} />;
@@ -503,6 +519,9 @@ function ChatChrome({
   refreshStatus: () => void;
 }) {
   const classes = useStyles();
+  // Manage gate: the `assistant.manage` permission (the editor gear + dialog).
+  const canManage = usePermission({ permission: assistantManagePermission })
+    .allowed;
   const runtime = useAssistantRuntime();
   const signals = useApi(signalApiRef);
   const [, setSearchParams] = useSearchParams();
@@ -671,8 +690,8 @@ function ChatChrome({
     }
   }, [sidePaneCollapsed]);
 
-  // Admin editor (gear button → full-screen master-detail dialog). Gated on
-  // status.canManage at the call site, so non-admins never see the entry point.
+  // Admin editor (gear button → full-screen master-detail dialog). Gated on the
+  // `assistant.manage` permission at the call site, so non-admins never see it.
   const [adminOpen, setAdminOpen] = useState(false);
   // After a create/rename/delete, refetch /status so the rail reflects it, and
   // reload the runtime thread list (a deleted active assistant resolves via the
@@ -902,7 +921,7 @@ function ChatChrome({
                   </Tooltip>
                 ))}
               </nav>
-              {status.canManage && (
+              {canManage && (
                 <div className={classes.sidePaneRailFooter}>
                   <IconButton
                     size="small"
@@ -930,7 +949,7 @@ function ChatChrome({
                 onPin={handlePin}
                 onDelete={handleDelete}
                 onCollapse={() => setSidePaneCollapsed(true)}
-                canManage={status.canManage}
+                canManage={canManage}
                 onManage={() => setAdminOpen(true)}
               />
             </aside>
@@ -989,7 +1008,7 @@ function ChatChrome({
           </main>
         </div>
       </Content>
-      {status.canManage && (
+      {canManage && (
         <AssistantAdminDialog
           open={adminOpen}
           onClose={() => setAdminOpen(false)}

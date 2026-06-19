@@ -5,12 +5,12 @@
  * app-config validation and visibility/secret enforcement at startup, and is
  * referenced from `package.json` via `"configSchema": "config.d.ts"`.
  *
- * Scope: this block now holds ONLY the platform/safety surface — providers and
- * the model pool, MCP server connections, the management allowlist, the global
- * approval floor, global UI defaults, and the runtime limits. Assistant
- * *definitions* (title/prompt/access/tools/models) live in the plugin database
- * (the `assistants` table, edited at runtime via the admin API/editor), NOT
- * here; there is no longer a `profiles` block.
+ * Scope: this block holds the platform/safety surface — providers and the model
+ * pool, MCP server connections, the global approval floor, global UI defaults,
+ * and the runtime limits. Assistant *definitions* (title/prompt/access/tools/
+ * models) live in the plugin database (the `assistants` table, edited at runtime
+ * via the admin API/editor); who may use the plugin and who may manage it are
+ * the `assistant.use` / `assistant.manage` Backstage permissions.
  *
  * Backstage's config-schema loader requires this file to export ONLY the
  * `Config` interface, so every supporting shape is inlined below rather than
@@ -54,22 +54,6 @@ export interface Config {
      * `assistants` source. Defaults to false.
      */
     builtinActions?: boolean;
-
-    /**
-     * Management allowlist: who may create/edit/delete assistant definitions via
-     * the admin API/editor. Evaluated server-side with the same ownership-ref
-     * check used for assistant access (`userEntityRef` / `ownershipEntityRefs`)
-     * and default-deny — with no `users`/`groups`, nobody may manage. Independent
-     * of the Backstage permission framework (`permission.enabled` is not
-     * consulted). Drives `/status.canManage`; the `/manage` and `/capabilities`
-     * endpoints independently 403 non-admins.
-     */
-    admins?: {
-      /** Entity refs of users granted management (e.g. `user:default/jdoe`). */
-      users?: string[];
-      /** Entity refs of groups granted management (e.g. `group:default/platform`). */
-      groups?: string[];
-    };
 
     /**
      * Global approval floor: bare Backstage action ids whose execution must be

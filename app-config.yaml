@@ -156,13 +156,6 @@ assistants:
   maxSteps: 8 # max tool-call steps per turn (default 10)
   builtinActions: true # register the built-in catalog/TechDocs read-only actions
 
-  # Who may create/edit/delete assistants in the in-app editor (default-deny if
-  # unset). The dev app's guest user is included so a fresh clone can manage
-  # assistants out of the box.
-  admins:
-    users:
-      - user:development/guest
-
   # Global approval floor: these tools always pause for an Allow/Deny in chat,
   # for any assistant that has them. (Intersected with each assistant's tools.)
   requireApproval:

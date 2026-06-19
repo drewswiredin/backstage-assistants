@@ -1,7 +1,9 @@
 /**
  * Browser-safe shared types for the Backstage AI Assistants plugin.
  *
- * No runtime dependencies. The app-config shape (providers, prompts, secrets,
+ * Its one runtime dependency is `@backstage/plugin-permission-common`, for the
+ * shared {@link assistantUsePermission} / {@link assistantManagePermission}
+ * definitions. The app-config shape (providers, prompts, secrets,
  * the safety floor) lives in the backend's `config.d.ts` and its typed config
  * reader — never here. Assistant *definitions* live in the plugin database (the
  * `assistants` table, edited at runtime via the admin API/editor); their
@@ -16,6 +18,8 @@
  *
  * @packageDocumentation
  */
+
+export * from './permissions';
 
 /** Identifier for a configured assistant. @public */
 export type AssistantId = string;
@@ -146,14 +150,6 @@ export interface StatusResponse {
   assistants: AssistantSummary[];
   models: ModelOption[];
   defaultModel: ModelId;
-  /**
-   * Whether the calling user may manage assistants (create / edit / delete) —
-   * the result of the `assistants.admins` ownership-ref check, evaluated
-   * server-side and independent of the Backstage permission framework. Gates
-   * the editor gear in the chat header; the `/manage` and `/capabilities`
-   * endpoints independently 403 non-admins.
-   */
-  canManage: boolean;
 }
 
 /**

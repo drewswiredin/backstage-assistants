@@ -2,25 +2,28 @@ import express from 'express';
 import {
   HttpAuthService,
   LoggerService,
+  PermissionsService,
   UserInfoService,
   BackstageUserInfo,
   BackstageCredentials,
 } from '@backstage/backend-plugin-api';
 import { ActionsService } from '@backstage/backend-plugin-api/alpha';
 import { InputError, NotAllowedError, NotFoundError } from '@backstage/errors';
+import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import type {
   AssistantDefinition,
   CapabilitiesResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
+import { assistantManagePermission } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsConfig } from './config';
 import type { AssistantStore } from './assistants';
 import { mcpToolName, probeServerTools } from './mcp';
 
 /**
  * The admin management surface for assistant DEFINITIONS — the `/manage/*` CRUD
- * endpoints and `/capabilities`, all gated by `canManage` (the
- * `assistants.admins` ownership-ref check; 403 otherwise). Kept out of the
- * hand-written `/chat` router so the streaming path stays self-contained.
+ * endpoints and `/capabilities`, all gated by the `assistant.manage` permission
+ * (403 otherwise). Kept out of the hand-written `/chat` router so the streaming
+ * path stays self-contained.
  *
  * Mounted as a plain Express sub-router via `router.use(...)`, mirroring the
  * existing `/threads` sub-router — the typed OpenAPI router only permits paths
@@ -35,8 +38,8 @@ export interface ManageRouterOptions {
   actions: ActionsService;
   assistants: AssistantsConfig;
   assistantStore: AssistantStore;
-  /** The `assistants.admins` ownership-ref check for the caller. */
-  canManage: (user: BackstageUserInfo) => boolean;
+  /** Permission service used to authorize the `assistant.manage` gate. */
+  permissions: PermissionsService;
 }
 
 /**
@@ -268,7 +271,8 @@ function validateDelta(
 
 /**
  * Build the admin management Express sub-router. Every route resolves the caller
- * and enforces `canManage` (403 otherwise) before doing any work.
+ * and enforces the `assistant.manage` permission (403 otherwise) before doing
+ * any work.
  */
 export function createManageRouter(options: ManageRouterOptions): express.Router {
   const { httpAuth, userInfo, assistantStore, logger } = options;
@@ -282,10 +286,14 @@ export function createManageRouter(options: ManageRouterOptions): express.Router
     req: express.Request,
   ): Promise<{ credentials: BackstageCredentials; user: BackstageUserInfo }> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
-    const user = await userInfo.getUserInfo(credentials);
-    if (!options.canManage(user)) {
+    const [decision] = await options.permissions.authorize(
+      [{ permission: assistantManagePermission }],
+      { credentials },
+    );
+    if (decision.result !== AuthorizeResult.ALLOW) {
       throw new NotAllowedError('You are not permitted to manage assistants');
     }
+    const user = await userInfo.getUserInfo(credentials);
     return { credentials, user };
   }
 

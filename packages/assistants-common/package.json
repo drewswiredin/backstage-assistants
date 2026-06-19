@@ -34,6 +34,9 @@
     "prepack": "backstage-cli package prepack",
     "postpack": "backstage-cli package postpack"
   },
+  "dependencies": {
+    "@backstage/plugin-permission-common": "^0.9.9"
+  },
   "keywords": [
     "backstage",
     "backstage-plugin",

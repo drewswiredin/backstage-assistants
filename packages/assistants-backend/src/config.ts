@@ -30,12 +30,10 @@ function isSupportedProviderType(type: string): type is SupportedProviderType {
 /**
  * An assistant's access policy — who may converse with it. Mirrors the shared
  * {@link @drewswiredin/backstage-plugin-assistants-common#AssistantAccess} and
- * the same shape used by the management (`assistants.admins`) allowlist; both
- * are evaluated with {@link isPolicyAccessible}.
+ * is evaluated with {@link isPolicyAccessible}.
  *
- * Lives in the backend (not derived from app-config anymore — assistant
- * definitions are DB rows) and is kept here so the store, the admin-gate check,
- * and the router all share one type + one evaluation helper.
+ * Lives in the backend (assistant definitions are DB rows) and is kept here so
+ * the store and the router share one type + one evaluation helper.
  */
 export interface AssistantAccessPolicy {
   /** Any signed-in user may access. */
@@ -47,8 +45,7 @@ export interface AssistantAccessPolicy {
 }
 
 /**
- * Evaluates an {@link AssistantAccessPolicy} (or the `assistants.admins`
- * allowlist, which has the same shape) against a caller's ownership refs.
+ * Evaluates an {@link AssistantAccessPolicy} against a caller's ownership refs.
  * Default-deny: an empty policy (no `allowAuthenticated`, no `users`/`groups`)
  * grants nobody.
  *
@@ -102,10 +99,9 @@ export interface McpServerConfig {
  * The platform/safety surface read from the `assistants` config block.
  *
  * Assistant *definitions* are NOT here — they live in the plugin database and
- * are read through the assistant store. This config now exposes only the model
- * pool + resolver, the provider registry, the MCP server connections, the
- * global UI default, the runtime limits, the management allowlist, and the
- * global approval set.
+ * are read through the assistant store. This config exposes the model pool +
+ * resolver, the provider registry, the MCP server connections, the global UI
+ * default, the runtime limits, and the global approval set.
  */
 export interface AssistantsConfig {
   /**
@@ -132,12 +128,6 @@ export interface AssistantsConfig {
   toolResultMaxChars: number;
   /** Express body-parser size limit for `/chat` and `/title` (default `'10mb'`). */
   requestBodyLimit: string;
-  /**
-   * Management allowlist (the `assistants.admins` block). Same shape +
-   * evaluation as an assistant {@link AssistantAccessPolicy}; default-deny.
-   * `canManage` is {@link isPolicyAccessible}(adminAllowlist, caller).
-   */
-  adminAllowlist: AssistantAccessPolicy;
   /**
    * The global approval floor as a flat set of tool ids: the top-level
    * `requireApproval` action ids ∪ each MCP server's per-server
@@ -225,8 +215,7 @@ function buildProvider(
  * Reads and validates the `assistants` config block (the platform/safety
  * surface only — assistant definitions are DB rows, read via the store), builds
  * the AI SDK provider registry, and returns the model pool + resolver plus the
- * MCP servers, UI default, limits, management allowlist, and global approval
- * set.
+ * MCP servers, UI default, limits, and global approval set.
  *
  * Throws {@link @backstage/errors#InputError} when the config is malformed: an
  * unsupported provider type, no models, a `defaultModel` not in the pool, or an
@@ -364,18 +353,6 @@ export function readConfig(config: Config): AssistantsConfig {
     requireApproval.add(actionId);
   }
 
-  // --- Management allowlist (assistants.admins) ---------------------------
-  // Same shape + evaluation as an assistant access policy; default-deny.
-  const adminsConfig = root.getOptionalConfig('admins');
-  const adminAllowlist: AssistantAccessPolicy = {
-    // Management is never granted to "any authenticated user" from config; the
-    // allowlist is purely users/groups. Kept in the AccessPolicy shape so the
-    // same `isPolicyAccessible` evaluator applies.
-    allowAuthenticated: false,
-    users: adminsConfig?.getOptionalStringArray('users') ?? [],
-    groups: adminsConfig?.getOptionalStringArray('groups') ?? [],
-  };
-
   // --- Runtime limits + builtin actions toggle ----------------------------
   const maxSteps = root.getOptionalNumber('maxSteps') ?? 10;
   const toolResultMaxChars =
@@ -392,7 +369,6 @@ export function readConfig(config: Config): AssistantsConfig {
     maxSteps,
     toolResultMaxChars,
     requestBodyLimit,
-    adminAllowlist,
     requireApproval,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),

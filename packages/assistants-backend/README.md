@@ -5,9 +5,8 @@ streams chat completions, and runs Backstage actions as tools **on behalf of the
 calling user** (respecting their permissions). Assistant definitions (prompt,
 access, tools, models) live in the plugin **database** and are managed in an
 in-app admin editor; `app-config.yaml` holds only the platform/safety surface
-(providers, MCP servers, the `admins` allowlist, the `requireApproval` floor, UI
-defaults, limits). Prompts, access policies, and API keys never reach the
-browser.
+(providers, MCP servers, the `requireApproval` floor, UI defaults, limits).
+Prompts, access policies, and API keys never reach the browser.
 
 Pairs with the frontend plugin
 [`@drewswiredin/backstage-plugin-assistants`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants).
@@ -37,18 +36,13 @@ in the plugin `assistants` table (`definition_json` TEXT, portable across SQLite
 and Postgres). The table is seeded with one default assistant on first run.
 Definitions are created, edited, and deleted at runtime via the **admin editor**
 (a gear in the chat sidebar) — never in `app-config.yaml`. The
-`assistants.admins` allowlist controls who may manage them.
+`assistant.manage` permission controls who may manage them.
 
 ```yaml
 assistants:
   defaultModel: openrouter:google/gemini-2.5-flash # provider:model; must exist in a provider
   maxSteps: 8 # max tool-call steps per turn (default 10)
   builtinActions: true # register built-in catalog/TechDocs read tools
-
-  # Who may create/edit/delete assistants in the in-app editor (default-deny if unset).
-  admins:
-    users: [user:default/jdoe]
-    groups: [group:default/platform]
 
   # Global approval floor: these tools always pause for Allow/Deny in chat.
   requireApproval:
@@ -80,7 +74,6 @@ assistants:
 | `maxSteps` | no | Max tool-call steps per turn (default `10`). |
 | `builtinActions` | no | Register built-in catalog/TechDocs read tools (default `false`). |
 | `toolResultMaxChars` | no | Max chars of a single tool result (head+tail truncation; `0` disables; default `30000`). |
-| `admins.users` / `admins.groups` | no | Entity refs allowed to manage assistants in the editor (default-deny). |
 | `requireApproval` | no | Global approval floor: action ids gated by Allow/Deny in chat. |
 | `providers.<id>.type` | yes | `openai` \| `anthropic` \| `azure` \| `openai-compatible`. |
 | `providers.<id>.apiKey` | yes | Provider key (`@visibility secret`). |
@@ -301,13 +294,24 @@ scaffolder template's parameter block verbatim. See the
   descriptions, the model pool/defaults, the resolved tool list (name +
   description), and `ui`.
 
+### Permissions
+
+Two Backstage permissions, defined in
+`@drewswiredin/backstage-plugin-assistants-common` and authorized server-side:
+
+- `assistant.use` gates the user-facing routes (`GET /status`, `POST /chat`,
+  `POST /title`, `/threads`) and the chat surface.
+- `assistant.manage` gates `/manage/*` and `/capabilities` and the admin editor.
+
+Which assistants an `assistant.use` holder then sees is the separate
+per-assistant access policy. Grant the permissions in your permission policy.
+
 ### Admin / management API
 
 The admin editor is backed by `GET /capabilities` and the
 `GET`/`POST`/`PUT`/`DELETE` `/manage/assistants` endpoints — all under
-`/api/assistants`. Every one is gated by `canManage` (the `assistants.admins`
-ownership-ref check, evaluated independently of the Backstage permission
-framework) and returns **403** for non-admins.
+`/api/assistants`. Every one is gated by the `assistant.manage` permission and
+returns **403** for callers who lack it.
 
 - `GET /capabilities` returns the live, assignable inventory — Backstage actions,
   the model pool, each MCP server's reachability + tools, and the global approval

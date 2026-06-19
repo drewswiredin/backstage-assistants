@@ -4,8 +4,8 @@ Configurable, in-portal AI assistants for Backstage whose tools are your
 Backstage actions, run as the signed-in user. Create and manage assistants in an
 in-app admin editor (stored in the plugin database), give each its own tools,
 models, and prompt, and chat with them in a collapsible, multi-conversation
-panel. Platform config — model providers, MCP servers, the admin allowlist, and
-the safety/approval floor — lives in `app-config.yaml`.
+panel. Platform config — model providers, MCP servers, and the safety/approval
+floor — lives in `app-config.yaml`.
 
 It aims to be the most complete open-source AI chat plugin for Backstage — the
 alternatives today are either minimal or hosted and paid.
@@ -23,9 +23,12 @@ alternatives today are either minimal or hosted and paid.
 - **Multiple assistants** — created and edited in an in-app admin editor (stored
   in the plugin database), each with its own allowed tools, allowed models,
   system prompt, access policy, and color.
-- **In-app admin editor** — admins (an `assistants.admins` allowlist) create,
+- **In-app admin editor** — users with the `assistant.manage` permission create,
   edit, and delete assistants from a gear in the chat sidebar; definitions
   persist in the plugin database, no redeploy to add or change an assistant.
+- **Permission-gated** — two Backstage permissions govern the plugin:
+  `assistant.use` (who may use it) and `assistant.manage` (who may run the
+  editor), enforced server-side and honored by your permission policy.
 - **Concurrent conversations** — many streaming conversations across many
   assistants at once; switch between conversations and assistants without
   interrupting a reply in flight.

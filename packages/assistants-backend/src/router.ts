@@ -2,9 +2,11 @@ import express, { type Router } from 'express';
 import {
   HttpAuthService,
   LoggerService,
+  PermissionsService,
   RootConfigService,
   UserInfoService,
   BackstageUserInfo,
+  BackstageCredentials,
 } from '@backstage/backend-plugin-api';
 import { ActionsService } from '@backstage/backend-plugin-api/alpha';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
@@ -25,6 +27,8 @@ import type {
   AssistantDefinition,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
+import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
+import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import { AssistantsConfig, isPolicyAccessible } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
 import {
@@ -52,6 +56,8 @@ export interface RouterOptions {
   config: RootConfigService;
   httpAuth: HttpAuthService;
   userInfo: UserInfoService;
+  /** Permission service used to authorize the `assistant.use` gate. */
+  permissions: PermissionsService;
   /** Actions service used to LIST + INVOKE the assistant's tool allowlist. */
   actions: ActionsService;
   /**
@@ -277,6 +283,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     config,
     httpAuth,
     userInfo,
+    permissions,
     actions,
     assistants,
     assistantStore,
@@ -285,16 +292,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   } = options;
 
   /**
-   * Whether the caller may MANAGE assistants — the `assistants.admins`
-   * ownership-ref check, evaluated server-side and default-deny, independent of
-   * the Backstage permission framework. Gates `/status.canManage` plus every
-   * `/manage` + `/capabilities` endpoint (403 otherwise).
+   * Enforce the `assistant.use` permission for the caller — the plugin-access
+   * gate on every user-facing route (`/status`, `/chat`, `/title`, `/threads`).
+   * Throws NotAllowedError (403) when denied. Which assistants the caller then
+   * sees is the separate per-assistant {@link isAssistantAccessible} filter.
    */
-  function canManage(user: BackstageUserInfo): boolean {
-    return isPolicyAccessible(assistants.adminAllowlist, {
-      userEntityRef: user.userEntityRef,
-      ownershipEntityRefs: user.ownershipEntityRefs,
-    });
+  async function requireUse(credentials: BackstageCredentials): Promise<void> {
+    const [decision] = await permissions.authorize(
+      [{ permission: assistantUsePermission }],
+      { credentials },
+    );
+    if (decision.result !== AuthorizeResult.ALLOW) {
+      throw new NotAllowedError('You are not permitted to use assistants');
+    }
   }
 
   // Live, per-user set of in-flight generations: userRef -> (threadId -> assistantId).
@@ -383,6 +393,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   streamRouter.get('/chat/resume/:threadId', (req, res, next) => {
     (async () => {
       const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      await requireUse(credentials);
       const user = await userInfo.getUserInfo(credentials);
       const sub = resumables.subscribe(
         req.params.threadId,
@@ -418,6 +429,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   streamRouter.post('/chat/cancel/:threadId', (req, res, next) => {
     (async () => {
       const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      await requireUse(credentials);
       const user = await userInfo.getUserInfo(credentials);
       const threadId = req.params.threadId;
       if (inFlight.get(user.userEntityRef)?.has(threadId)) {
@@ -442,6 +454,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // Header user token only — rejects service and cookie credentials.
     // Missing/invalid token throws AuthenticationError (401).
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    await requireUse(credentials);
     const user = await userInfo.getUserInfo(credentials);
 
     // The actions this caller may see (gate 2, coarse). Used to project each
@@ -506,7 +519,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       })),
       models: assistants.models,
       defaultModel: assistants.defaultModel,
-      canManage: canManage(user),
     };
 
     res.json(status);
@@ -521,6 +533,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 1. Header user token only — rejects service and cookie credentials.
     //    Missing/invalid token throws AuthenticationError (401).
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    await requireUse(credentials);
 
     // 2. The request body shape (assistantId/modelId present + non-empty,
     //    messages a non-empty array) is already validated by the OpenAPI router
@@ -1028,6 +1041,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 1. Header user token only — rejects service and cookie credentials.
     //    Missing/invalid token throws AuthenticationError (401).
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    await requireUse(credentials);
 
     // 2. The request body shape is validated by the OpenAPI router (see
     //    `handleChat`); only the business checks below remain.
@@ -1096,6 +1110,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // messages. Message rows are written ONLY by /chat (onFinish), never here.
   async function resolveUserRef(req: express.Request): Promise<string> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    await requireUse(credentials);
     const user = await userInfo.getUserInfo(credentials);
     return user.userEntityRef;
   }
@@ -1108,6 +1123,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     req: express.Request,
   ): Promise<{ userRef: string; accessibleIds: Set<string> }> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    await requireUse(credentials);
     const user = await userInfo.getUserInfo(credentials);
     const accessibleIds = new Set<string>();
     for (const def of assistantStore.list()) {
@@ -1248,7 +1264,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.use('/threads', threads);
 
   // Admin management surface — `/manage/assistants` CRUD + `/capabilities`,
-  // all gated by `canManage` (403 for non-admins). A plain Express sub-router
+  // all gated by the `assistant.manage` permission (403 for non-admins). A plain Express sub-router
   // (out-of-spec, like `/threads`) so the typed OpenAPI router's path
   // allowlist doesn't reject it and the hand-written `/chat` stays untouched.
   // Mutations rebuild the store snapshot write-through (in AssistantStore).
@@ -1260,7 +1276,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       actions,
       assistants,
       assistantStore,
-      canManage,
+      permissions,
     }),
   );
 

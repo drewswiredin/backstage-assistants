@@ -71,5 +71,9 @@ The Backstage-side frame around the Conversation surface: assistant rail, conver
 The standalone, publishable library that owns *its* Conversation surface + generative-UI machinery (iframe artifacts, OpenUI, mermaid, trusted-component allowlist). BYO-runtime core + a minimal OpenAI-compatible/OpenRouter wrapper. Agent-agnostic — no Mastra. Consumed by its own demo app. **Not a dependency of the plugin**: the two share only a copy-paste starting point and the **surface seam**, so a matured gen-ui can drop in via one import without ever being a build-time coupling.
 
 **Access policy**:
-The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`). Deny by default. Distinct from per-tool permissions.
-_Avoid_: permissions (reserve that for the per-tool Backstage permission checks)
+The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`), stored on the definition in the DB. Deny by default. It filters *which* Assistants a user sees — distinct from the plugin **Permission**s (whether they may use the plugin at all) and from the per-tool Backstage checks at execution.
+_Avoid_: calling it a permission (it is content/assignment, not a Backstage permission)
+
+**Permission**:
+A Backstage permission gating plugin access. Two, defined in `-common`: `assistant.use` (use the plugin — load the surface, chat) and `assistant.manage` (run the admin editor — create / edit / delete definitions). Authorized server-side on every route and gated client-side with `usePermission`; governed by the host app's permission policy. Distinct from the per-Assistant **Access policy** (which Assistants you see) and the per-tool Backstage checks at tool execution.
+_Avoid_: an `assistants.admins` config allowlist (management is the `assistant.manage` permission, not config)
