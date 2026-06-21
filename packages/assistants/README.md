@@ -57,6 +57,18 @@ The page mounts at `/assistants`.
 > Using a custom `NavContentBlueprint` to lay out your sidebar? The plugin's nav
 > entry has the id `page:assistants` — `take()` it to place it yourself.
 
+> **Hide it from users without access.** The auto-registered nav entry is **not**
+> permission-gated by default — a user without `assistant.use` would still see it
+> and hit a "You are not permitted to use assistants" page on click. To hide the
+> plugin entirely for them, render the nav entry yourself behind a
+> `usePermission(assistantUsePermission)` check (`assistantUsePermission` comes
+> from `@drewswiredin/backstage-plugin-assistants-common`): a custom
+> `NavContentBlueprint` that `take('page:assistants')`s the auto entry and adds
+> your own gated `SidebarItem`. This repo's dev app does exactly this in
+> `packages/app/src/modules/nav/Sidebar.tsx`. See the
+> [backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend#permissions)
+> for granting `assistant.use` / `assistant.manage` via a permission policy.
+
 > **Interactive forms & scaffolder pickers (optional).** Assistants can render
 > inline RJSF forms (the `render_form` tool) for human-in-the-loop input. Those
 > forms reuse Backstage **scaffolder field extensions** (owner / entity / repo

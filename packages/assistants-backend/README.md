@@ -94,7 +94,7 @@ install they're at
   policy.
 
 Open one and **paste** it into an assistant's prompt field in the admin editor —
-prompts are no longer set in `app-config.yaml`.
+prompts live in the DB definition, not `app-config.yaml`.
 
 ## Providers
 
@@ -296,15 +296,102 @@ scaffolder template's parameter block verbatim. See the
 
 ### Permissions
 
-Two Backstage permissions, defined in
-`@drewswiredin/backstage-plugin-assistants-common` and authorized server-side:
+The plugin defines two Backstage permissions in
+`@drewswiredin/backstage-plugin-assistants-common` (exported as
+`assistantUsePermission`, `assistantManagePermission`, and the
+`assistantsPermissions` array):
 
-- `assistant.use` gates the user-facing routes (`GET /status`, `POST /chat`,
-  `POST /title`, `/threads`) and the chat surface.
-- `assistant.manage` gates `/manage/*` and `/capabilities` and the admin editor.
+| Permission | `name` | Gates |
+| --- | --- | --- |
+| `assistantUsePermission` | `assistant.use` | the user-facing routes (`GET /status`, `POST /chat`, `POST /title`, `/threads`) and the chat surface |
+| `assistantManagePermission` | `assistant.manage` | `/manage/*` + `/capabilities` and the admin editor (the gear) |
 
-Which assistants an `assistant.use` holder then sees is the separate
-per-assistant access policy. Grant the permissions in your permission policy.
+Both are enforced server-side via `coreServices.permissions` (403 when denied)
+and gated client-side with `usePermission`. **Which assistants** an
+`assistant.use` holder then sees is the separate per-assistant **access policy**
+stored on each definition — orthogonal to these permissions.
+
+#### Wiring it up — grant the permissions in a permission policy
+
+Who holds each permission is decided by your app's
+[`PermissionPolicy`](https://backstage.io/docs/permissions/writing-a-policy). A
+fresh `create-app` backend installs
+`@backstage/plugin-permission-backend-module-allow-all-policy`, which grants
+**everything to everyone** — fine for trying the plugin out, but it restricts
+nothing. To actually gate use and management, replace it with a policy that
+authorizes the two permissions for the right users (here, by group membership):
+
+```ts
+// packages/backend/src/permissionPolicy.ts
+import { createBackendModule } from '@backstage/backend-plugin-api';
+import { policyExtensionPoint } from '@backstage/plugin-permission-node/alpha';
+import {
+  PermissionPolicy,
+  PolicyQuery,
+  PolicyQueryUser,
+} from '@backstage/plugin-permission-node';
+import {
+  AuthorizeResult,
+  PolicyDecision,
+} from '@backstage/plugin-permission-common';
+
+class AssistantsPolicy implements PermissionPolicy {
+  async handle(
+    req: PolicyQuery,
+    user?: PolicyQueryUser,
+  ): Promise<PolicyDecision> {
+    const name = req.permission.name;
+    if (name === 'assistant.use' || name === 'assistant.manage') {
+      // Group memberships arrive as ownership entity refs on the caller.
+      const groups = user?.info.ownershipEntityRefs ?? [];
+      const isAdmin = groups.includes('group:default/assistants-admins');
+      const isUser = groups.includes('group:default/assistants-users');
+      const allowed = name === 'assistant.manage' ? isAdmin : isUser || isAdmin;
+      return { result: allowed ? AuthorizeResult.ALLOW : AuthorizeResult.DENY };
+    }
+    // Leave every other plugin's permissions to your wider policy.
+    return { result: AuthorizeResult.ALLOW };
+  }
+}
+
+export default createBackendModule({
+  pluginId: 'permission',
+  moduleId: 'assistants-policy',
+  register(reg) {
+    reg.registerInit({
+      deps: { policy: policyExtensionPoint },
+      async init({ policy }) {
+        policy.setPolicy(new AssistantsPolicy());
+      },
+    });
+  },
+});
+```
+
+Then wire it into the backend and drop the allow-all module (the policy
+extension point accepts exactly one policy):
+
+```ts
+// packages/backend/src/index.ts
+backend.add(import('@backstage/plugin-permission-backend'));
+// backend.add(import('@backstage/plugin-permission-backend-module-allow-all-policy')); // remove
+backend.add(import('./permissionPolicy'));
+```
+
+Grant `assistant.use` to anyone who may chat, and `assistant.manage` to admins
+who may run the editor. Group membership comes from the caller's
+`ownershipEntityRefs`, resolved by your auth provider from the catalog — so the
+groups referenced above must exist and the users be members.
+
+> **Default-allow, like every plugin.** With permissions disabled
+> (`permission.enabled: false`, the default) or the allow-all policy in place,
+> both permissions are granted to everyone. Gating takes effect only once you
+> enable permissions **and** install a policy like the one above.
+
+> **Working example in this repo.** The dev app ships a group-based policy at
+> `packages/backend/src/permissionPolicy.ts` and a dev sign-in picker
+> (`packages/app/src/modules/signIn`) that lets you log in as a no-access / user
+> / admin identity to exercise all three roles end to end.
 
 ### Admin / management API
 

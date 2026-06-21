@@ -28,7 +28,9 @@ alternatives today are either minimal or hosted and paid.
   persist in the plugin database, no redeploy to add or change an assistant.
 - **Permission-gated** — two Backstage permissions govern the plugin:
   `assistant.use` (who may use it) and `assistant.manage` (who may run the
-  editor), enforced server-side and honored by your permission policy.
+  editor), enforced server-side and honored by your permission policy (see the
+  [backend README](packages/assistants-backend/README.md#permissions) for how to
+  wire one up).
 - **Concurrent conversations** — many streaming conversations across many
   assistants at once; switch between conversations and assistants without
   interrupting a reply in flight.
