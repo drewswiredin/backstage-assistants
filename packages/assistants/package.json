@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Frontend plugin — AI Assistants for Backstage.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -60,7 +60,7 @@
     "@backstage/plugin-scaffolder-react": "^2.0.0",
     "@backstage/plugin-signals-react": "^0.0.22",
     "@backstage/ui": "^0.15.0",
-    "@drewswiredin/backstage-plugin-assistants-common": "0.6.0",
+    "@drewswiredin/backstage-plugin-assistants-common": "0.7.0",
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "4.0.0-alpha.61",
