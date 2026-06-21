@@ -83,6 +83,8 @@ auth:
   providers:
     # See https://backstage.io/docs/auth/guest/provider
     guest: {}
+    # Dev-only multi-user sign-in picker — see packages/backend/src/devUserPickProvider.ts
+    dev-userpick: {}
   # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
   # to learn more about client id metadata documents
   experimentalClientIdMetadataDocuments:

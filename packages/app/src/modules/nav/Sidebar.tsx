@@ -14,6 +14,26 @@ import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
 import { AssistantsNavIcon } from '@drewswiredin/backstage-plugin-assistants';
+import { usePermission } from '@backstage/plugin-permission-react';
+import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
+
+/**
+ * The Assistants nav item, shown only to users who hold the `assistant.use`
+ * permission. Hidden entirely otherwise — no nav entry, no error-on-click.
+ */
+function AssistantsSidebarItem() {
+  const { allowed } = usePermission({ permission: assistantUsePermission });
+  if (!allowed) {
+    return null;
+  }
+  return (
+    <SidebarItem
+      icon={() => <AssistantsNavIcon />}
+      to="/assistants"
+      text="Assistants"
+    />
+  );
+}
 
 export const SidebarContent = NavContentBlueprint.make({
   params: {
@@ -38,11 +58,7 @@ export const SidebarContent = NavContentBlueprint.make({
           <SidebarGroup label="Menu" icon={<MenuIcon />}>
             {nav.take('page:catalog')}
             {nav.take('page:scaffolder')}
-            <SidebarItem
-              icon={() => <AssistantsNavIcon />}
-              to="/assistants"
-              text="Assistants"
-            />
+            <AssistantsSidebarItem />
             <SidebarDivider />
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}
