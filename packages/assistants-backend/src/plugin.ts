@@ -12,7 +12,7 @@ import { createRouter } from './router';
 import { registerCoreActions } from './actions';
 import { ThreadService } from './threads';
 import { AssistantStore } from './assistants';
-import { warmServerToolsCache } from './mcp';
+import { maintainMcpConnections, closeMcpPool } from './mcp';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -48,6 +48,7 @@ export const assistantsPlugin = createBackendPlugin({
         actions: actionsServiceRef,
         signals: signalsServiceRef,
         scheduler: coreServices.scheduler,
+        lifecycle: coreServices.lifecycle,
       },
       async init({
         logger,
@@ -63,6 +64,7 @@ export const assistantsPlugin = createBackendPlugin({
         actions,
         signals,
         scheduler,
+        lifecycle,
       }) {
         const assistants = readConfig(config);
 
@@ -108,23 +110,27 @@ export const assistantsPlugin = createBackendPlugin({
 
         httpRouter.use(router);
 
-        // Keep each MCP server's tool inventory warm in the background so GET
-        // /status never blocks on a live MCP connection (warmServerToolsCache /
-        // mcp.ts). Runs at boot (initialDelay 0) and every few minutes; each
-        // probe is timeout-bounded so one slow/unreachable server can't stall it.
+        // Maintain ONE persistent connection per MCP server in the background:
+        // connect at boot, then refresh tools + heal dropped connections on a
+        // schedule (maintainMcpConnections / mcp.ts). /status reads the cached
+        // inventory and /chat reuses these pooled connections — neither ever
+        // connects on the request path. Each probe is timeout-bounded so a
+        // slow/unreachable server can't stall the cycle; connections close on
+        // plugin shutdown.
         if (assistants.mcpServers.size > 0) {
           await scheduler.scheduleTask({
-            id: 'assistants-mcp-warm',
-            frequency: { minutes: 3 },
+            id: 'assistants-mcp-maintain',
+            frequency: { minutes: 2 },
             initialDelay: { seconds: 0 },
             timeout: { minutes: 1 },
             fn: async () => {
-              await warmServerToolsCache(
+              await maintainMcpConnections(
                 [...assistants.mcpServers.values()],
                 logger,
               );
             },
           });
+          lifecycle.addShutdownHook(() => closeMcpPool());
         }
 
         logger.info('AI Assistants backend plugin initialized', {

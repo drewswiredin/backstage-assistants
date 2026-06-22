@@ -25,10 +25,13 @@ import { truncateToolResult } from './truncateToolResult';
 
 const NAME_SEPARATOR = '__';
 
-/** A server's raw (un-namespaced) tool, as returned by the MCP server. */
+/** A server's raw (un-namespaced) tool, as returned by the MCP server. The
+ *  `inputSchema` is captured so `/chat` can build tool definitions from the pool
+ *  cache without a live `listTools`. */
 interface RawMcpTool {
   name: string;
   description?: string;
+  inputSchema?: unknown;
 }
 
 /** A resolved server connection + this assistant's optional per-tool allowlist. */
@@ -153,30 +156,31 @@ function createTransport(server: McpServerConfig) {
     : new StreamableHTTPClientTransport(url, { requestInit });
 }
 
-async function connect(server: McpServerConfig): Promise<Client> {
-  const client = new Client({
-    name: 'backstage-plugin-assistants',
-    version: '0.1.0',
-  });
-  await client.connect(createTransport(server));
-  return client;
-}
+// --- MCP connection pool ----------------------------------------------------
+// One PERSISTENT client per configured server, established and refreshed by the
+// scheduler (maintainMcpConnections, wired in the plugin) — NOT per request.
+// /status reads the cached tool inventory synchronously; /chat reuses the pooled
+// clients for tool execution; /capabilities reads (and can force-refresh) the
+// same pool. Connections are closed only on plugin shutdown (closeMcpPool).
 
-// --- /status: cached RAW tool listings -------------------------------------
-// Connecting to every MCP server on every /status call would be slow, so each
-// server's full (unfiltered) tool list is cached briefly; the per-assistant
-// allowlist is applied on top via summarizeMcpTools (allowlist-independent cache).
-interface RawCacheEntry {
-  fetchedAt: number;
+/** A pooled server: its persistent client (when connected), last-known tool
+ *  inventory (with input schemas, for /chat tool definitions), and reachability. */
+interface PooledServer {
+  client?: Client;
   tools: RawMcpTool[];
+  reachable: boolean;
+  error?: string;
+  fetchedAt: number;
 }
-const rawCache = new Map<string, RawCacheEntry>();
-const LIST_TTL_MS = 5 * 60 * 1000;
-/** Per-probe ceiling so one slow/black-holed server can't stall a probe (or a
- *  background warm cycle) near the MCP SDK's ~60s default request timeout. */
+const pool = new Map<string, PooledServer>();
+
+/** Per-connect/list ceiling so one slow/black-holed server can't stall a
+ *  maintenance cycle near the MCP SDK's ~60s default request timeout. */
 const PROBE_TIMEOUT_MS = 8_000;
-/** Max concurrent server probes in a background warm cycle. */
-const WARM_CONCURRENCY = 5;
+/** Freshness window for an on-demand /capabilities read before it re-lists. */
+const LIST_TTL_MS = 5 * 60 * 1000;
+/** Max servers refreshed concurrently per maintenance cycle. */
+const MAINTAIN_CONCURRENCY = 5;
 
 /**
  * Reject after `ms` if `p` hasn't settled, so a probe can bound `connect` /
@@ -201,13 +205,81 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
+/** Get or create the pool entry for a server. */
+function poolEntry(serverId: string): PooledServer {
+  let entry = pool.get(serverId);
+  if (!entry) {
+    entry = { tools: [], reachable: false, fetchedAt: 0 };
+    pool.set(serverId, entry);
+  }
+  return entry;
+}
+
 /**
- * A server's reachability + tool inventory.
- *
- * Unlike {@link listServerToolsRaw}, a failure is REPORTED (`reachable: false`
- * with `error`) rather than swallowed — so the editor's `/capabilities` picker
- * can show why a server is unavailable instead of an indistinguishable empty
- * list. On a cache hit the server is reported reachable with the cached tools.
+ * Ensure a live connection to `server` and refresh its tool inventory into the
+ * pool, KEEPING the connection open for reuse. Creates the persistent client on
+ * first use and re-lists on an existing one; on failure, drops the (possibly
+ * dead) client so the next cycle reconnects, while preserving the last-known
+ * tools for drift tolerance. Bounded by PROBE_TIMEOUT_MS so a bad server can't
+ * stall the maintenance cycle.
+ */
+async function refreshServer(
+  server: McpServerConfig,
+  logger: LoggerService,
+): Promise<PooledServer> {
+  const entry = poolEntry(server.id);
+  // Declared outside the try so the catch can close a client whose connect timed
+  // out (and never reached `entry.client`) — otherwise its transport / spawned
+  // child process leaks on every cycle.
+  let client = entry.client;
+  try {
+    if (!client) {
+      client = new Client({
+        name: 'backstage-plugin-assistants',
+        version: '0.1.0',
+      });
+      await withTimeout(
+        client.connect(createTransport(server)),
+        PROBE_TIMEOUT_MS,
+        `MCP '${server.id}' connect`,
+      );
+      entry.client = client;
+    }
+    const { tools } = await withTimeout(
+      client.listTools(),
+      PROBE_TIMEOUT_MS,
+      `MCP '${server.id}' listTools`,
+    );
+    entry.tools = tools.map(t => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    }));
+    entry.reachable = true;
+    entry.error = undefined;
+    entry.fetchedAt = Date.now();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`MCP server '${server.id}' tool listing failed: ${message}`);
+    entry.reachable = false;
+    entry.error = message;
+    // Close the (possibly half-connected) client to release its connection /
+    // child process, and drop it so the next cycle reconnects fresh. Keep the
+    // last-known tools so /status + /chat tolerate a transient blip.
+    if (client) {
+      await client.close().catch(() => {});
+    }
+    entry.client = undefined;
+  }
+  return entry;
+}
+
+/**
+ * A server's reachability + tool inventory, for the `/capabilities` editor. On a
+ * fresh pool entry (within LIST_TTL_MS, not forced) the maintained value is
+ * returned without re-listing; otherwise the pool is refreshed (reusing the
+ * persistent client). A failure is REPORTED (`reachable: false` + `error`) so the
+ * picker can show why a server is unavailable rather than an empty list.
  */
 export interface ServerToolProbe {
   reachable: boolean;
@@ -215,95 +287,72 @@ export interface ServerToolProbe {
   tools: RawMcpTool[];
 }
 
-/**
- * Connect to a server and list its tools, populating the shared TTL cache.
- * Captures the failure instead of swallowing it. A cache hit short-circuits and
- * is reported reachable.
- */
 export async function probeServerTools(
   server: McpServerConfig,
   logger: LoggerService,
   force = false,
 ): Promise<ServerToolProbe> {
-  const cached = rawCache.get(server.id);
-  if (!force && cached && Date.now() - cached.fetchedAt < LIST_TTL_MS) {
-    return { reachable: true, tools: cached.tools };
+  const cached = pool.get(server.id);
+  if (
+    !force &&
+    cached &&
+    cached.fetchedAt > 0 &&
+    Date.now() - cached.fetchedAt < LIST_TTL_MS
+  ) {
+    return {
+      reachable: cached.reachable,
+      error: cached.error,
+      tools: cached.tools,
+    };
   }
-  // Own the client so we can always close it — even when connect/list times out.
-  const client = new Client({
-    name: 'backstage-plugin-assistants',
-    version: '0.1.0',
-  });
-  try {
-    await withTimeout(
-      client.connect(createTransport(server)),
-      PROBE_TIMEOUT_MS,
-      `MCP '${server.id}' connect`,
-    );
-    const { tools } = await withTimeout(
-      client.listTools(),
-      PROBE_TIMEOUT_MS,
-      `MCP '${server.id}' listTools`,
-    );
-    const raw: RawMcpTool[] = tools.map(t => ({
-      name: t.name,
-      description: t.description,
-    }));
-    rawCache.set(server.id, { fetchedAt: Date.now(), tools: raw });
-    return { reachable: true, tools: raw };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn(`MCP server '${server.id}' tool listing failed: ${message}`);
-    // Report the failure (capabilities); still expose any stale tools we have.
-    return { reachable: false, error: message, tools: cached?.tools ?? [] };
-  } finally {
-    await client.close().catch(() => {});
-  }
+  const entry = await refreshServer(server, logger);
+  return { reachable: entry.reachable, error: entry.error, tools: entry.tools };
 }
 
 /**
- * A server's full raw tool list, cached. On failure returns the last cached
- * value (or empty) so `/status` never breaks because a server is down. Thin
- * wrapper over {@link probeServerTools} that drops the reachability signal.
- */
-export async function listServerToolsRaw(
-  server: McpServerConfig,
-  logger: LoggerService,
-): Promise<RawMcpTool[]> {
-  return (await probeServerTools(server, logger)).tools;
-}
-
-/**
- * Synchronous read of the warm cache: a server's cached tools, or `[]` if it
- * hasn't been warmed yet. NEVER connects — this is what `/status` uses so a
- * page load never blocks on a live MCP connection. The cache is kept fresh by
- * {@link warmServerToolsCache} (scheduled in the plugin); an unwarmed/unreachable
- * server simply yields `[]` until the next warm cycle fills it in.
+ * Synchronous read of the pooled tool inventory: a server's cached tools, or `[]`
+ * if it isn't connected yet. NEVER connects — this is what `/status` uses so a
+ * page load never blocks on a live MCP connection. The pool is kept fresh by
+ * {@link maintainMcpConnections} (scheduled in the plugin).
  */
 export function cachedServerToolsRaw(serverId: string): RawMcpTool[] {
-  return rawCache.get(serverId)?.tools ?? [];
+  return pool.get(serverId)?.tools ?? [];
 }
 
 /**
- * Background warmer: force-refresh the tool cache for every given server so the
- * synchronous `/status` read ({@link cachedServerToolsRaw}) is always populated.
- * Bounded concurrency avoids a connection burst with many servers; each probe is
- * timeout-bounded, and a failure leaves the prior cached value intact (see
- * {@link probeServerTools}). Off the request path — never blocks a user.
+ * Scheduler-driven maintenance: ensure every configured server has a live
+ * connection and a fresh tool inventory, keeping the connections OPEN for reuse
+ * by `/chat`. Bounded concurrency avoids a connection burst; each refresh is
+ * timeout-bounded and a failure leaves the last-known tools intact. Runs off the
+ * request path — never blocks a user.
  */
-export async function warmServerToolsCache(
+export async function maintainMcpConnections(
   servers: McpServerConfig[],
   logger: LoggerService,
 ): Promise<void> {
   const queue = [...servers];
   const worker = async (): Promise<void> => {
     for (let next = queue.shift(); next; next = queue.shift()) {
-      await probeServerTools(next, logger, true);
+      await refreshServer(next, logger);
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(WARM_CONCURRENCY, servers.length) }, worker),
+    Array.from(
+      { length: Math.min(MAINTAIN_CONCURRENCY, servers.length) },
+      worker,
+    ),
   );
+}
+
+/**
+ * Close every pooled connection — registered as a plugin shutdown hook. For
+ * stdio servers this also terminates the spawned child process.
+ */
+export async function closeMcpPool(): Promise<void> {
+  await Promise.all(
+    [...pool.values()].map(e => e.client?.close().catch(() => {})),
+  );
+  pool.clear();
 }
 
 /**
@@ -324,98 +373,91 @@ export function summarizeMcpTools(
     }));
 }
 
-// --- /chat: live tools ------------------------------------------------------
+// --- /chat: tools from the pooled connections -------------------------------
 
 /**
- * Live MCP tools for a turn plus a `close()` to release the clients once the
- * stream (and its tool calls) finish.
- *
- * @public
+ * Build the AI-SDK tool set for a turn from the POOLED connections — no per-turn
+ * connect or listTools. Tool definitions come from the maintained cache (incl.
+ * input schemas); each tool's `execute` calls through the persistent pooled
+ * client, re-read at call time so a reconnect by the scheduler is picked up. A
+ * server with no live connection yields a graceful "not connected" tool error
+ * and is healed by the next maintenance cycle. Connections are NEVER opened or
+ * closed here.
  */
-export interface LiveMcpTools {
-  tools: Record<string, Tool>;
-  close: () => Promise<void>;
-}
-
-/**
- * Connect to the given server selections and adapt their (allowlisted) tools to
- * AI SDK tools. A server that fails to connect/list is logged and skipped so one
- * bad server can't break the turn.
- */
-export async function buildMcpTools(
+export function buildMcpTools(
   selections: ResolvedMcpSelection[],
   logger: LoggerService,
   toolResultMaxChars: number,
-): Promise<LiveMcpTools> {
-  const clients: Client[] = [];
+): Record<string, Tool> {
   const tools: Record<string, Tool> = {};
-
   for (const { server, tools: allowlist } of selections) {
-    try {
-      const client = await connect(server);
-      clients.push(client);
-      const { tools: mcpTools } = await client.listTools();
-      for (const t of mcpTools) {
-        if (!isToolAllowed(allowlist, t.name)) {
-          continue;
-        }
-        tools[mcpToolName(server.id, t.name)] = tool({
-          description: t.description,
-          inputSchema: jsonSchema(
-            (t.inputSchema ?? {}) as Parameters<typeof jsonSchema>[0],
-          ),
-          execute: async input => {
-            try {
-              const result = await client.callTool({
-                name: t.name,
-                arguments: (input ?? {}) as Record<string, unknown>,
-              });
-              if (result.isError) {
-                const detail =
-                  typeof result.content === 'string'
-                    ? result.content
-                    : JSON.stringify(result.content);
-                logger.warn(
-                  `MCP tool '${server.id}/${t.name}' returned error: ${detail}`,
-                );
-                return {
-                  _error: true,
-                  message: truncateToolResult(detail, toolResultMaxChars),
-                };
-              }
-              return truncateToolResult(
-                result.structuredContent ?? result.content,
+    const entry = pool.get(server.id);
+    if (!entry) {
+      // Not connected yet — its tools fill in on the next maintenance cycle.
+      continue;
+    }
+    for (const t of entry.tools) {
+      if (!isToolAllowed(allowlist, t.name)) {
+        continue;
+      }
+      tools[mcpToolName(server.id, t.name)] = tool({
+        description: t.description,
+        inputSchema: jsonSchema(
+          (t.inputSchema ?? {}) as Parameters<typeof jsonSchema>[0],
+        ),
+        execute: async input => {
+          // Re-read the pooled client at call time so a scheduler reconnect is
+          // picked up. No per-chat connect — a down server fails gracefully and
+          // is healed by the next maintenance cycle.
+          const client = pool.get(server.id)?.client;
+          if (!client) {
+            logger.warn(
+              `MCP server '${server.id}' not connected; '${t.name}' skipped this turn`,
+            );
+            return {
+              _error: true,
+              message: truncateToolResult(
+                `MCP server '${server.id}' is not currently connected — try again shortly.`,
                 toolResultMaxChars,
+              ),
+            };
+          }
+          try {
+            const result = await client.callTool({
+              name: t.name,
+              arguments: (input ?? {}) as Record<string, unknown>,
+            });
+            if (result.isError) {
+              const detail =
+                typeof result.content === 'string'
+                  ? result.content
+                  : JSON.stringify(result.content);
+              logger.warn(
+                `MCP tool '${server.id}/${t.name}' returned error: ${detail}`,
               );
-            } catch (error) {
-              const message =
-                error instanceof Error ? error.message : String(error);
-              logger.error(
-                `MCP tool '${server.id}/${t.name}' threw: ${message}`,
-              );
-              // Cap the message too — a tool error can embed an upstream body
-              // large enough to overflow the context window (see Issue #2).
               return {
                 _error: true,
-                message: truncateToolResult(message, toolResultMaxChars),
+                message: truncateToolResult(detail, toolResultMaxChars),
               };
             }
-          },
-        });
-      }
-    } catch (error) {
-      logger.warn(
-        `MCP server '${server.id}' connect/list failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+            return truncateToolResult(
+              result.structuredContent ?? result.content,
+              toolResultMaxChars,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            logger.error(`MCP tool '${server.id}/${t.name}' threw: ${message}`);
+            // Cap the message too — a tool error can embed an upstream body
+            // large enough to overflow the context window.
+            return {
+              _error: true,
+              message: truncateToolResult(message, toolResultMaxChars),
+            };
+          }
+        },
+      });
     }
   }
-
-  return {
-    tools,
-    close: async () => {
-      await Promise.all(clients.map(c => c.close().catch(() => {})));
-    },
-  };
+  return tools;
 }

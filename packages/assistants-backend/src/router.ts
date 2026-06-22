@@ -473,10 +473,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         split: splitAllowedTools(assistant.allowedTools, assistants.mcpServers),
       }));
 
-    // MCP tool summaries come from a background-warmed cache
-    // (warmServerToolsCache, scheduled in the plugin) read SYNCHRONOUSLY — so a
-    // page load never blocks on a live MCP connection. A server not yet warmed
-    // (or unreachable) yields an empty list; its tools fill in on the next warm
+    // MCP tool summaries come from the scheduler-maintained connection pool
+    // (maintainMcpConnections, in the plugin) read SYNCHRONOUSLY — so a page load
+    // never blocks on a live MCP connection. A server not yet connected (or
+    // unreachable) yields an empty list; its tools fill in on the next maintenance
     // cycle. The per-assistant allowlist is applied below via summarizeMcpTools.
     const rawByServer = new Map<
       string,
@@ -585,10 +585,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const selected = selectAssistantActions(available, actionIds, logger);
 
     // 6b. Tools from the assistant's allowlisted external MCP servers
-    //     (static/shared credential — not run-as-user). Connections are held for
-    //     the turn and closed when the stream finishes/errors. A server that's
-    //     down is skipped, not fatal.
-    const mcp = await buildMcpTools(
+    //     (static/shared credential — not run-as-user). Built from the pooled,
+    //     scheduler-maintained connections — no per-turn connect/list, and the
+    //     connections are NOT closed when the turn ends. A server with no live
+    //     pooled connection is skipped (its tools fill in on the next cycle).
+    const mcpTools = buildMcpTools(
       mcpSelections,
       logger,
       assistants.toolResultMaxChars,
@@ -600,7 +601,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         credentials,
         assistants.toolResultMaxChars,
       ),
-      ...mcp.tools,
+      ...mcpTools,
       // Interactive form tool — a CLIENT-side tool (no `execute`): the model
       // calls it with an RJSF form spec, streamText emits the call and yields,
       // the frontend renders the form, and the user's submitted values come back
@@ -803,8 +804,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       stopWhen: stepCountIs(assistants.maxSteps),
       abortSignal: turnAbort.signal,
       onFinish: ({ finishReason, usage, steps }) => {
-        // Release MCP connections now the turn (incl. tool calls) is done.
-        void mcp.close();
         if (threadId) turnAborts.delete(threadId);
         // Non-blocking completion log.
         logger.info('chat turn finished', {
@@ -818,11 +817,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         });
       },
       onAbort: () => {
-        // Explicit Stop: the model has stopped generating. Release MCP, clear the
-        // working indicator, and drop the abort handle. The user message stays
-        // persisted (turn start); the partial reply is persisted on finish,
-        // stamped metadata.canceled (see onFinish below).
-        void mcp.close();
+        // Explicit Stop: the model has stopped generating. Clear the working
+        // indicator and drop the abort handle. The user message stays persisted
+        // (turn start); the partial reply is persisted on finish, stamped
+        // metadata.canceled (see onFinish below).
         if (threadId) {
           turnAborts.delete(threadId);
           noteFinished(user.userEntityRef, threadId, assistantId);
@@ -834,7 +832,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         });
       },
       onError: ({ error }) => {
-        void mcp.close();
         if (threadId) {
           turnAborts.delete(threadId);
           noteFinished(user.userEntityRef, threadId, assistantId);
