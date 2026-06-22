@@ -12,6 +12,7 @@ import { createRouter } from './router';
 import { registerCoreActions } from './actions';
 import { ThreadService } from './threads';
 import { AssistantStore } from './assistants';
+import { warmServerToolsCache } from './mcp';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -46,6 +47,7 @@ export const assistantsPlugin = createBackendPlugin({
         actionsRegistry: actionsRegistryServiceRef,
         actions: actionsServiceRef,
         signals: signalsServiceRef,
+        scheduler: coreServices.scheduler,
       },
       async init({
         logger,
@@ -60,6 +62,7 @@ export const assistantsPlugin = createBackendPlugin({
         actionsRegistry,
         actions,
         signals,
+        scheduler,
       }) {
         const assistants = readConfig(config);
 
@@ -104,6 +107,25 @@ export const assistantsPlugin = createBackendPlugin({
         });
 
         httpRouter.use(router);
+
+        // Keep each MCP server's tool inventory warm in the background so GET
+        // /status never blocks on a live MCP connection (warmServerToolsCache /
+        // mcp.ts). Runs at boot (initialDelay 0) and every few minutes; each
+        // probe is timeout-bounded so one slow/unreachable server can't stall it.
+        if (assistants.mcpServers.size > 0) {
+          await scheduler.scheduleTask({
+            id: 'assistants-mcp-warm',
+            frequency: { minutes: 3 },
+            initialDelay: { seconds: 0 },
+            timeout: { minutes: 1 },
+            fn: async () => {
+              await warmServerToolsCache(
+                [...assistants.mcpServers.values()],
+                logger,
+              );
+            },
+          });
+        }
 
         logger.info('AI Assistants backend plugin initialized', {
           models: assistants.models.length,

@@ -237,9 +237,17 @@ listing (so the detail modal shows only the selected tools).
 > assistant's `access` policy. (Per-user identity propagation — e.g. Entra OBO
 > for Azure DevOps — is a planned enhancement.)
 
-Notes: tool listings for `/status` are cached briefly; a server that's
-unreachable is logged and skipped (it never breaks a turn or `/status`).
-Connections are opened per turn and closed when the response finishes.
+### MCP probing is server-side and scheduled
+
+MCP tool inventories are refreshed **in the background, on a schedule** — a task
+(`coreServices.scheduler`) probes every configured server every few minutes,
+bounded by an ~8s per-server timeout, and keeps a warm cache. `GET /status` reads
+that cache **synchronously**, so loading the plugin **never connects to an MCP
+server or blocks on a slow/unreachable one** (a server's tools simply fill in on
+the next warm cycle). `/chat` opens live connections per turn (closed when the
+response finishes), and `/capabilities` (the editor) is served from the same warm
+cache — keeping its per-server reachability and manual refresh. Tool listing for
+an unreachable server is logged and skipped; it never breaks a turn or `/status`.
 
 ## Human-in-the-loop (approvals & forms)
 

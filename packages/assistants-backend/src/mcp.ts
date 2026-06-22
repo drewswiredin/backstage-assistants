@@ -172,6 +172,34 @@ interface RawCacheEntry {
 }
 const rawCache = new Map<string, RawCacheEntry>();
 const LIST_TTL_MS = 5 * 60 * 1000;
+/** Per-probe ceiling so one slow/black-holed server can't stall a probe (or a
+ *  background warm cycle) near the MCP SDK's ~60s default request timeout. */
+const PROBE_TIMEOUT_MS = 8_000;
+/** Max concurrent server probes in a background warm cycle. */
+const WARM_CONCURRENCY = 5;
+
+/**
+ * Reject after `ms` if `p` hasn't settled, so a probe can bound `connect` /
+ * `listTools` (which otherwise inherit the SDK's ~60s default).
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      v => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      e => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
 
 /**
  * A server's reachability + tool inventory.
@@ -195,29 +223,41 @@ export interface ServerToolProbe {
 export async function probeServerTools(
   server: McpServerConfig,
   logger: LoggerService,
+  force = false,
 ): Promise<ServerToolProbe> {
   const cached = rawCache.get(server.id);
-  if (cached && Date.now() - cached.fetchedAt < LIST_TTL_MS) {
+  if (!force && cached && Date.now() - cached.fetchedAt < LIST_TTL_MS) {
     return { reachable: true, tools: cached.tools };
   }
+  // Own the client so we can always close it — even when connect/list times out.
+  const client = new Client({
+    name: 'backstage-plugin-assistants',
+    version: '0.1.0',
+  });
   try {
-    const client = await connect(server);
-    try {
-      const { tools } = await client.listTools();
-      const raw: RawMcpTool[] = tools.map(t => ({
-        name: t.name,
-        description: t.description,
-      }));
-      rawCache.set(server.id, { fetchedAt: Date.now(), tools: raw });
-      return { reachable: true, tools: raw };
-    } finally {
-      await client.close();
-    }
+    await withTimeout(
+      client.connect(createTransport(server)),
+      PROBE_TIMEOUT_MS,
+      `MCP '${server.id}' connect`,
+    );
+    const { tools } = await withTimeout(
+      client.listTools(),
+      PROBE_TIMEOUT_MS,
+      `MCP '${server.id}' listTools`,
+    );
+    const raw: RawMcpTool[] = tools.map(t => ({
+      name: t.name,
+      description: t.description,
+    }));
+    rawCache.set(server.id, { fetchedAt: Date.now(), tools: raw });
+    return { reachable: true, tools: raw };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`MCP server '${server.id}' tool listing failed: ${message}`);
     // Report the failure (capabilities); still expose any stale tools we have.
     return { reachable: false, error: message, tools: cached?.tools ?? [] };
+  } finally {
+    await client.close().catch(() => {});
   }
 }
 
@@ -231,6 +271,39 @@ export async function listServerToolsRaw(
   logger: LoggerService,
 ): Promise<RawMcpTool[]> {
   return (await probeServerTools(server, logger)).tools;
+}
+
+/**
+ * Synchronous read of the warm cache: a server's cached tools, or `[]` if it
+ * hasn't been warmed yet. NEVER connects — this is what `/status` uses so a
+ * page load never blocks on a live MCP connection. The cache is kept fresh by
+ * {@link warmServerToolsCache} (scheduled in the plugin); an unwarmed/unreachable
+ * server simply yields `[]` until the next warm cycle fills it in.
+ */
+export function cachedServerToolsRaw(serverId: string): RawMcpTool[] {
+  return rawCache.get(serverId)?.tools ?? [];
+}
+
+/**
+ * Background warmer: force-refresh the tool cache for every given server so the
+ * synchronous `/status` read ({@link cachedServerToolsRaw}) is always populated.
+ * Bounded concurrency avoids a connection burst with many servers; each probe is
+ * timeout-bounded, and a failure leaves the prior cached value intact (see
+ * {@link probeServerTools}). Off the request path — never blocks a user.
+ */
+export async function warmServerToolsCache(
+  servers: McpServerConfig[],
+  logger: LoggerService,
+): Promise<void> {
+  const queue = [...servers];
+  const worker = async (): Promise<void> => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      await probeServerTools(next, logger, true);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(WARM_CONCURRENCY, servers.length) }, worker),
+  );
 }
 
 /**

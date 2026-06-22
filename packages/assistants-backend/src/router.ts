@@ -33,7 +33,7 @@ import { AssistantsConfig, isPolicyAccessible } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
 import {
   buildMcpTools,
-  listServerToolsRaw,
+  cachedServerToolsRaw,
   splitAllowedTools,
   summarizeMcpTools,
 } from './mcp';
@@ -473,26 +473,22 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         split: splitAllowedTools(assistant.allowedTools, assistants.mcpServers),
       }));
 
-    // Pre-fetch (cached) MCP tool summaries for every server referenced by an
-    // accessible assistant, so the synchronous tool projection below can include
-    // them. A server that's down yields an empty list, not an error.
-    const neededServers = new Set<string>();
+    // MCP tool summaries come from a background-warmed cache
+    // (warmServerToolsCache, scheduled in the plugin) read SYNCHRONOUSLY — so a
+    // page load never blocks on a live MCP connection. A server not yet warmed
+    // (or unreachable) yields an empty list; its tools fill in on the next warm
+    // cycle. The per-assistant allowlist is applied below via summarizeMcpTools.
+    const rawByServer = new Map<
+      string,
+      ReturnType<typeof cachedServerToolsRaw>
+    >();
     for (const { split } of accessible) {
-      split.mcpSelections.forEach(sel => neededServers.add(sel.server.id));
-    }
-    // Full (unfiltered) raw tool list per server, cached; the per-assistant
-    // tool allowlist is applied below via summarizeMcpTools.
-    const rawByServer = new Map<string, Awaited<
-      ReturnType<typeof listServerToolsRaw>
-    >>();
-    await Promise.all(
-      [...neededServers].map(async id => {
-        const server = assistants.mcpServers.get(id);
-        if (server) {
-          rawByServer.set(id, await listServerToolsRaw(server, logger));
+      for (const sel of split.mcpSelections) {
+        if (!rawByServer.has(sel.server.id)) {
+          rawByServer.set(sel.server.id, cachedServerToolsRaw(sel.server.id));
         }
-      }),
-    );
+      }
+    }
 
     // Project each accessible assistant to the browser-safe summary (no prompt,
     // no access) via the store, attaching the resolved tool list = its allowlist

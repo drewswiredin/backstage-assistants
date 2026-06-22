@@ -253,7 +253,7 @@ assistants:
             <tr><td class="k">tools (resolved summaries)</td><td><span class="tag safe">browser</span></td><td>tool list / detail — name · description · source, for both Actions and MCP</td></tr>
           </table>
         </div>
-        <p class="note"><b>Tool summaries are browser-safe; tool execution is not.</b> <code>/status</code> lists each assistant's effective tools (Action + MCP) so the UI can show them; the actual invoke happens only at <code>/chat</code>, under the identities described in the <a href="architecture.html#identity">architecture trust model</a>. <b>Definition reads split too:</b> the public <code>/status</code> serves only browser-safe summaries (titles · models · ui · tool-summaries — never prompt or access), while the full definitions reach the editor via the admin-gated <code>GET /manage/assistants</code>.</p>
+        <p class="note"><b>Tool summaries are browser-safe; tool execution is not.</b> <code>/status</code> lists each assistant's effective tools (Action + MCP) so the UI can show them; the actual invoke happens only at <code>/chat</code>, under the identities described in the <a href="architecture.html#identity">architecture trust model</a>. The MCP tool names come from a <b>background-warmed cache</b> (a scheduled server-side probe), so <code>/status</code> never connects to an MCP server on the request path. <b>Definition reads split too:</b> the public <code>/status</code> serves only browser-safe summaries (titles · models · ui · tool-summaries — never prompt or access), while the full definitions reach the editor via the admin-gated <code>GET /manage/assistants</code>.</p>
       </section>
 
       <!-- 4 · FACTS ------------------------------------------------------- -->
