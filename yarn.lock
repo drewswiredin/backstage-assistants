@@ -269,7 +269,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/react-ai-sdk@npm:^1.3.0":
+"@assistant-ui/react-ai-sdk@npm:1.3.31":
   version: 1.3.31
   resolution: "@assistant-ui/react-ai-sdk@npm:1.3.31"
   dependencies:
@@ -4724,7 +4724,7 @@ __metadata:
     "@ai-sdk/react": "npm:^3.0.193"
     "@assistant-ui/core": "npm:^0.2.9"
     "@assistant-ui/react": "npm:^0.14.0"
-    "@assistant-ui/react-ai-sdk": "npm:^1.3.0"
+    "@assistant-ui/react-ai-sdk": "npm:1.3.31"
     "@assistant-ui/react-markdown": "npm:^0.14.0"
     "@assistant-ui/react-ui": "npm:^0.2.0"
     "@backstage/catalog-model": "npm:^1.9.0"
