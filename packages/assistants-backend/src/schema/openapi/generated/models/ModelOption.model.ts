@@ -21,4 +21,12 @@ export interface ModelOption {
    * Model name, e.g. \"claude-sonnet-4\".
    */
   model: string;
+  /**
+   * Context-window size in tokens (max input), when known from config. Drives the composer\'s context-usage gauge.
+   */
+  contextWindow?: number;
+  /**
+   * True when this model reasons and offers the effort tiers. Absent or false means no effort control; the model runs at the provider\'s default.
+   */
+  reasoning?: boolean;
 }

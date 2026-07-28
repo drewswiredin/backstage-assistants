@@ -20,6 +20,7 @@ import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
   ModelId,
+  ReasoningLevel,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 import { fetchThreadStatus } from './threadListAdapter';
@@ -57,20 +58,27 @@ interface RuntimeHookOptions {
   getActiveAssistantId: () => AssistantId;
   /** The currently selected model id (kept in a ref so the transport reads it live). */
   modelIdRef: RefObject<ModelId>;
+  /**
+   * The reasoning level chosen for the active thread, or undefined when the
+   * chosen model has no reasoning control. Also a ref, for the same reason.
+   */
+  reasoningLevelRef: RefObject<ReasoningLevel | undefined>;
 }
 
 /**
  * Wraps the authed fetch to inject the per-turn fields the backend `/chat`
  * expects. `AssistantChatTransport` builds the body (with the thread's `id` and
- * `messages`); we add `assistantId` + `modelId` and copy `id -> threadId`.
- * `getAssistantId` is read per request so each thread targets its OWN agent (one
- * runtime spans all agents).
+ * `messages`); we add `assistantId` + `modelId` (+ `reasoningLevel` when the
+ * chosen model offers one) and copy `id -> threadId`. `getAssistantId` is read
+ * per request so each thread targets its OWN agent (one runtime spans all
+ * agents).
  */
 function createInjectingFetch(
   baseFetch: typeof fetch,
   baseUrl: string,
   getAssistantId: () => AssistantId,
   modelIdRef: RefObject<ModelId>,
+  reasoningLevelRef: RefObject<ReasoningLevel | undefined>,
 ): typeof fetch {
   return async (input, init) => {
     let nextInit = init;
@@ -79,6 +87,11 @@ function createInjectingFetch(
         const body = JSON.parse(init.body) as Record<string, unknown>;
         body.assistantId = getAssistantId();
         body.modelId = modelIdRef.current;
+        // Omitted entirely for a model with no reasoning control, so the
+        // provider's own default stands.
+        if (reasoningLevelRef.current) {
+          body.reasoningLevel = reasoningLevelRef.current;
+        }
         if (typeof body.id === 'string' && body.threadId === undefined) {
           body.threadId = body.id;
         }
@@ -114,7 +127,8 @@ function createInjectingFetch(
  * the server says the thread is working.
  */
 export function makeRuntimeHook(options: RuntimeHookOptions) {
-  const { api, baseUrl, getActiveAssistantId, modelIdRef } = options;
+  const { api, baseUrl, getActiveAssistantId, modelIdRef, reasoningLevelRef } =
+    options;
 
   return function useRuntimeHook() {
     const threadChatId = useAuiState(state => state.threadListItem.id);
@@ -149,6 +163,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
             baseUrl,
             () => assistantIdRef.current,
             modelIdRef,
+            reasoningLevelRef,
           ),
           resumable: {
             // Reconnect by the THREAD id — the backend buffers the in-flight SSE

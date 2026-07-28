@@ -41,6 +41,17 @@ components:
         model:
           type: string
           description: Model name, e.g. "claude-sonnet-4".
+        contextWindow:
+          type: number
+          description: >-
+            Context-window size in tokens (max input), when known from config.
+            Drives the composer's context-usage gauge.
+        reasoning:
+          type: boolean
+          description: >-
+            True when this model reasons and offers the effort tiers. Absent or
+            false means no effort control; the model runs at the provider's
+            default.
     UiOptions:
       type: object
       description: >-
@@ -138,6 +149,13 @@ components:
           type: string
           minLength: 1
           description: The `provider:model` id to use for this turn.
+        reasoningLevel:
+          type: string
+          enum: [low, medium, high, xhigh]
+          description: >-
+            How hard the model should think on this turn. Applied only when the
+            chosen model is flagged `reasoning`; otherwise ignored and the
+            provider's default applies.
         threadId:
           type: string
           minLength: 1

@@ -25,7 +25,10 @@ import type {
   MessageFormatRepository,
   ExportedMessageRepository,
 } from '@assistant-ui/core';
-import type { AssistantId } from '@drewswiredin/backstage-plugin-assistants-common';
+import type {
+  AssistantId,
+  ReasoningLevel,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 
 /** Browser-side mirror of the backend `Thread` row (see assistants-backend/threads.ts). */
@@ -36,6 +39,7 @@ interface ServerThread {
   archived: boolean;
   pinned: boolean;
   model: string | null;
+  reasoningLevel: string | null;
   updatedAt: string;
   lastReadAt: string | null;
   unread: boolean;
@@ -49,6 +53,7 @@ export interface ThreadCustomMetadata {
   pinned: boolean;
   updatedAt: string;
   model: string | null;
+  reasoningLevel: string | null;
   lastReadAt: string | null;
 }
 
@@ -110,6 +115,7 @@ export function createThreadListAdapter(
       pinned: t.pinned,
       updatedAt: t.updatedAt,
       model: t.model,
+      reasoningLevel: t.reasoningLevel,
       lastReadAt: t.lastReadAt,
     } satisfies ThreadCustomMetadata,
   });
@@ -291,12 +297,20 @@ export async function fetchThreadStatus(
 
 /**
  * Patch a thread's server-side fields the runtime adapter doesn't cover (pin,
- * model). Rename/archive/delete go through the runtime's `ThreadListItemRuntime`.
+ * model, reasoning level). Rename/archive/delete go through the runtime's
+ * `ThreadListItemRuntime`.
  */
 export async function patchThread(
   api: AssistantsApi,
   threadId: string,
-  patch: { title?: string; model?: string; pinned?: boolean; archived?: boolean },
+  patch: {
+    title?: string;
+    model?: string;
+    /** `null` clears the stored level (back to the provider default). */
+    reasoningLevel?: ReasoningLevel | null;
+    pinned?: boolean;
+    archived?: boolean;
+  },
 ): Promise<void> {
   const baseUrl = await api.getBaseUrl();
   await api.fetch(`${baseUrl}/threads/${threadId}`, {

@@ -117,6 +117,28 @@ export interface AssistantSummary {
 }
 
 /**
+ * How hard a reasoning-capable model should think before answering — relative
+ * effort, mapped to each provider's own knob server-side (OpenAI/Azure
+ * `reasoningEffort`, Anthropic thinking budget).
+ *
+ * The same four tiers apply to every reasoning model: config only says WHETHER
+ * a model reasons (`reasoning: true`), never which tiers it has. Sending no
+ * level at all is always valid and leaves the provider's own default in force —
+ * that, not a level, is how you opt out of tuning.
+ *
+ * @public
+ */
+export type ReasoningLevel = 'low' | 'medium' | 'high' | 'xhigh';
+
+/** Every {@link ReasoningLevel}, in ascending order of effort. @public */
+export const REASONING_LEVELS: ReasoningLevel[] = [
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+];
+
+/**
  * A single selectable model in the global model pool.
  *
  * @public
@@ -134,6 +156,12 @@ export interface ModelOption {
    * shows the token count without a percentage).
    */
   contextWindow?: number;
+  /**
+   * True when this model reasons, i.e. offers the {@link REASONING_LEVELS}
+   * effort tiers. False/absent means no reasoning control — the chat hides the
+   * effort picker and turns run at the provider's default.
+   */
+  reasoning?: boolean;
 }
 
 /**
@@ -163,6 +191,12 @@ export interface TitleRequest {
   assistantId: AssistantId;
   /** The `provider:model` id to use for this turn. */
   modelId: ModelId;
+  /**
+   * How hard the model should think on this turn. Only meaningful for a model
+   * flagged {@link ModelOption.reasoning}; otherwise ignored server-side and the
+   * provider's default applies.
+   */
+  reasoningLevel?: ReasoningLevel;
   /** The conversation as a non-empty array of UI messages. */
   messages: unknown[];
 }

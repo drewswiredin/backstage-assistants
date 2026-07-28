@@ -22,6 +22,8 @@ export interface Thread {
   assistantId: string;
   title: string;
   model: string | null;
+  /** Reasoning effort last chosen for this thread; null = never chosen. */
+  reasoningLevel: string | null;
   pinned: boolean;
   archived: boolean;
   createdAt: string;
@@ -41,7 +43,9 @@ export interface StoredMessage {
   sortOrder: number;
 }
 
-type ThreadPatch = Partial<Pick<Thread, 'title' | 'model' | 'pinned' | 'archived'>>;
+type ThreadPatch = Partial<
+  Pick<Thread, 'title' | 'model' | 'reasoningLevel' | 'pinned' | 'archived'>
+>;
 
 export class ThreadService {
   constructor(private readonly db: Knex) {}
@@ -112,13 +116,15 @@ export class ThreadService {
     threadId: string,
     patch: ThreadPatch,
   ): Promise<Thread | null> {
-    // Metadata edits (title / model / pin / archive) must NOT bump updated_at:
+    // Metadata edits (title / model / reasoning / pin / archive) must NOT bump updated_at:
     // unread is `updated_at > last_read_at`, so bumping it would falsely mark a
     // conversation unread after a rename or pin. updated_at moves only when a
     // turn lands (replaceMessages) — it tracks activity + recency, not edits.
     const fields: Record<string, unknown> = {};
     if (patch.title !== undefined) fields.title = patch.title;
     if (patch.model !== undefined) fields.model = patch.model;
+    if (patch.reasoningLevel !== undefined)
+      fields.reasoning_level = patch.reasoningLevel;
     if (patch.pinned !== undefined) fields.pinned = patch.pinned;
     if (patch.archived !== undefined) fields.archived = patch.archived;
     if (Object.keys(fields).length === 0) {
@@ -285,6 +291,7 @@ function toThread(row: Record<string, unknown>): Thread {
     assistantId: row.assistant_id as string,
     title: row.title as string,
     model: (row.model as string) ?? null,
+    reasoningLevel: (row.reasoning_level as string) ?? null,
     pinned: Boolean(row.pinned),
     archived: Boolean(row.archived),
     createdAt: String(row.created_at),

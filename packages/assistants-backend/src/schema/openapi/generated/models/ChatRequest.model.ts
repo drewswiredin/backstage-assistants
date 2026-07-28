@@ -18,6 +18,10 @@ export interface ChatRequest {
    */
   modelId: string;
   /**
+   * How hard the model should think on this turn. Applied only when the chosen model is flagged `reasoning`; otherwise ignored and the provider\'s default applies.
+   */
+  reasoningLevel?: ChatRequestReasoningLevelEnum;
+  /**
    * The conversation (thread) this turn belongs to. Sent by `/chat` so the backend can persist the completed turn server-side. Optional; omitted by `/title` and by the first turn of a not-yet-created thread.
    */
   threadId?: string;
@@ -26,3 +30,8 @@ export interface ChatRequest {
    */
   messages: Array<any>;
 }
+
+/**
+ * @public
+ */
+export type ChatRequestReasoningLevelEnum = 'low' | 'medium' | 'high' | 'xhigh';

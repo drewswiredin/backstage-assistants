@@ -58,7 +58,8 @@ assistants:
       models: # object list: required name, optional contextWindow (drives the gauge)
         - name: google/gemini-2.5-flash
           contextWindow: 1048576
-        - name: anthropic/claude-3.5-sonnet
+          reasoning: true # offers the effort picker
+        - name: anthropic/claude-3.5-sonnet # no flag = no picker
 
   ui: # global UI defaults, deep-merged UNDER each assistant's own ui
     composer:
@@ -78,7 +79,8 @@ assistants:
 | `providers.<id>.type` | yes | `openai` \| `anthropic` \| `azure` \| `openai-compatible`. |
 | `providers.<id>.apiKey` | yes | Provider key (`@visibility secret`). |
 | `providers.<id>.baseUrl` | no | Base URL override. |
-| `providers.<id>.models` | yes | Object list; each `{ name, contextWindow? }`. |
+| `providers.<id>.models` | yes | Object list; each `{ name, contextWindow?, reasoning? }`. |
+| `providers.<id>.models[].reasoning` | no | `true` if the model reasons — adds the effort picker (see Reasoning effort). |
 | `mcp.connectTimeoutMs` | no | Global MCP connect/list-tools timeout ceiling in ms (default `8000`). |
 | `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
 | `ui` | no | Global composer placeholder + starter suggestions (deep-merged under each assistant). |
@@ -154,6 +156,48 @@ providers:
     models: [my-gpt4o-deployment]
 # -> ids: azure:my-gpt4o-deployment
 ```
+
+## Reasoning effort
+
+A model that reasons gets an **effort picker** in the chat header, next to the
+model picker. Config says only *whether* a model reasons — never which tiers it
+has:
+
+```yaml
+models:
+  - name: gpt-5.5
+    reasoning: true
+  - name: gpt-4o-mini # no flag -> no picker for this model
+```
+
+The tiers are fixed and the same for every reasoning model — **low · medium ·
+high · xhigh** — translated to the provider's own knob at request time:
+
+| Provider type | Sent as |
+| --- | --- |
+| `openai`, `openai-compatible`, `azure` | `reasoningEffort: <tier>` |
+| `anthropic` | `thinking: { type: enabled, budgetTokens }` — 2048 / 8192 / 24576 / 32768 |
+
+The tiers are ours rather than a provider's because Anthropic has no named
+levels at all, only a token budget, so they have to be defined somewhere; doing
+it once here beats every deployment inventing its own names.
+
+Behaviour worth knowing:
+
+- **Not choosing a tier is always valid.** The picker starts at **Default** and
+  sends nothing, leaving the provider's own default in force. That — not a
+  disabled tier — is how you opt out of tuning, which is why there is no `off`
+  (some reasoning models can't be turned off at all).
+- **A non-reasoning model has no picker**, and its turns carry no effort field.
+- **Switching to a non-reasoning model drops the tier** back to Default rather
+  than applying it to a model that never advertised reasoning.
+- **The tier is remembered per conversation**, alongside the thread's model.
+- A tier sent for a model that isn't flagged is **ignored** server-side (logged
+  at debug) rather than failing the turn — a client whose model changed under it
+  must not break.
+
+Reasoning *output* (where the model streams its thinking) is already rendered as
+a collapsible **Reasoning** block in the chat, independent of this setting.
 
 ## Tools (actions)
 

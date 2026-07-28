@@ -173,6 +173,14 @@ export interface Config {
           name: string;
           /** Optional max input tokens for this model; drives the context-usage gauge. */
           contextWindow?: number;
+          /**
+           * True when this model reasons — the chat then offers an effort
+           * picker (low / medium / high / xhigh) for it, translated per
+           * provider (OpenAI and Azure `reasoningEffort`, Anthropic thinking
+           * budget). Omit for a non-reasoning model: no picker, and turns run
+           * at the provider's own default.
+           */
+          reasoning?: boolean;
         }>;
       };
     };

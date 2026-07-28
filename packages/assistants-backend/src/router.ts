@@ -25,6 +25,7 @@ import {
 } from 'ai';
 import type {
   AssistantDefinition,
+  ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -534,12 +535,14 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 2. The request body shape (assistantId/modelId present + non-empty,
     //    messages a non-empty array) is already validated by the OpenAPI router
     //    against `src/schema/openapi.yaml`, so no hand-checks are needed here.
-    const { assistantId, modelId, threadId, messages } = req.body as {
-      assistantId: string;
-      modelId: string;
-      threadId?: string;
-      messages: unknown[];
-    };
+    const { assistantId, modelId, threadId, messages, reasoningLevel } =
+      req.body as {
+        assistantId: string;
+        modelId: string;
+        threadId?: string;
+        messages: unknown[];
+        reasoningLevel?: ReasoningLevel;
+      };
 
     // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
     //    per-turn access decision reflects edits/deletes immediately, even on a
@@ -566,6 +569,20 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       );
     }
     const model = assistants.resolveModel(modelId);
+
+    // 5b. Reasoning effort for this turn. Unset, or a level this model doesn't
+    //     declare, means send nothing and let the provider default stand — a
+    //     client whose model just changed under it must not fail the turn.
+    const providerOptions = reasoningLevel
+      ? assistants.resolveReasoning(modelId, reasoningLevel)
+      : undefined;
+    if (reasoningLevel && !providerOptions) {
+      logger.debug('reasoning level not offered by model; using default', {
+        requestId,
+        modelId,
+        reasoningLevel,
+      });
+    }
 
     // 6. Resolve the assistant's tools from its unified `allowedTools`. Split
     //    each entry into bare Backstage action ids and per-server MCP tool
@@ -787,9 +804,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       modelMessages = sanitizeAnthropicToolArgs(modelMessages);
     }
 
-    // 9. Stream the turn. Provider defaults are used (no explicit
-    //    thinking/reasoning tuning). The multi-step tool loop is bounded by
-    //    maxSteps.
+    // 9. Stream the turn. Reasoning effort is applied only when this turn asked
+    //    for a level the model declares (step 5b); otherwise the provider's own
+    //    default stands. The multi-step tool loop is bounded by maxSteps.
     // Abort handle for this turn, registered so the Stop button (via
     // POST /chat/cancel/:threadId) can stop the server-side generation. Cleared
     // on finish / abort / error.
@@ -801,6 +818,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       system: assistant.prompt,
       messages: modelMessages,
       tools,
+      ...(providerOptions ? { providerOptions } : {}),
       stopWhen: stepCountIs(assistants.maxSteps),
       abortSignal: turnAbort.signal,
       onFinish: ({ finishReason, usage, steps }) => {
@@ -1208,14 +1226,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     })().catch(next);
   });
 
-  // Rename / set model / pin / archive.
+  // Rename / set model / set reasoning level / pin / archive.
   threads.patch('/:id', (req, res, next) => {
     (async () => {
       const userRef = await resolveUserRef(req);
-      const { title, model, pinned, archived } = req.body ?? {};
+      const { title, model, reasoningLevel, pinned, archived } = req.body ?? {};
       const thread = await threadService.updateThread(userRef, req.params.id, {
         title,
         model,
+        reasoningLevel,
         pinned,
         archived,
       });

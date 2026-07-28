@@ -176,6 +176,8 @@ assistants:
       models: # object list: required `name`, optional `contextWindow` (drives the composer gauge)
         - name: google/gemini-2.5-flash
           contextWindow: 1048576
+          reasoning: true # offers the effort picker (low/medium/high/xhigh)
+        # No `reasoning` flag — no effort picker for this model.
         - name: anthropic/claude-3.5-sonnet
 
   # Global UI defaults, deep-merged UNDER each assistant's own ui.

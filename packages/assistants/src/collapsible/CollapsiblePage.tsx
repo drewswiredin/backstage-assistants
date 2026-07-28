@@ -38,8 +38,10 @@ import {
 import type {
   ModelId,
   ModelOption,
+  ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
+import { REASONING_LEVELS } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef, type AssistantsApi } from '../api';
 import { usePermission } from '@backstage/plugin-permission-react';
 import {
@@ -327,6 +329,14 @@ function modelLabel(id: ModelId, pool: ModelOption[]): string {
   return splitModel(id, pool).name;
 }
 
+/** Menu labels for the effort tiers a reasoning model offers. */
+const REASONING_LABELS: Record<ReasoningLevel, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+};
+
 // ---------------------------------------------------------------------------
 // Page entry
 // ---------------------------------------------------------------------------
@@ -466,6 +476,9 @@ function ChatRuntime({
   const activeAssistantIdRef = useRef<string>(initialAssistantId);
   // Drives the transport body; updated by the model picker + on thread switch.
   const modelIdRef = useRef<ModelId>(status.defaultModel);
+  // Same, for reasoning effort. undefined = the chosen model offers no levels,
+  // so the turn carries none and the provider default applies.
+  const reasoningLevelRef = useRef<ReasoningLevel | undefined>(undefined);
 
   const adapter = useMemo(
     () => createThreadListAdapter(api, () => activeAssistantIdRef.current),
@@ -478,6 +491,7 @@ function ChatRuntime({
         baseUrl,
         getActiveAssistantId: () => activeAssistantIdRef.current,
         modelIdRef,
+        reasoningLevelRef,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, baseUrl],
@@ -490,6 +504,7 @@ function ChatRuntime({
         status={status}
         api={api}
         modelIdRef={modelIdRef}
+        reasoningLevelRef={reasoningLevelRef}
         activeAssistantIdRef={activeAssistantIdRef}
         initialAssistantId={initialAssistantId}
         refreshStatus={refreshStatus}
@@ -506,6 +521,7 @@ function ChatChrome({
   status,
   api,
   modelIdRef,
+  reasoningLevelRef,
   activeAssistantIdRef,
   initialAssistantId,
   refreshStatus,
@@ -513,6 +529,7 @@ function ChatChrome({
   status: StatusResponse;
   api: AssistantsApi;
   modelIdRef: React.MutableRefObject<ModelId>;
+  reasoningLevelRef: React.MutableRefObject<ReasoningLevel | undefined>;
   activeAssistantIdRef: React.MutableRefObject<string>;
   initialAssistantId: string;
   refreshStatus: () => void;
@@ -667,16 +684,47 @@ function ChatChrome({
     resolveModel((activeItem?.custom as Partial<ThreadCustomMetadata> | undefined)?.model),
   );
 
-  // Adopt the active thread's saved model on switch (keyed on the active id only).
+  // Effort tiers are the same everywhere; only WHETHER a model reasons varies,
+  // so a non-reasoning model has no control at all.
+  const reasons = useCallback(
+    (id: ModelId): boolean =>
+      status.models.find(m => m.id === id)?.reasoning === true,
+    [status.models],
+  );
+  /** Keep a stored/current tier only if the model in question reasons. */
+  const resolveReasoning = useCallback(
+    (
+      stored: string | null | undefined,
+      forModel: ModelId,
+    ): ReasoningLevel | undefined =>
+      stored &&
+      reasons(forModel) &&
+      REASONING_LEVELS.includes(stored as ReasoningLevel)
+        ? (stored as ReasoningLevel)
+        : undefined,
+    [reasons],
+  );
+
+  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel | undefined>(
+    () => {
+      const custom = activeItem?.custom as Partial<ThreadCustomMetadata> | undefined;
+      return resolveReasoning(custom?.reasoningLevel, resolveModel(custom?.model));
+    },
+  );
+
+  // Adopt the active thread's saved model + level on switch (keyed on the active
+  // id only). The level is validated against the thread's own model, not the
+  // previously selected one.
   useEffect(() => {
-    const stored = (
-      threadList.threadItems[activeId]?.custom as
-        | Partial<ThreadCustomMetadata>
-        | undefined
-    )?.model;
-    const next = resolveModel(stored);
+    const custom = threadList.threadItems[activeId]?.custom as
+      | Partial<ThreadCustomMetadata>
+      | undefined;
+    const next = resolveModel(custom?.model);
     setModelId(next);
     modelIdRef.current = next;
+    const level = resolveReasoning(custom?.reasoningLevel, next);
+    setReasoningLevel(level);
+    reasoningLevelRef.current = level;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
@@ -783,11 +831,84 @@ function ChatChrome({
     (next: ModelId) => {
       setModelId(next);
       modelIdRef.current = next;
+      // The new model may not offer the level in force — carry it over only if
+      // it does, otherwise fall back to that model's provider default.
+      const level = resolveReasoning(reasoningLevelRef.current, next);
+      setReasoningLevel(level);
+      reasoningLevelRef.current = level;
       if (activeRemoteId) {
-        void patchThread(api, activeRemoteId, { model: next });
+        void patchThread(api, activeRemoteId, {
+          model: next,
+          reasoningLevel: level,
+        });
       }
     },
-    [api, activeRemoteId, modelIdRef],
+    [api, activeRemoteId, modelIdRef, reasoningLevelRef, resolveReasoning],
+  );
+
+  const handleReasoningChange = useCallback(
+    (next: ReasoningLevel) => {
+      setReasoningLevel(next);
+      reasoningLevelRef.current = next;
+      if (activeRemoteId) {
+        void patchThread(api, activeRemoteId, { reasoningLevel: next });
+      }
+    },
+    [api, activeRemoteId, reasoningLevelRef],
+  );
+
+  /** Back to the provider's own default — null clears the stored level. */
+  const handleReasoningClear = useCallback(() => {
+    setReasoningLevel(undefined);
+    reasoningLevelRef.current = undefined;
+    if (activeRemoteId) {
+      void patchThread(api, activeRemoteId, { reasoningLevel: null });
+    }
+  }, [api, activeRemoteId, reasoningLevelRef]);
+
+  // Effort picker: rendered ONLY for a reasoning model, so a non-reasoning
+  // model shows no dead control. "Default" clears the choice and lets the
+  // provider decide.
+  const reasoningPicker = reasons(modelId) && (
+    <FormControl>
+      <Select
+        value={reasoningLevel ?? ''}
+        onChange={e => {
+          const next = e.target.value as ReasoningLevel | '';
+          if (next) handleReasoningChange(next);
+          else handleReasoningClear();
+        }}
+        disableUnderline
+        // Without displayEmpty, MUI skips renderValue for the empty (= no
+        // explicit level) value and the trigger renders as a bare caret.
+        displayEmpty
+        className={classes.modelSelect}
+        inputProps={{ 'aria-label': 'Reasoning effort' }}
+        renderValue={value =>
+          value ? `Effort: ${value as ReasoningLevel}` : 'Effort: default'
+        }
+        MenuProps={{
+          anchorOrigin: { vertical: 'bottom', horizontal: 'right' },
+          transformOrigin: { vertical: 'top', horizontal: 'right' },
+          getContentAnchorEl: null,
+        }}
+      >
+        <MenuItem value="" className={classes.modelItem}>
+          <ListItemIcon className={classes.modelItemCheck}>
+            {reasoningLevel === undefined ? <CheckIcon fontSize="small" /> : null}
+          </ListItemIcon>
+          <span style={{ flexGrow: 1 }}>Default</span>
+        </MenuItem>
+        {REASONING_LEVELS.map(level => (
+          <MenuItem key={level} value={level} className={classes.modelItem}>
+            <ListItemIcon className={classes.modelItemCheck}>
+              {level === reasoningLevel ? <CheckIcon fontSize="small" /> : null}
+            </ListItemIcon>
+            <span style={{ flexGrow: 1 }}>{REASONING_LABELS[level]}</span>
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   );
 
   const modelPicker = (
@@ -971,7 +1092,10 @@ function ChatChrome({
                   </Typography>
                 )}
               </div>
-              <div className={classes.headerControls}>{modelPicker}</div>
+              <div className={classes.headerControls}>
+                {reasoningPicker}
+                {modelPicker}
+              </div>
             </div>
             <div className={classes.threadBody}>
               {isBlankDraft ? (
