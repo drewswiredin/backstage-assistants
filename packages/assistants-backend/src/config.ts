@@ -93,6 +93,12 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** stdio: working directory for the child process. */
   cwd?: string;
+  /**
+   * Ceiling for connecting to this server and listing its tools, resolved
+   * per-server → global `assistants.mcp.connectTimeoutMs` at config read time;
+   * absent = the built-in 8s default.
+   */
+  connectTimeoutMs?: number;
 }
 
 /**
@@ -286,13 +292,31 @@ export function readConfig(config: Config): AssistantsConfig {
   // names) is folded into the global approval set as `<serverId>__<tool>`.
   const mcpServers = new Map<string, McpServerConfig>();
   const requireApproval = new Set<string>();
-  const serversConfig = root
-    .getOptionalConfig('mcp')
-    ?.getOptionalConfig('servers');
+  const mcpConfig = root.getOptionalConfig('mcp');
+  // A non-positive ceiling would fail every connect instantly — reject it here
+  // rather than let a typo look like an unreachable server.
+  const readTimeout = (c: Config, path: string): number | undefined => {
+    const ms = c.getOptionalNumber('connectTimeoutMs');
+    if (ms !== undefined && ms <= 0) {
+      throw new InputError(
+        `${path}.connectTimeoutMs must be a positive number of milliseconds`,
+      );
+    }
+    return ms;
+  };
+  // Global connect/probe timeout default; each server may override it. Left
+  // undefined when unset so mcp.ts applies its built-in 8s default.
+  const globalConnectTimeoutMs = mcpConfig
+    ? readTimeout(mcpConfig, 'assistants.mcp')
+    : undefined;
+  const serversConfig = mcpConfig?.getOptionalConfig('servers');
   if (serversConfig) {
     for (const serverId of serversConfig.keys()) {
       const sc = serversConfig.getConfig(serverId);
       const transport = sc.getOptionalString('transport') ?? 'http';
+      const connectTimeoutMs =
+        readTimeout(sc, `assistants.mcp.servers.${serverId}`) ??
+        globalConnectTimeoutMs;
       if (!['http', 'sse', 'websocket', 'stdio'].includes(transport)) {
         throw new InputError(
           `assistants.mcp.servers.${serverId}.transport must be one of ` +
@@ -325,6 +349,7 @@ export function readConfig(config: Config): AssistantsConfig {
           args: sc.getOptionalStringArray('args'),
           env: Object.keys(env).length > 0 ? env : undefined,
           cwd: sc.getOptionalString('cwd'),
+          connectTimeoutMs,
         });
       } else {
         const url = sc.getOptionalString('url');
@@ -338,6 +363,7 @@ export function readConfig(config: Config): AssistantsConfig {
           transport: transport as McpTransport,
           url,
           headers: readStringMap('headers'),
+          connectTimeoutMs,
         });
       }
 

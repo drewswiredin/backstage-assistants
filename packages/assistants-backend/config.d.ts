@@ -74,6 +74,14 @@ export interface Config {
      * entries in their `allowedTools`.
      */
     mcp?: {
+      /**
+       * Global default ceiling in milliseconds for connecting to an MCP server
+       * and listing its tools (each bounded individually). Overridable per
+       * server via `servers.<id>.connectTimeoutMs`. Defaults to 8000. Raise it
+       * for slow-starting stdio servers (e.g. Python servers via `uvx` can take
+       * ~10s to start).
+       */
+      connectTimeoutMs?: number;
       servers?: {
         [serverId: string]: {
           /**
@@ -104,6 +112,12 @@ export interface Config {
           env?: { [name: string]: string };
           /** stdio: working directory for the child process. */
           cwd?: string;
+          /**
+           * Per-server override of the connect/list-tools timeout ceiling in
+           * milliseconds. Falls back to the global `mcp.connectTimeoutMs`,
+           * then the built-in 8000ms default.
+           */
+          connectTimeoutMs?: number;
           /**
            * Per-server approval floor: un-namespaced tool names of this server
            * whose execution must be gated behind an explicit user Allow/Deny.

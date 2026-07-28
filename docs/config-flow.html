@@ -94,7 +94,7 @@ flowchart LR
     direction TB
     G["global<br/>defaultModel · maxSteps · toolResultMaxChars<br/>requestBodyLimit · builtinActions"]
     PROV["providers.{id}<br/>type · apiKey* · baseUrl · options<br/>models: [{ name · contextWindow? }]"]
-    MCP["mcp.servers.{id}<br/>transport · url · headers* / command · args · env*<br/>requireApproval[] (per-server floor)"]
+    MCP["mcp.connectTimeoutMs (global default)<br/>mcp.servers.{id}<br/>transport · url · headers* / command · args · env*<br/>connectTimeoutMs (per-server override)<br/>requireApproval[] (per-server floor)"]
     UIG["ui (global defaults)<br/>composer.placeholder · suggestions[]"]
     APR["requireApproval[]<br/>global action floor"]
   end
@@ -196,6 +196,7 @@ assistants:
 
   <span class="c"># ---- external MCP servers (optional) ----</span>
   mcp:
+    connectTimeoutMs: 15000             <span class="c"># global ceiling for connect + listTools (default 8000)</span>
     servers:
       github:                           <span class="c"># remote (Streamable HTTP)</span>
         transport: http
@@ -210,6 +211,7 @@ assistants:
         args: ["-y", "@modelcontextprotocol/server-filesystem", "/srv/docs"]
         env:                            <span class="c"># * secret</span>
           TOKEN: <span class="s">${FS_TOKEN}</span>
+        connectTimeoutMs: 20000         <span class="c"># per-server override — slow-starting stdio servers (uvx/python ~10s)</span>
 
   ui:                                   <span class="c"># global UI defaults — the platform default, deep-merged UNDER each assistant's ui</span>
     composer: { placeholder: "Send a message…" }
@@ -237,6 +239,7 @@ assistants:
             <tr><td class="k">providers.* (type · baseUrl · options)</td><td><span class="tag secret">backend</span></td><td>provider registry (server)</td></tr>
             <tr><td class="k">mcp.servers.*.headers · env</td><td><span class="tag secret">secret</span></td><td>MCP transport auth (server)</td></tr>
             <tr><td class="k">mcp.servers.* (transport · url · command · args · cwd)</td><td><span class="tag secret">backend</span></td><td>MCP connection (server)</td></tr>
+            <tr><td class="k">mcp.connectTimeoutMs · mcp.servers.*.connectTimeoutMs</td><td><span class="tag secret">backend</span></td><td>ceiling for <code>connect</code> + <code>listTools</code> per server — per-server → global → 8000ms</td></tr>
             <tr><td class="k">mcp.servers.*.requireApproval[]</td><td><span class="tag secret">backend</span></td><td>per-server approval floor — folds into the <code>needsApproval</code> set at <code>/chat</code> (see <a href="architecture.html#hitl">architecture §4</a>)</td></tr>
             <tr><td class="k">requireApproval[] (top-level)</td><td><span class="tag secret">backend</span></td><td>global action approval floor — folds into the <code>needsApproval</code> set at <code>/chat</code></td></tr>
             <tr><td class="k">maxSteps</td><td><span class="tag secret">backend</span></td><td><code>streamText stopWhen</code> (default 10)</td></tr>

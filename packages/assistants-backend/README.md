@@ -79,6 +79,7 @@ assistants:
 | `providers.<id>.apiKey` | yes | Provider key (`@visibility secret`). |
 | `providers.<id>.baseUrl` | no | Base URL override. |
 | `providers.<id>.models` | yes | Object list; each `{ name, contextWindow? }`. |
+| `mcp.connectTimeoutMs` | no | Global MCP connect/list-tools timeout ceiling in ms (default `8000`). |
 | `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
 | `ui` | no | Global composer placeholder + starter suggestions (deep-merged under each assistant). |
 
@@ -223,6 +224,24 @@ assistants:
         # cwd: /optional/working/dir
 ```
 
+**Connect timeout.** Connecting to a server and listing its tools is bounded by
+`assistants.mcp.connectTimeoutMs` (default `8000`), overridable per server with
+`servers.<id>.connectTimeoutMs` — resolution is per-server → global → 8000ms.
+Slow-starting stdio servers need more: a Python server launched via `uvx` can
+take ~10s just to start, and a server that never finishes connecting inside the
+ceiling is retried on every maintenance cycle without ever coming up.
+
+```yaml
+assistants:
+  mcp:
+    connectTimeoutMs: 15000 # global default
+    servers:
+      atlassian:
+        transport: stdio
+        command: mcp-atlassian
+        connectTimeoutMs: 20000 # this server starts slowly
+```
+
 A server's tools are assigned to an assistant individually in the editor; the
 selection lives in that assistant's unified `allowedTools` as namespaced
 `<serverId>__<tool>` entries, applied to both `/chat` and the `/status` tool
@@ -237,17 +256,33 @@ listing (so the detail modal shows only the selected tools).
 > assistant's `access` policy. (Per-user identity propagation — e.g. Entra OBO
 > for Azure DevOps — is a planned enhancement.)
 
-### MCP probing is server-side and scheduled
+### MCP connections are pooled and maintained server-side
 
-MCP tool inventories are refreshed **in the background, on a schedule** — a task
-(`coreServices.scheduler`) probes every configured server every few minutes,
-bounded by an ~8s per-server timeout, and keeps a warm cache. `GET /status` reads
-that cache **synchronously**, so loading the plugin **never connects to an MCP
-server or blocks on a slow/unreachable one** (a server's tools simply fill in on
-the next warm cycle). `/chat` opens live connections per turn (closed when the
-response finishes), and `/capabilities` (the editor) is served from the same warm
-cache — keeping its per-server reachability and manual refresh. Tool listing for
-an unreachable server is logged and skipped; it never breaks a turn or `/status`.
+The plugin holds **one persistent client per configured server**, opened and kept
+open in the background — never on the request path. A scheduled task
+(`coreServices.scheduler`) runs every couple of minutes: it connects any server
+that isn't connected yet, refreshes each server's tool inventory into a warm
+cache, and reconnects one whose connection has dropped. Each connect and tool
+listing is bounded by that server's connect timeout (default 8s, see
+[Connect timeout](#mcp-servers-external-tools)), so one slow or black-holed
+server can't stall the cycle.
+
+Every read path is served from that pool:
+
+- **`GET /status`** reads the cached inventory **synchronously**, so loading the
+  plugin **never connects to an MCP server or blocks on a slow/unreachable one**
+  (a server's tools fill in on the next cycle).
+- **`/chat`** builds a turn's tools from the cache and executes them through the
+  **pooled connection** — it opens and closes nothing. A server that isn't
+  currently connected yields a graceful "not connected" tool result for that turn
+  and is healed by the next cycle.
+- **`/capabilities`** (the editor) reads the same pool, keeping its per-server
+  reachability, `error` reporting, and manual refresh.
+
+A failed refresh keeps the last-known tool list, so a transient blip doesn't
+empty an assistant's tools; the failure is logged and surfaced as
+`reachable: false`, never breaking a turn or `/status`. Connections are closed
+only on plugin shutdown.
 
 ## Human-in-the-loop (approvals & forms)
 

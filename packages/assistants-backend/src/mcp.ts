@@ -174,9 +174,22 @@ interface PooledServer {
 }
 const pool = new Map<string, PooledServer>();
 
-/** Per-connect/list ceiling so one slow/black-holed server can't stall a
- *  maintenance cycle near the MCP SDK's ~60s default request timeout. */
-const PROBE_TIMEOUT_MS = 8_000;
+/** Default per-connect/list ceiling so one slow/black-holed server can't stall
+ *  a maintenance cycle near the MCP SDK's ~60s default request timeout.
+ *  Overridable per server via `connectTimeoutMs` (resolved in config.ts) —
+ *  e.g. Python stdio servers can take ~10s just to start. */
+const DEFAULT_PROBE_TIMEOUT_MS = 8_000;
+
+/** The connect/list ceiling for a server: its configured `connectTimeoutMs`
+ *  (per-server → global, resolved at config read) or the built-in default. */
+function probeTimeoutMs(server: McpServerConfig): number {
+  return server.connectTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+}
+
+/** Floor for the maintenance task's own timeout, so a small fleet of fast
+ *  servers keeps the historical 1-minute budget. */
+const MIN_MAINTENANCE_TIMEOUT_MS = 60_000;
+
 /** Freshness window for an on-demand /capabilities read before it re-lists. */
 const LIST_TTL_MS = 5 * 60 * 1000;
 /** Max servers refreshed concurrently per maintenance cycle. */
@@ -220,14 +233,15 @@ function poolEntry(serverId: string): PooledServer {
  * pool, KEEPING the connection open for reuse. Creates the persistent client on
  * first use and re-lists on an existing one; on failure, drops the (possibly
  * dead) client so the next cycle reconnects, while preserving the last-known
- * tools for drift tolerance. Bounded by PROBE_TIMEOUT_MS so a bad server can't
- * stall the maintenance cycle.
+ * tools for drift tolerance. Bounded by the server's connect timeout so a bad
+ * server can't stall the maintenance cycle.
  */
 async function refreshServer(
   server: McpServerConfig,
   logger: LoggerService,
 ): Promise<PooledServer> {
   const entry = poolEntry(server.id);
+  const timeoutMs = probeTimeoutMs(server);
   // Declared outside the try so the catch can close a client whose connect timed
   // out (and never reached `entry.client`) — otherwise its transport / spawned
   // child process leaks on every cycle.
@@ -240,14 +254,14 @@ async function refreshServer(
       });
       await withTimeout(
         client.connect(createTransport(server)),
-        PROBE_TIMEOUT_MS,
+        timeoutMs,
         `MCP '${server.id}' connect`,
       );
       entry.client = client;
     }
     const { tools } = await withTimeout(
       client.listTools(),
-      PROBE_TIMEOUT_MS,
+      timeoutMs,
       `MCP '${server.id}' listTools`,
     );
     entry.tools = tools.map(t => ({
@@ -326,6 +340,25 @@ export function cachedServerToolsRaw(serverId: string): RawMcpTool[] {
  * timeout-bounded and a failure leaves the last-known tools intact. Runs off the
  * request path — never blocks a user.
  */
+/**
+ * The worst-case duration of one {@link maintainMcpConnections} cycle, used as
+ * the scheduled task's own timeout. Without this a server configured with a
+ * generous `connectTimeoutMs` would still be cut short by a fixed task timeout —
+ * the outer bound has to follow the inner one. Worst case per server is a
+ * connect plus a listTools at its ceiling, and each worker drains
+ * `ceil(servers / MAINTAIN_CONCURRENCY)` servers in series.
+ */
+export function maintenanceTimeoutMs(servers: McpServerConfig[]): number {
+  if (servers.length === 0) {
+    return MIN_MAINTENANCE_TIMEOUT_MS;
+  }
+  const slowest = Math.max(...servers.map(probeTimeoutMs));
+  const perWorker = Math.ceil(
+    servers.length / Math.min(MAINTAIN_CONCURRENCY, servers.length),
+  );
+  return Math.max(MIN_MAINTENANCE_TIMEOUT_MS, perWorker * 2 * slowest);
+}
+
 export async function maintainMcpConnections(
   servers: McpServerConfig[],
   logger: LoggerService,

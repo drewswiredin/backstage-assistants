@@ -12,7 +12,11 @@ import { createRouter } from './router';
 import { registerCoreActions } from './actions';
 import { ThreadService } from './threads';
 import { AssistantStore } from './assistants';
-import { maintainMcpConnections, closeMcpPool } from './mcp';
+import {
+  maintainMcpConnections,
+  maintenanceTimeoutMs,
+  closeMcpPool,
+} from './mcp';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -118,16 +122,17 @@ export const assistantsPlugin = createBackendPlugin({
         // slow/unreachable server can't stall the cycle; connections close on
         // plugin shutdown.
         if (assistants.mcpServers.size > 0) {
+          const mcpServers = [...assistants.mcpServers.values()];
           await scheduler.scheduleTask({
             id: 'assistants-mcp-maintain',
             frequency: { minutes: 2 },
             initialDelay: { seconds: 0 },
-            timeout: { minutes: 1 },
+            // Derived from the configured per-server timeouts so raising
+            // `connectTimeoutMs` for a slow server isn't undone by the task's
+            // own ceiling.
+            timeout: { milliseconds: maintenanceTimeoutMs(mcpServers) },
             fn: async () => {
-              await maintainMcpConnections(
-                [...assistants.mcpServers.values()],
-                logger,
-              );
+              await maintainMcpConnections(mcpServers, logger);
             },
           });
           lifecycle.addShutdownHook(() => closeMcpPool());
