@@ -79,7 +79,8 @@ assistants:
 | `providers.<id>.type` | yes | `openai` \| `anthropic` \| `azure` \| `openai-compatible`. |
 | `providers.<id>.apiKey` | yes | Provider key (`@visibility secret`). |
 | `providers.<id>.baseUrl` | no | Base URL override. |
-| `providers.<id>.models` | yes | Object list; each `{ name, contextWindow?, reasoning? }`. |
+| `providers.<id>.models` | yes | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. |
+| `providers.<id>.models[].maxOutputTokens` | no | Output-token ceiling; only needed when the provider misjudges an unrecognized model id. |
 | `providers.<id>.models[].reasoning` | no | `true` if the model reasons — adds the effort picker (see Reasoning effort). |
 | `mcp.connectTimeoutMs` | no | Global MCP connect/list-tools timeout ceiling in ms (default `8000`). |
 | `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
@@ -209,6 +210,29 @@ Behaviour worth knowing:
 
 Reasoning *output* (where the model streams its thinking) is already rendered as
 a collapsible **Reasoning** block in the chat, independent of this setting.
+
+## Output token ceiling
+
+Each turn is capped by the provider's own per-model output limit, which is
+correct for models it recognizes — so `maxOutputTokens` is normally omitted.
+
+Set it when the provider guesses badly for an id it doesn't know:
+
+```yaml
+models:
+  - name: my-foundry-deployment # a bare deployment name, not a Claude id
+    reasoning: true
+    maxOutputTokens: 128000
+```
+
+`@ai-sdk/anthropic` falls back to **4096** for an id that doesn't look like a
+Claude model. That is not enough for a reasoning model to think *and* answer:
+tool calls each fit, so the turn appears to run normally, then ends with no
+reply at all. A custom deployment name is the usual way to hit this — plain
+`claude-*` ids fall back to 128000 instead.
+
+The value is sent as the request's max output tokens and is never inferred:
+omit it and the provider default stands.
 
 ## Tools (actions)
 

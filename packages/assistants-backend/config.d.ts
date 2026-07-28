@@ -174,6 +174,18 @@ export interface Config {
           /** Optional max input tokens for this model; drives the context-usage gauge. */
           contextWindow?: number;
           /**
+           * Optional ceiling on tokens the model may generate per turn, sent as
+           * the request's max output tokens. Omit to use the provider's own
+           * default, which is right for models it recognises.
+           *
+           * Set it when a provider guesses badly for a model id it doesn't know:
+           * `@ai-sdk/anthropic` falls back to 4096 for an id that doesn't look
+           * like a Claude model (e.g. a bare Foundry deployment name), which is
+           * not enough for a reasoning model to think AND answer — the turn ends
+           * with tool calls but no reply.
+           */
+          maxOutputTokens?: number;
+          /**
            * True when this model reasons — the chat then offers an effort
            * picker (low / medium / high / max) for it, translated per
            * provider (OpenAI and Azure `reasoningEffort`, Anthropic

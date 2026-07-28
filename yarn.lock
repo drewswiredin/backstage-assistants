@@ -19,15 +19,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/anthropic@npm:^3.0.81":
-  version: 3.0.81
-  resolution: "@ai-sdk/anthropic@npm:3.0.81"
+"@ai-sdk/anthropic@npm:^3.0.103":
+  version: 3.0.103
+  resolution: "@ai-sdk/anthropic@npm:3.0.103"
   dependencies:
-    "@ai-sdk/provider": "npm:3.0.10"
-    "@ai-sdk/provider-utils": "npm:4.0.27"
+    "@ai-sdk/provider": "npm:3.0.14"
+    "@ai-sdk/provider-utils": "npm:4.0.40"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/2a9524c8108f07a03c3a07b57d0a43be8bdff7db236a783a070d8bd9af2d4f7f23a5b6ac244f915b7256b6a2638ee95eb88fbad464c93c651f2850d74b2e7749
+  checksum: 10c0/983052f38bad1799f6aa5b5324da7ac781b247a36e2aeafc547f64c22d68d57642bb80a8abcf2a2e0713f74c2292a3595e42c836e91b3786a0f622db13684676
   languageName: node
   linkType: hard
 
@@ -82,12 +82,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/provider-utils@npm:4.0.40":
+  version: 4.0.40
+  resolution: "@ai-sdk/provider-utils@npm:4.0.40"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.14"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.8"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/fcf8863864866ac7131e191f1e6cf42a064e697eaa4d0a28c4256ff7796a2ed58e8783ac2d572d5612c5761f5b6b437f67390b049771d9be87c0d642b7cd31f3
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/provider@npm:3.0.10":
   version: 3.0.10
   resolution: "@ai-sdk/provider@npm:3.0.10"
   dependencies:
     json-schema: "npm:^0.4.0"
   checksum: 10c0/c9b162165c3fd4684e4f7a1c041db3ad75785c841d904bac577006b7b2299d1b465557b1d32e3f59b6d8536a0ef5741b195aad86fc3e0e1d2a39f077062a83c4
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:3.0.14":
+  version: 3.0.14
+  resolution: "@ai-sdk/provider@npm:3.0.14"
+  dependencies:
+    json-schema: "npm:^0.4.0"
+  checksum: 10c0/4a533f0c7e98c3f7a3b75119b3f1855fd1ae759d696f7ee9c07b9bd4feaed57716f3e0d81586333e621a501dc0b99d3a103def3e063a45970a653ab027a8f163
   languageName: node
   linkType: hard
 
@@ -4661,7 +4683,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@drewswiredin/backstage-plugin-assistants-backend@workspace:packages/assistants-backend"
   dependencies:
-    "@ai-sdk/anthropic": "npm:^3.0.81"
+    "@ai-sdk/anthropic": "npm:^3.0.103"
     "@ai-sdk/azure": "npm:^3.0.68"
     "@ai-sdk/openai": "npm:^3.0.67"
     "@backstage/backend-defaults": "npm:^0.17.2"
@@ -4674,7 +4696,7 @@ __metadata:
     "@backstage/plugin-search-common": "npm:^1.2.24"
     "@backstage/plugin-signals-node": "npm:^0.2.1"
     "@backstage/types": "npm:^1.2.2"
-    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.7.0"
+    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.9.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/express": "npm:^4.17.23"
     "@types/turndown": "npm:^5.0.6"
@@ -4686,7 +4708,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@drewswiredin/backstage-plugin-assistants-common@npm:0.7.0, @drewswiredin/backstage-plugin-assistants-common@workspace:^, @drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common":
+"@drewswiredin/backstage-plugin-assistants-common@npm:0.9.0, @drewswiredin/backstage-plugin-assistants-common@workspace:^, @drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common":
   version: 0.0.0-use.local
   resolution: "@drewswiredin/backstage-plugin-assistants-common@workspace:packages/assistants-common"
   dependencies:
@@ -4715,7 +4737,7 @@ __metadata:
     "@backstage/plugin-scaffolder-react": "npm:^2.0.0"
     "@backstage/plugin-signals-react": "npm:^0.0.22"
     "@backstage/ui": "npm:^0.15.0"
-    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.7.0"
+    "@drewswiredin/backstage-plugin-assistants-common": "npm:0.9.0"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
     "@material-ui/lab": "npm:4.0.0-alpha.61"

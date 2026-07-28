@@ -47,7 +47,7 @@
     "generate": "backstage-repo-tools package schema openapi generate --server"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.81",
+    "@ai-sdk/anthropic": "^3.0.103",
     "@ai-sdk/azure": "^3.0.68",
     "@ai-sdk/openai": "^3.0.67",
     "@backstage/backend-defaults": "^0.17.2",

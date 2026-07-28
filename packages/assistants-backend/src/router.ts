@@ -152,7 +152,7 @@ const TITLE_SYSTEM_PROMPT =
  * Anthropic tool-args sanitizer.
  *
  * Workaround for a quirk in the affected `@ai-sdk/anthropic` range (pinned in
- * this package's `package.json` at `^3.0.81`) where tool-call args round-trip
+ * this package's `package.json` at `^3.0.103`) where tool-call args round-trip
  * incorrectly through `convertToModelMessages`: an `assistant` tool-call part
  * can surface with its `input` serialized as a JSON **string** (or `undefined`)
  * instead of an object, which the Anthropic provider then rejects. We coerce
@@ -570,6 +570,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
     const model = assistants.resolveModel(modelId);
 
+    // 5a. Output ceiling. Only sent when configured — a provider's own default
+    //     is right for models it recognises, but it can guess badly (and low)
+    //     for an id it doesn't, which truncates or empties the reply.
+    const maxOutputTokens = assistants.resolveMaxOutputTokens(modelId);
+
     // 5b. Reasoning effort for this turn. Unset, or a level this model doesn't
     //     declare, means send nothing and let the provider default stand — a
     //     client whose model just changed under it must not fail the turn.
@@ -818,6 +823,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       system: assistant.prompt,
       messages: modelMessages,
       tools,
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       ...(providerOptions ? { providerOptions } : {}),
       stopWhen: stepCountIs(assistants.maxSteps),
       abortSignal: turnAbort.signal,

@@ -150,6 +150,12 @@ export interface AssistantsConfig {
   /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
   resolveModel: (modelId: string) => LanguageModel;
   /**
+   * The configured output-token ceiling for a model, or undefined to leave the
+   * provider's own default in place. Only needed when a provider guesses badly
+   * for a model id it doesn't recognise — see `maxOutputTokens` in config.d.ts.
+   */
+  resolveMaxOutputTokens: (modelId: string) => number | undefined;
+  /**
    * The `providerOptions` that put a model at the requested effort tier, or
    * undefined when the model isn't flagged as reasoning — the caller then passes
    * nothing and the provider's own default applies. Translating here keeps every
@@ -308,6 +314,8 @@ export function readConfig(config: Config): AssistantsConfig {
   const providerIds = providersConfig.keys();
   /** Provider type per reasoning-capable `provider:model` id. */
   const reasoningTypeByModelId = new Map<string, SupportedProviderType>();
+  /** Configured output-token ceiling per `provider:model` id. */
+  const maxOutputTokensByModelId = new Map<string, number>();
 
   const registryProviders: Record<string, ReturnType<typeof buildProvider>> = {};
   const models: ModelOption[] = [];
@@ -335,6 +343,15 @@ export function readConfig(config: Config): AssistantsConfig {
       const reasoning = modelConfig.getOptionalBoolean('reasoning') ?? false;
       if (reasoning) {
         reasoningTypeByModelId.set(id, type);
+      }
+      const maxOutputTokens = modelConfig.getOptionalNumber('maxOutputTokens');
+      if (maxOutputTokens !== undefined) {
+        if (maxOutputTokens <= 0) {
+          throw new InputError(
+            `assistants model '${id}': maxOutputTokens must be a positive number of tokens`,
+          );
+        }
+        maxOutputTokensByModelId.set(id, maxOutputTokens);
       }
       models.push({
         id,
@@ -478,6 +495,8 @@ export function readConfig(config: Config): AssistantsConfig {
     requireApproval,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),
+    resolveMaxOutputTokens: (modelId: string) =>
+      maxOutputTokensByModelId.get(modelId),
     resolveReasoning: (modelId: string, level: ReasoningLevel) => {
       const type = reasoningTypeByModelId.get(modelId);
       return type ? buildReasoningOptions(type, level) : undefined;
