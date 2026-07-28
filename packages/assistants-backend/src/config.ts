@@ -235,8 +235,9 @@ function buildProvider(
 
 // --- Reasoning effort -------------------------------------------------------
 // Config says only WHETHER a model reasons (`reasoning: true`); the tiers are
-// fixed. Every provider we support now names its tiers the same way, so a tier
-// is forwarded rather than converted into a number.
+// fixed. A tier is a POSITION on a scale, not a literal string: the providers
+// agree on low/medium/high but not on what the ceiling is called, so the top
+// tier is translated per provider.
 
 /**
  * The `providerOptions` key a provider reads its own options under. This is the
@@ -255,10 +256,16 @@ function providerOptionsKey(type: SupportedProviderType): string {
 }
 
 /**
- * Translate a tier into the selected provider's own knob. Both are tier NAMES:
- * OpenAI-shaped providers take `reasoningEffort`, Anthropic takes `effort`
- * (sent as `output_config.effort`) alongside adaptive thinking, which lets the
- * model size its own thinking rather than us handing it a token budget.
+ * Translate a tier into the selected provider's own knob. OpenAI-shaped
+ * providers take `reasoningEffort`, Anthropic takes `effort` (sent as
+ * `output_config.effort`) alongside adaptive thinking, which lets the model size
+ * its own thinking rather than us handing it a token budget.
+ *
+ * The ceiling differs by provider: Anthropic's is `max`, OpenAI's is `xhigh`
+ * (it has no `max`). Anthropic's `xhigh` only exists on Opus 4.7 and later —
+ * Opus 4.6 and Sonnet 4.6 reject it while accepting `max` — so mapping our top
+ * tier to `max` there covers every effort-capable Anthropic model, not just the
+ * newest ones.
  *
  * Anthropic's older extended-thinking shape — `thinking: { type: 'enabled',
  * budgetTokens }` — is deliberately NOT used: current models reject it outright
@@ -276,7 +283,9 @@ function buildReasoningOptions(
       [key]: { thinking: { type: 'adaptive' }, effort: level },
     };
   }
-  return { [key]: { reasoningEffort: level } };
+  return {
+    [key]: { reasoningEffort: level === 'max' ? 'xhigh' : level },
+  };
 }
 
 /**

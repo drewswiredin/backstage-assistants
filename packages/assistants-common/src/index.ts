@@ -118,8 +118,9 @@ export interface AssistantSummary {
 
 /**
  * How hard a reasoning-capable model should think before answering — relative
- * effort, mapped to each provider's own knob server-side (OpenAI/Azure
- * `reasoningEffort`, Anthropic `output_config.effort`).
+ * effort. The top tier is a POSITION, not a literal: providers disagree on what
+ * their ceiling is called, so `max` is sent as Anthropic's `max` and OpenAI's
+ * `xhigh` — the highest each actually accepts.
  *
  * The same four tiers apply to every reasoning model: config only says WHETHER
  * a model reasons (`reasoning: true`), never which tiers it has. Sending no
@@ -128,14 +129,14 @@ export interface AssistantSummary {
  *
  * @public
  */
-export type ReasoningLevel = 'low' | 'medium' | 'high' | 'xhigh';
+export type ReasoningLevel = 'low' | 'medium' | 'high' | 'max';
 
 /** Every {@link ReasoningLevel}, in ascending order of effort. @public */
 export const REASONING_LEVELS: ReasoningLevel[] = [
   'low',
   'medium',
   'high',
-  'xhigh',
+  'max',
 ];
 
 /**

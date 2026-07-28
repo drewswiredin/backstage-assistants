@@ -187,7 +187,7 @@ export const spec = {
           },
           reasoningLevel: {
             type: 'string',
-            enum: ['low', 'medium', 'high', 'xhigh'],
+            enum: ['low', 'medium', 'high', 'max'],
             description:
               "How hard the model should think on this turn. Applied only when the chosen model is flagged `reasoning`; otherwise ignored and the provider's default applies.",
           },

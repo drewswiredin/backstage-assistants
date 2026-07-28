@@ -334,7 +334,7 @@ const REASONING_LABELS: Record<ReasoningLevel, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
-  xhigh: 'Extra high',
+  max: 'Max',
 };
 
 // ---------------------------------------------------------------------------

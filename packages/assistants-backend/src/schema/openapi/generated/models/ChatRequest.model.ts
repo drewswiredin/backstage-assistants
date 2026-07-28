@@ -34,4 +34,4 @@ export interface ChatRequest {
 /**
  * @public
  */
-export type ChatRequestReasoningLevelEnum = 'low' | 'medium' | 'high' | 'xhigh';
+export type ChatRequestReasoningLevelEnum = 'low' | 'medium' | 'high' | 'max';
