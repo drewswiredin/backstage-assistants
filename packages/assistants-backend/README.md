@@ -181,6 +181,14 @@ high · xhigh** — translated to the provider's own knob at request time:
 Every supported provider now names its tiers the same way, so a tier is
 forwarded rather than converted — nothing here invents token budgets.
 
+> **Not every model takes every tier.** Support varies per model, not just per
+> provider — Claude Sonnet 5 accepts `xhigh`, Claude Opus 4.6 does not (it takes
+> `low`/`medium`/`high`/`max`). An unsupported tier fails that turn with the
+> provider's own message naming the levels it does accept; pick another tier and
+> resend. The tiers are deliberately NOT declared per model in config: one clear,
+> recoverable error beats every deployment hand-maintaining a tier list for every
+> model. `max` is not offered because OpenAI has no such level.
+
 > **Anthropic models must be current.** The effort picker uses adaptive thinking
 > plus `output_config.effort`, which is what Claude 5-generation models require —
 > they reject the older `thinking: { type: enabled, budget_tokens }` shape
