@@ -53,6 +53,6 @@
   "homepage": "https://github.com/drewswiredin/backstage-assistants#readme",
   "bugs": "https://github.com/drewswiredin/backstage-assistants/issues",
   "devDependencies": {
-    "@backstage/cli": "^0.36.2"
+    "@backstage/cli": "^0.36.4"
   }
 }
