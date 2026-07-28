@@ -234,33 +234,9 @@ function buildProvider(
 }
 
 // --- Reasoning effort -------------------------------------------------------
-// Config says only WHETHER a model reasons (`reasoning: true`). The tiers
-// themselves are fixed and provider-neutral, because Anthropic has no named
-// levels at all — only a token budget — so the tiers have to be invented
-// somewhere. Inventing them once here beats every operator inventing their own.
-
-/**
- * Anthropic thinking budget per tier (its minimum is 1024).
- *
- * These are PLUGIN-OWNED defaults, not a per-deployment setting: the same class
- * of thing as a model's default context window, expected to move with model
- * generations and to be revised in a release here. Unlike OpenAI's tier NAMES —
- * which the provider re-tunes behind a stable label — an absolute budget doesn't
- * re-tune itself, so `high` drifts conservative as models improve. Getting one
- * wrong degrades quietly rather than erroring: too low just under-thinks, and
- * too high is clamped by the provider against the model's max output tokens
- * (the budget counts toward `max_tokens`, so it eats the answer allowance).
- *
- * Expected to be DELETED rather than tuned: `@ai-sdk/anthropic` already accepts
- * `thinking: { type: 'adaptive' }`, letting the model pick its own budget. Once
- * that is the norm, this branch becomes adaptive and these constants go away.
- */
-const BUDGET_TOKENS: Record<ReasoningLevel, number> = {
-  low: 2_048,
-  medium: 8_192,
-  high: 24_576,
-  xhigh: 32_768,
-};
+// Config says only WHETHER a model reasons (`reasoning: true`); the tiers are
+// fixed. Every provider we support now names its tiers the same way, so a tier
+// is forwarded rather than converted into a number.
 
 /**
  * The `providerOptions` key a provider reads its own options under. This is the
@@ -279,9 +255,16 @@ function providerOptionsKey(type: SupportedProviderType): string {
 }
 
 /**
- * Translate a tier into the selected provider's own knob. OpenAI-shaped
- * providers take a `reasoningEffort` string; Anthropic takes a thinking budget
- * (which it counts toward `max_tokens` and clamps to the model's ceiling).
+ * Translate a tier into the selected provider's own knob. Both are tier NAMES:
+ * OpenAI-shaped providers take `reasoningEffort`, Anthropic takes `effort`
+ * (sent as `output_config.effort`) alongside adaptive thinking, which lets the
+ * model size its own thinking rather than us handing it a token budget.
+ *
+ * Anthropic's older extended-thinking shape — `thinking: { type: 'enabled',
+ * budgetTokens }` — is deliberately NOT used: current models reject it outright
+ * ("not supported for this model. Use thinking.type.adaptive and
+ * output_config.effort"), and it was the only branch that needed us to invent
+ * absolute token budgets.
  */
 function buildReasoningOptions(
   type: SupportedProviderType,
@@ -290,7 +273,7 @@ function buildReasoningOptions(
   const key = providerOptionsKey(type);
   if (type === 'anthropic') {
     return {
-      [key]: { thinking: { type: 'enabled', budgetTokens: BUDGET_TOKENS[level] } },
+      [key]: { thinking: { type: 'adaptive' }, effort: level },
     };
   }
   return { [key]: { reasoningEffort: level } };

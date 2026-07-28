@@ -119,7 +119,7 @@ export interface AssistantSummary {
 /**
  * How hard a reasoning-capable model should think before answering — relative
  * effort, mapped to each provider's own knob server-side (OpenAI/Azure
- * `reasoningEffort`, Anthropic thinking budget).
+ * `reasoningEffort`, Anthropic `output_config.effort`).
  *
  * The same four tiers apply to every reasoning model: config only says WHETHER
  * a model reasons (`reasoning: true`), never which tiers it has. Sending no

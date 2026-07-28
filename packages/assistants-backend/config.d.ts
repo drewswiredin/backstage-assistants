@@ -176,9 +176,14 @@ export interface Config {
           /**
            * True when this model reasons — the chat then offers an effort
            * picker (low / medium / high / xhigh) for it, translated per
-           * provider (OpenAI and Azure `reasoningEffort`, Anthropic thinking
-           * budget). Omit for a non-reasoning model: no picker, and turns run
-           * at the provider's own default.
+           * provider (OpenAI and Azure `reasoningEffort`, Anthropic
+           * `output_config.effort` with adaptive thinking). Omit for a
+           * non-reasoning model: no picker, and turns run at the provider's own
+           * default.
+           *
+           * Anthropic note: this targets the CURRENT API. Pre-Claude-5 models
+           * whose only thinking control is a `budget_tokens` value are not
+           * supported here — leave them unflagged.
            */
           reasoning?: boolean;
         }>;

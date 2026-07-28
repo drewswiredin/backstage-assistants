@@ -176,11 +176,16 @@ high · xhigh** — translated to the provider's own knob at request time:
 | Provider type | Sent as |
 | --- | --- |
 | `openai`, `openai-compatible`, `azure` | `reasoningEffort: <tier>` |
-| `anthropic` | `thinking: { type: enabled, budgetTokens }` — 2048 / 8192 / 24576 / 32768 |
+| `anthropic` | `thinking: { type: adaptive }` + `output_config.effort: <tier>` |
 
-The tiers are ours rather than a provider's because Anthropic has no named
-levels at all, only a token budget, so they have to be defined somewhere; doing
-it once here beats every deployment inventing its own names.
+Every supported provider now names its tiers the same way, so a tier is
+forwarded rather than converted — nothing here invents token budgets.
+
+> **Anthropic models must be current.** The effort picker uses adaptive thinking
+> plus `output_config.effort`, which is what Claude 5-generation models require —
+> they reject the older `thinking: { type: enabled, budget_tokens }` shape
+> outright. Older extended-thinking models (Claude 3.7 / 4.x) accept only that
+> older shape, so leave them unflagged rather than setting `reasoning: true`.
 
 Behaviour worth knowing:
 
