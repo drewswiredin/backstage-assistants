@@ -36,7 +36,6 @@ import {
   type ThreadListState,
 } from '@assistant-ui/react';
 import type {
-  AssistantSummary,
   ModelId,
   ModelOption,
   StatusResponse,

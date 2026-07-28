@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
 } from 'react';
 import type { ProfileInfo } from '@backstage/core-plugin-api';
 import { alertApiRef, identityApiRef, useApi } from '@backstage/core-plugin-api';
@@ -279,7 +280,7 @@ function ComposerWithGauge() {
       // Click anywhere on the composer (incl. the second row / empty space) to
       // focus the input — except on the actual controls. mousedown + preventDefault
       // keeps focus from landing elsewhere first.
-      onMouseDown={e => {
+      onMouseDown={(e: MouseEvent<HTMLElement>) => {
         const target = e.target as HTMLElement;
         if (
           target.closest(

@@ -272,12 +272,14 @@ export function ToolFallback({
   // Same-tool sibling approvals in this message, as a value-stable JSON snapshot
   // (a string, so the external-store selector never churns its identity).
   const groupJson = useAuiState(s => {
-    const parts = (s.message.parts ?? []) as Array<{
+    // Read-only view: the store's parts array is readonly, and this selector
+    // only filters/maps it.
+    const parts = (s.message.parts ?? []) as readonly {
       toolName?: string;
       toolCallId?: string;
       args?: unknown;
       approval?: { approved?: boolean };
-    }>;
+    }[];
     return JSON.stringify(
       parts
         .filter(p => p.toolName === toolName && !!p.approval)

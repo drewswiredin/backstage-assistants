@@ -872,7 +872,16 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 10. Drive the stream to completion server-side even if the client
     //     disconnects, so the turn is always persisted (no data loss on
     //     navigation). The server is the single writer of message rows.
-    void result.consumeStream().catch(() => {});
+    void result.consumeStream({
+      // consumeStream returns a PromiseLike (no .catch); errors surface here.
+      // Swallowed on purpose — the turn's own error handling owns the response,
+      // this call only drives the stream to completion.
+      onError: error =>
+        logger.debug('chat stream consume failed', {
+          requestId,
+          error: String(error),
+        }),
+    });
 
     // Buffer the SSE under the THREAD id, so a client returning to this thread
     // can rejoin by an id it already knows (GET /chat/resume/:threadId) — there

@@ -170,7 +170,9 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
       };
     }, [rawSchema, ready]);
 
-    if (!ready || fields === undefined) {
+    // `schema === undefined` is implied by `!ready` — stated so the narrowing is
+    // visible to the type checker at the <Form schema=…> below.
+    if (!ready || fields === undefined || schema === undefined) {
       return (
         <Box className={classes.card}>
           <span className={classes.muted}>
