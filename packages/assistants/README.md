@@ -34,6 +34,24 @@ yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backen
 
 (The `-common` package is pulled in transitively; you don't add it directly.)
 
+### A note on the pinned `@assistant-ui/*` versions
+
+Every `@assistant-ui/*` dependency — plus `assistant-cloud` — is pinned to an
+**exact** version rather than a caret range, and that is deliberate. Do not
+loosen them.
+
+`@assistant-ui/core` declares `@assistant-ui/tap` as a *peer* dependency, and
+`tap` changed its API incompatibly between `0.5.x` (`tapState`,
+`tapClientLookup`) and `0.9.x` (`resource`, `useResource`). Because it is a peer,
+no package manager can resolve a conflict by nesting two copies: whichever `tap`
+the tree happens to hoist is the one `core` gets. A single floating range
+anywhere in the set is enough to drift `core` to the far side of that break, and
+the failure does not appear at install time — it surfaces as missing-export
+errors when the consumer bundles.
+
+The set here is verified to sit on one generation together. Bump them as a
+group, not individually.
+
 ## Wire up the frontend
 
 Add the plugin to your app's features. Its **"Assistants" nav item is registered

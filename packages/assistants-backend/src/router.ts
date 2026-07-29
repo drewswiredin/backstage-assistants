@@ -151,17 +151,18 @@ const TITLE_SYSTEM_PROMPT =
 /**
  * Anthropic tool-args sanitizer.
  *
- * Workaround for a quirk in the affected `@ai-sdk/anthropic` range (pinned in
- * this package's `package.json` at `^3.0.103`) where tool-call args round-trip
- * incorrectly through `convertToModelMessages`: an `assistant` tool-call part
- * can surface with its `input` serialized as a JSON **string** (or `undefined`)
- * instead of an object, which the Anthropic provider then rejects. We coerce
- * any such tool-call `input` back to an object before the messages reach the
- * provider.
+ * An `assistant` tool-call part can carry its `input` as a JSON **string** (or
+ * `undefined`) rather than an object, which the Anthropic provider rejects. We
+ * coerce it back to an object before the messages reach the provider.
  *
- * Scope: gated to the `anthropic` provider only — it must not run for other
- * providers. Remove this once the backend is bumped past an `@ai-sdk/anthropic`
- * release that fixes the Anthropic tool-call args round-trip upstream.
+ * This was originally written as a workaround for `@ai-sdk/anthropic@^3.0.103`,
+ * on the assumption an upstream fix would retire it. Re-tested against `ai@7` +
+ * `@ai-sdk/anthropic@4`: `convertToModelMessages` is a faithful pass-through —
+ * a string `input` stays a string and `undefined` stays `undefined`. It does
+ * not normalize, and there is no sign it ever will, so this is a permanent
+ * guard rather than a temporary patch.
+ *
+ * Scope: gated to the `anthropic` provider only — it must not run for others.
  */
 function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
   const coerce = (value: unknown): unknown => {
