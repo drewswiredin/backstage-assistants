@@ -26,6 +26,7 @@ import type { AssistantsApi } from '../api';
 import { fetchThreadStatus } from './threadListAdapter';
 import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
+import { createHistoryAdapter } from './threadListAdapter';
 
 /**
  * True when an assistant turn legitimately paused for the user (a `render_form`
@@ -265,7 +266,35 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     // read). Replaces the AI-SDK default wildcard adapter, whose malformed
     // `accept:"*"` broke the file-picker button.
     const attachments = useMemo(() => createAttachmentAdapter(), []);
-    const runtime = useAISDKRuntime(chat, { adapters: { attachments } });
+
+    // History is passed DIRECTLY here rather than through `RuntimeAdapterProvider`
+    // context, and that is load-bearing — see below.
+    //
+    // `useAISDKRuntime` resolves it as `adapters?.history ?? contextAdapters?.history`.
+    // The context branch only works when `@assistant-ui/react` (which provides the
+    // context) and `@assistant-ui/react-ai-sdk` (which reads it) resolve to the SAME
+    // physical `@assistant-ui/core`. A consumer's dependency tree can nest a second
+    // copy under `react-ai-sdk` — same version, but a separate module instance with
+    // its own React context — and the lookup silently returns undefined. History
+    // then never loads and every existing conversation reopens blank.
+    //
+    // Passing the adapter directly removes the cross-module context handoff
+    // entirely, so duplicate `core` copies can no longer break history.
+    //
+    // Gating creation on `remoteId` matters too: `useExternalHistory` sets its
+    // "already loaded" latch BEFORE checking `remoteId`, so an effect that runs
+    // while the id is still unresolved would latch and never load again. Leaving
+    // the adapter undefined until the id exists means that effect returns at its
+    // first guard, without latching, and loads properly once the id arrives.
+    const history = useMemo(
+      () => (remoteId ? createHistoryAdapter(api, remoteId) : undefined),
+      [remoteId],
+    );
+    const adapters = useMemo(
+      () => (history ? { attachments, history } : { attachments }),
+      [attachments, history],
+    );
+    const runtime = useAISDKRuntime(chat, { adapters });
 
     // Wire the transport to the runtime + this thread's list item so it can
     // initialize() the server thread and tag requests with its remoteId.

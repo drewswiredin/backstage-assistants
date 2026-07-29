@@ -8,13 +8,6 @@
  * adapter's `append` is a no-op. Titles are generated server-side on the first
  * completed turn, so `generateTitle` returns an empty stream.
  */
-import {
-  useMemo,
-  createElement,
-  type ComponentType,
-  type PropsWithChildren,
-} from 'react';
-import { useThreadListItem, RuntimeAdapterProvider } from '@assistant-ui/react';
 import type {
   RemoteThreadListAdapter,
   RemoteThreadMetadata,
@@ -175,24 +168,12 @@ export function createThreadListAdapter(
       return new ReadableStream({ start: c => c.close() }) as never;
     },
 
-    unstable_Provider: createThreadProvider(api),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Per-thread Provider — injects the (load-only) history adapter
-// ---------------------------------------------------------------------------
-
-function createThreadProvider(api: AssistantsApi): ComponentType<PropsWithChildren> {
-  return function ThreadProvider({ children }: PropsWithChildren) {
-    const item = useThreadListItem();
-    const remoteId = item?.remoteId;
-    const history = useMemo(
-      () => (remoteId ? createHistoryAdapter(api, remoteId) : undefined),
-      [remoteId],
-    );
-    const adapters = useMemo(() => (history ? { history } : {}), [history]);
-    return createElement(RuntimeAdapterProvider, { adapters, children });
+    // NOTE: no `unstable_Provider`. The history adapter is passed directly into
+    // `useAISDKRuntime` (see useAssistantRuntime.ts) instead of being published
+    // through `RuntimeAdapterProvider` context. Context only reaches
+    // `react-ai-sdk` when it and `@assistant-ui/react` resolve to the same
+    // physical `@assistant-ui/core`; a consumer tree that nests a second copy
+    // breaks the handoff silently and every thread reopens blank.
   };
 }
 
@@ -220,9 +201,16 @@ export function createHistoryAdapter(
         parentId: m.parentId,
         message: JSON.parse(m.contentJson) as TMessage,
       }));
-    } catch {
-      // A missing/failed load yields an empty thread rather than breaking the UI.
-      return [];
+    } catch (e) {
+      // Never swallow this. A failed load renders an empty thread, which is
+      // indistinguishable from a genuinely new conversation — so silence here
+      // turns any backend or auth failure into a silent data-loss illusion that
+      // is nearly impossible to diagnose in a deployed environment. Rethrow:
+      // `useExternalHistory` catches it and logs "Failed to load message
+      // history", so the real status code reaches the browser console.
+      // eslint-disable-next-line no-console
+      console.error(`[assistants] loading history for thread ${threadId}:`, e);
+      throw e;
     }
   }
 
