@@ -376,7 +376,12 @@ export function AssignList({
         <Autocomplete
           open
           autoHighlight
-          disablePortal
+          // NO `disablePortal`: in MUI v4 it silently REPLACES a custom
+          // PopperComponent with an internal position:absolute div
+          // (Autocomplete.js: `disablePortal ? DisablePortal : PopperComponentProp`),
+          // which takes the listbox out of flow and collapses the popover to
+          // the input's height. The inline PopperComponent below already
+          // renders in place — no portal is involved either way.
           freeSolo={allowTyped}
           options={options}
           value={null}
