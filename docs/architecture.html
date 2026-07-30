@@ -106,7 +106,7 @@
             </tr>
             <tr>
               <td class="k">Tools</td>
-              <td class="k">Backstage Actions registry (backend-plugin-api/alpha) · @modelcontextprotocol/sdk</td>
+              <td class="k">Backstage Actions registry (backend-plugin-api/alpha) · @ai-sdk/mcp</td>
               <td>In-process Backstage Actions (run as the user) + external MCP servers (run as a configured per-server identity), merged into one tool list for the loop. An assistant's <code>allowedTools</code> is a single namespace over both — see §5.</td>
             </tr>
             <tr>
@@ -179,7 +179,7 @@ flowchart TB
     direction TB
     PROV["LLM providers<br/>@ai-sdk/openai · anthropic · azure"]
     ACTIONS["Backstage Actions registry<br/>catalog · techdocs · search · …"]
-    MCP["External MCP servers<br/>stdio · http · sse · websocket"]
+    MCP["External MCP servers<br/>stdio · http · sse"]
   end
 
   DB[("Plugin database<br/>threads · messages · assistants")]

@@ -270,9 +270,9 @@ under `assistants.mcp.servers`. An assistant opts in to individual MCP tools by
 namespaced `<serverId>__<tool>` (and shows in the detail modal). There is no
 per-assistant server allowlist in config.
 
-Transports (the full `@modelcontextprotocol/sdk` client set):
+Transports (the `@ai-sdk/mcp` client set):
 
-- **`http`** (Streamable HTTP, default) / **`sse`** / **`websocket`** — remote,
+- **`http`** (Streamable HTTP, default) / **`sse`** — remote,
   use `url` (`http`/`sse` also accept `headers`).
 - **`stdio`** — spawn a local MCP server process: `command` (+ `args`, `env`,
   `cwd`).
@@ -283,7 +283,7 @@ assistants:
     servers:
       # remote (Streamable HTTP) with a static auth header
       github:
-        transport: http # http | sse | websocket | stdio
+        transport: http # http | sse | stdio
         url: https://api.githubcopilot.com/mcp/
         headers:
           Authorization: Bearer ${GITHUB_MCP_TOKEN} # @visibility secret

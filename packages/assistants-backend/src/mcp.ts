@@ -1,11 +1,9 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js';
 import {
-  StdioClientTransport,
-  getDefaultEnvironment,
-} from '@modelcontextprotocol/sdk/client/stdio.js';
+  createMCPClient,
+  type MCPClient,
+  type MCPClientConfig,
+} from '@ai-sdk/mcp';
+import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { ToolSummary } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -13,9 +11,12 @@ import type { McpServerConfig } from './config';
 import { truncateToolResult } from './truncateToolResult';
 
 /**
- * MCP (Model Context Protocol) integration. External MCP servers' tools are
- * adapted into AI SDK tools so assistants can call them — the same wrapping we
- * do for Backstage actions in {@link actionsToTools}.
+ * MCP (Model Context Protocol) integration, on `@ai-sdk/mcp` (the AI SDK's own
+ * MCP client). External MCP servers' tools are adapted into AI SDK tools so
+ * assistants can call them — the same wrapping we do for Backstage actions in
+ * {@link actionsToTools}. The pooling, warm tool cache, and timeout bounds
+ * around the client are ours; the protocol client and transports are the
+ * library's.
  *
  * Auth is a single static credential per server (the configured headers / stdio
  * env) — one shared identity for all users, NOT run-as-user. Access is gated by
@@ -127,32 +128,27 @@ function isToolAllowed(allowlist: string[], name: string): boolean {
   return allowlist.includes(name);
 }
 
-function createTransport(server: McpServerConfig) {
-  // Local process transport.
+function transportFor(server: McpServerConfig): MCPClientConfig['transport'] {
+  // Local process transport. The library merges the configured env over its
+  // safe inherited defaults (PATH etc.), same semantics as the old SDK merge.
   if (server.transport === 'stdio') {
-    return new StdioClientTransport({
+    return new Experimental_StdioMCPTransport({
       command: server.command as string,
       args: server.args,
-      // Merge configured env over the SDK's safe default env (PATH, etc.).
-      env: server.env
-        ? { ...getDefaultEnvironment(), ...server.env }
-        : undefined,
+      env: server.env,
       cwd: server.cwd,
     });
   }
 
-  // Remote transports.
-  const url = new URL(server.url as string);
-  if (server.transport === 'websocket') {
-    return new WebSocketClientTransport(url);
-  }
-  const requestInit =
-    server.headers && Object.keys(server.headers).length > 0
-      ? { headers: server.headers }
-      : undefined;
-  return server.transport === 'sse'
-    ? new SSEClientTransport(url, { requestInit })
-    : new StreamableHTTPClientTransport(url, { requestInit });
+  // Remote transports (Streamable HTTP / legacy SSE) are plain config.
+  return {
+    type: server.transport === 'sse' ? 'sse' : 'http',
+    url: server.url as string,
+    headers:
+      server.headers && Object.keys(server.headers).length > 0
+        ? server.headers
+        : undefined,
+  };
 }
 
 // --- MCP connection pool ----------------------------------------------------
@@ -165,7 +161,7 @@ function createTransport(server: McpServerConfig) {
 /** A pooled server: its persistent client (when connected), last-known tool
  *  inventory (with input schemas, for /chat tool definitions), and reachability. */
 interface PooledServer {
-  client?: Client;
+  client?: MCPClient;
   tools: RawMcpTool[];
   reachable: boolean;
   error?: string;
@@ -195,8 +191,9 @@ const LIST_TTL_MS = 5 * 60 * 1000;
 const MAINTAIN_CONCURRENCY = 5;
 
 /**
- * Reject after `ms` if `p` hasn't settled, so a probe can bound `connect` /
- * `listTools` (which otherwise inherit the SDK's ~60s default).
+ * Reject after `ms` if `p` hasn't settled. Only needed for the connect step —
+ * `createMCPClient` offers no timeout of its own; `listTools`/`callTool` take a
+ * native per-request `timeout`.
  */
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -241,28 +238,34 @@ async function refreshServer(
 ): Promise<PooledServer> {
   const entry = poolEntry(server.id);
   const timeoutMs = probeTimeoutMs(server);
-  // Declared outside the try so the catch can close a client whose connect timed
-  // out (and never reached `entry.client`) — otherwise its transport / spawned
-  // child process leaks on every cycle.
+  // Held outside the try so the catch can close a client that connected but
+  // failed to list — otherwise its transport / spawned child process leaks on
+  // every cycle. A client that resolves AFTER the connect timeout is closed by
+  // the late `.then` below.
   let client = entry.client;
+  let connectPromise: Promise<MCPClient> | undefined;
   try {
     if (!client) {
-      client = new Client({
-        name: 'backstage-plugin-assistants',
-        version: '0.1.0',
+      connectPromise = createMCPClient({
+        transport: transportFor(server),
+        clientName: 'backstage-plugin-assistants',
+        onUncaughtError: e =>
+          logger.warn(
+            `MCP server '${server.id}' transport error: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          ),
       });
-      await withTimeout(
-        client.connect(createTransport(server)),
+      client = await withTimeout(
+        connectPromise,
         timeoutMs,
         `MCP '${server.id}' connect`,
       );
       entry.client = client;
     }
-    const { tools } = await withTimeout(
-      client.listTools(),
-      timeoutMs,
-      `MCP '${server.id}' listTools`,
-    );
+    const { tools } = await client.listTools({
+      options: { timeout: timeoutMs },
+    });
     entry.tools = tools.map(t => ({
       name: t.name,
       description: t.description,
@@ -278,9 +281,12 @@ async function refreshServer(
     entry.error = message;
     // Close the (possibly half-connected) client to release its connection /
     // child process, and drop it so the next cycle reconnects fresh. Keep the
-    // last-known tools so /status + /chat tolerate a transient blip.
+    // last-known tools so /status + /chat tolerate a transient blip. A connect
+    // that resolves after its timeout is closed on arrival.
     if (client) {
       await client.close().catch(() => {});
+    } else if (connectPromise) {
+      void connectPromise.then(c => c.close().catch(() => {})).catch(() => {});
     }
     entry.client = undefined;
   }

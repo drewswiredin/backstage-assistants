@@ -75,18 +75,18 @@ export function isPolicyAccessible(
   return policy.groups.some(g => caller.ownershipEntityRefs.includes(g));
 }
 
-/** Supported MCP client transports (the full @modelcontextprotocol/sdk set). */
-export type McpTransport = 'http' | 'sse' | 'websocket' | 'stdio';
+/** Supported MCP client transports (the @ai-sdk/mcp set). */
+export type McpTransport = 'http' | 'sse' | 'stdio';
 
 /**
- * A configured external MCP server. Remote transports (`http`/`sse`/`websocket`)
- * use `url` (+ `headers` for http/sse); `stdio` spawns a local `command`.
+ * A configured external MCP server. Remote transports (`http`/`sse`) use `url`
+ * + `headers`; `stdio` spawns a local `command`.
  * Connected with a static credential (shared identity — not yet run-as-user).
  */
 export interface McpServerConfig {
   id: string;
   transport: McpTransport;
-  /** Endpoint URL for remote transports (http/sse/websocket). */
+  /** Endpoint URL for remote transports (http/sse). */
   url?: string;
   /** Request headers for http/sse (e.g. an Authorization bearer). */
   headers?: Record<string, string>;
@@ -383,10 +383,10 @@ export function readConfig(config: Config): AssistantsConfig {
       const connectTimeoutMs =
         readTimeout(sc, `assistants.mcp.servers.${serverId}`) ??
         globalConnectTimeoutMs;
-      if (!['http', 'sse', 'websocket', 'stdio'].includes(transport)) {
+      if (!['http', 'sse', 'stdio'].includes(transport)) {
         throw new InputError(
           `assistants.mcp.servers.${serverId}.transport must be one of ` +
-            `'http', 'sse', 'websocket', 'stdio'`,
+            `'http', 'sse', 'stdio'`,
         );
       }
       const readStringMap = (key: string): Record<string, string> => {

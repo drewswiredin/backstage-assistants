@@ -85,12 +85,12 @@ export interface Config {
       servers?: {
         [serverId: string]: {
           /**
-           * Transport. `http` = Streamable HTTP, `sse` = Server-Sent Events,
-           * `websocket` = WebSocket (all remote, use `url`); `stdio` spawns a
-           * local process (use `command`). Defaults to `http`.
+           * Transport. `http` = Streamable HTTP, `sse` = Server-Sent Events
+           * (both remote, use `url`); `stdio` spawns a local process (use
+           * `command`). Defaults to `http`.
            */
-          transport?: 'http' | 'sse' | 'websocket' | 'stdio';
-          /** Endpoint URL for remote transports (http/sse/websocket). */
+          transport?: 'http' | 'sse' | 'stdio';
+          /** Endpoint URL for remote transports (http/sse). */
           url?: string;
           /**
            * Headers sent on every request (http/sse), e.g. an `Authorization`

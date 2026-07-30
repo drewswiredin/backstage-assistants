@@ -49,6 +49,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.23",
     "@ai-sdk/azure": "^4.0.24",
+    "@ai-sdk/mcp": "^2.0.16",
     "@ai-sdk/openai": "^4.0.23",
     "@backstage/backend-defaults": "^0.17.5",
     "@backstage/backend-openapi-utils": "^0.7.0",
@@ -60,7 +61,6 @@
     "@backstage/plugin-signals-node": "^0.2.3",
     "@backstage/types": "^1.2.2",
     "@drewswiredin/backstage-plugin-assistants-common": "0.9.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^7.0.41",
     "express": "^4.21.2",
     "knex": "^3.1.0",
