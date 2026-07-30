@@ -24,7 +24,8 @@
     "fix": "backstage-cli repo fix",
     "lint": "backstage-cli repo lint --since origin/master",
     "lint:all": "backstage-cli repo lint",
-    "prettier:check": "prettier --check ."
+    "prettier:check": "prettier --check .",
+    "build:api-reports": "backstage-repo-tools api-reports --allow-all-warnings"
   },
   "backstage": {
     "cli": {
@@ -42,6 +43,7 @@
     "@backstage/cli": "^0.36.4",
     "@backstage/cli-defaults": "^0.1.4",
     "@backstage/e2e-test-utils": "^0.1.2",
+    "@backstage/repo-tools": "^0.18.0",
     "@jest/environment-jsdom-abstract": "~30.2.0",
     "@playwright/test": "^1.32.3",
     "@types/jest": "^30.0.0",

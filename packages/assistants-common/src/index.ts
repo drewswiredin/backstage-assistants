@@ -175,8 +175,11 @@ export interface ModelOption {
  * @public
  */
 export interface StatusResponse {
+  /** The assistants the caller may access (browser-safe summaries). */
   assistants: AssistantSummary[];
+  /** The full model pool (every provider's models, with gauge metadata). */
   models: ModelOption[];
+  /** The platform default `provider:model` selection. */
   defaultModel: ModelId;
 }
 

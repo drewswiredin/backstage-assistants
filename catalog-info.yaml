@@ -1,13 +1,11 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: backstage-assistants-app
-  description: An example of a Backstage application.
-  # Example for optional annotations
-  # annotations:
-  #   github.com/project-slug: backstage/backstage
-  #   backstage.io/techdocs-ref: dir:.
+  name: backstage-assistants
+  description: AI Assistants for Backstage — in-portal chat over the catalog, TechDocs, Actions, and MCP tools.
+  annotations:
+    github.com/project-slug: drewswiredin/backstage-assistants
 spec:
-  type: website
-  owner: john@example.com
+  type: library
+  owner: drewswiredin
   lifecycle: experimental
