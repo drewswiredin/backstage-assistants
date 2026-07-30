@@ -19,6 +19,8 @@ import {
   stepCountIs,
   tool,
   jsonSchema,
+  toUIMessageStream,
+  pipeUIMessageStreamToResponse,
   UI_MESSAGE_STREAM_HEADERS,
   type ModelMessage,
   type UIMessage,
@@ -731,12 +733,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 6c. Deterministic approval gate. The approval set is GLOBAL now: the
     //     platform `requireApproval` floor (top-level action ids ∪ per-server
     //     namespaced `<serverId>__<tool>`) intersected with THIS assistant's
-    //     `allowedTools`. For every tool in that intersection, set the AI SDK's
-    //     `needsApproval` predicate. The SDK then emits a tool-approval-request
-    //     and SKIPS the tool's `execute` until the user responds (Allow runs it
-    //     server-side; Deny tells the model it was declined). This is
-    //     code-enforced — not a prompt the model can ignore. Names that don't
-    //     resolve to a built tool are logged and skipped.
+    //     `allowedTools`. Every tool in that intersection gets an entry in the
+    //     call-level `toolApproval` map passed to `streamText`. The SDK then
+    //     emits a tool-approval-request and SKIPS the tool's `execute` until
+    //     the user responds (Allow runs it server-side; Deny tells the model it
+    //     was declined). This is code-enforced — not a prompt the model can
+    //     ignore. Names that don't resolve to a built tool are logged and
+    //     skipped.
     //
     //     The predicate also honours a standing "always allow <tool>" grant: the
     //     surface's "Always allow" button records an approved tool-approval-
@@ -750,6 +753,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const approvalSet = assistant.allowedTools.filter(t =>
       assistants.requireApproval.has(t),
     );
+    const toolApproval: Record<
+      string,
+      (
+        input: unknown,
+        opts: { messages: ReadonlyArray<{ content?: unknown }> },
+      ) => 'user-approval' | 'not-applicable'
+    > = {};
     if (approvalSet.length > 0) {
       const hasStandingGrant = (
         history: ReadonlyArray<{ content?: unknown }>,
@@ -775,13 +785,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       };
       const gated: string[] = [];
       for (const name of approvalSet) {
-        const t = (tools as Record<string, unknown>)[name];
-        if (t && typeof t === 'object') {
-          // A function, not `true`: skip the prompt once a standing grant exists.
-          (t as { needsApproval?: unknown }).needsApproval = (
-            _input: unknown,
-            opts: { messages: ReadonlyArray<{ content?: unknown }> },
-          ): boolean => !hasStandingGrant(opts.messages, name);
+        if (name in tools) {
+          // A function, not a static status: skip the prompt once a standing
+          // grant exists.
+          toolApproval[name] = (_input, opts) =>
+            hasStandingGrant(opts.messages, name)
+              ? 'not-applicable'
+              : 'user-approval';
           gated.push(name);
         }
       }
@@ -821,9 +831,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     const result = streamText({
       model,
-      system: assistant.prompt,
+      instructions: assistant.prompt,
       messages: modelMessages,
       tools,
+      ...(Object.keys(toolApproval).length > 0 ? { toolApproval } : {}),
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       ...(providerOptions ? { providerOptions } : {}),
       stopWhen: stepCountIs(assistants.maxSteps),
@@ -925,127 +936,132 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // usage at the end, so fall back to `finish.totalUsage` when no step usage
     // was seen. Streams live AND lands in the persisted message (survives reload).
     let sawStepUsage = false;
-    result.pipeUIMessageStreamToResponse(res, {
-      originalMessages: messages as UIMessage[],
-      generateMessageId: () => `msg-${randomUUID()}`,
-      messageMetadata: ({ part }) => {
-        if (
-          part.type === 'finish-step' &&
-          typeof part.usage?.inputTokens === 'number'
-        ) {
-          sawStepUsage = true;
-          return {
-            usage: {
-              inputTokens: part.usage.inputTokens,
-              outputTokens: part.usage.outputTokens,
-            },
-          };
-        }
-        if (
-          part.type === 'finish' &&
-          !sawStepUsage &&
-          typeof part.totalUsage?.inputTokens === 'number'
-        ) {
-          return {
-            usage: {
-              inputTokens: part.totalUsage.inputTokens,
-              outputTokens: part.totalUsage.outputTokens,
-            },
-          };
-        }
-        return undefined;
-      },
-      onFinish: async ({ messages: finalMessages }) => {
-        if (!threadId) return;
-        // If this turn was aborted via Stop, mark the (partial) assistant reply
-        // so ANY client that loads it later shows a "Canceled" indicator instead
-        // of an ambiguous half-finished turn. The flag rides in the message's
-        // metadata, which round-trips through assistant-ui's history load.
-        // Distinct from an error: errors surface via the streamed error part
-        // (the client renders them), not a metadata flag — the abort signal is
-        // set ONLY when the cancel route fired.
-        if (turnAbort.signal.aborted && finalMessages.length > 0) {
-          const last = finalMessages[finalMessages.length - 1];
-          if (last.role === 'assistant') {
-            last.metadata = {
-              ...(last.metadata as Record<string, unknown> | undefined),
-              canceled: true,
+    void pipeUIMessageStreamToResponse({
+      response: res,
+      stream: toUIMessageStream({
+        stream: result.stream,
+        tools,
+        originalMessages: messages as UIMessage[],
+        generateMessageId: () => `msg-${randomUUID()}`,
+        messageMetadata: ({ part }) => {
+          if (
+            part.type === 'finish-step' &&
+            typeof part.usage?.inputTokens === 'number'
+          ) {
+            sawStepUsage = true;
+            return {
+              usage: {
+                inputTokens: part.usage.inputTokens,
+                outputTokens: part.usage.outputTokens,
+              },
             };
           }
-        }
-        try {
-          const saved = await threadService.replaceMessages(
-            user.userEntityRef,
-            threadId,
-            finalMessages,
-            modelId,
-          );
-          if (!saved) {
-            logger.warn('chat turn not persisted: thread not found or not owned', {
+          if (
+            part.type === 'finish' &&
+            !sawStepUsage &&
+            typeof part.totalUsage?.inputTokens === 'number'
+          ) {
+            return {
+              usage: {
+                inputTokens: part.totalUsage.inputTokens,
+                outputTokens: part.totalUsage.outputTokens,
+              },
+            };
+          }
+          return undefined;
+        },
+        onFinish: async ({ messages: finalMessages }) => {
+          if (!threadId) return;
+          // If this turn was aborted via Stop, mark the (partial) assistant reply
+          // so ANY client that loads it later shows a "Canceled" indicator instead
+          // of an ambiguous half-finished turn. The flag rides in the message's
+          // metadata, which round-trips through assistant-ui's history load.
+          // Distinct from an error: errors surface via the streamed error part
+          // (the client renders them), not a metadata flag — the abort signal is
+          // set ONLY when the cancel route fired.
+          if (turnAbort.signal.aborted && finalMessages.length > 0) {
+            const last = finalMessages[finalMessages.length - 1];
+            if (last.role === 'assistant') {
+              last.metadata = {
+                ...(last.metadata as Record<string, unknown> | undefined),
+                canceled: true,
+              };
+            }
+          }
+          try {
+            const saved = await threadService.replaceMessages(
+              user.userEntityRef,
+              threadId,
+              finalMessages,
+              modelId,
+            );
+            if (!saved) {
+              logger.warn('chat turn not persisted: thread not found or not owned', {
+                requestId,
+                threadId,
+              });
+            }
+          } catch (error) {
+            logger.error('failed to persist chat turn', {
               requestId,
               threadId,
+              error: error instanceof Error ? error.message : String(error),
             });
+          } finally {
+            // Clear "working" the instant the reply is done — titling is background.
+            noteFinished(user.userEntityRef, threadId, assistantId);
           }
-        } catch (error) {
-          logger.error('failed to persist chat turn', {
+
+          // Auto-title the conversation's first turn OFF the critical path, so the
+          // pulse never lingers through title generation. On success emit a
+          // lightweight 'updated' signal so views refresh the title (no status change).
+          void (async () => {
+            try {
+              const thread = await threadService.getThread(user.userEntityRef, threadId);
+              if (!thread || thread.title !== 'New Chat') return;
+              const titled = await generateText({
+                model,
+                instructions: TITLE_SYSTEM_PROMPT,
+                prompt: buildTitleExcerpt(finalMessages as unknown as TitleMessage[]),
+                maxRetries: 1,
+              });
+              const title = titled.text.trim().replace(/["']+/g, '').slice(0, 80);
+              if (title) {
+                await threadService.updateThread(user.userEntityRef, threadId, { title });
+                noteUpdated(user.userEntityRef, threadId, assistantId);
+              }
+            } catch (titleError) {
+              logger.warn('auto-title failed', {
+                requestId,
+                threadId,
+                error:
+                  titleError instanceof Error
+                    ? titleError.message
+                    : String(titleError),
+              });
+            }
+          })();
+        },
+        // Surface a stream/turn error as a readable error part instead of the SDK's
+        // masked default, so a failed turn shows WHY in the chat (the client renders
+        // it via MessageError) rather than ending silently. Capped; this is an
+        // internal developer tool, so the real reason beats an opaque mask.
+        onError: error => {
+          const detail = error instanceof Error ? error.message : String(error);
+          logger.warn('chat stream error surfaced to client', {
             requestId,
             threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: detail,
           });
-        } finally {
-          // Clear "working" the instant the reply is done — titling is background.
-          noteFinished(user.userEntityRef, threadId, assistantId);
-        }
-
-        // Auto-title the conversation's first turn OFF the critical path, so the
-        // pulse never lingers through title generation. On success emit a
-        // lightweight 'updated' signal so views refresh the title (no status change).
-        void (async () => {
-          try {
-            const thread = await threadService.getThread(user.userEntityRef, threadId);
-            if (!thread || thread.title !== 'New Chat') return;
-            const titled = await generateText({
-              model,
-              system: TITLE_SYSTEM_PROMPT,
-              prompt: buildTitleExcerpt(finalMessages as unknown as TitleMessage[]),
-              maxRetries: 1,
-            });
-            const title = titled.text.trim().replace(/["']+/g, '').slice(0, 80);
-            if (title) {
-              await threadService.updateThread(user.userEntityRef, threadId, { title });
-              noteUpdated(user.userEntityRef, threadId, assistantId);
-            }
-          } catch (titleError) {
-            logger.warn('auto-title failed', {
-              requestId,
-              threadId,
-              error:
-                titleError instanceof Error
-                  ? titleError.message
-                  : String(titleError),
-            });
-          }
-        })();
-      },
-      // Surface a stream/turn error as a readable error part instead of the SDK's
-      // masked default, so a failed turn shows WHY in the chat (the client renders
-      // it via MessageError) rather than ending silently. Capped; this is an
-      // internal developer tool, so the real reason beats an opaque mask.
-      onError: error => {
-        const detail = error instanceof Error ? error.message : String(error);
-        logger.warn('chat stream error surfaced to client', {
-          requestId,
-          threadId,
-          error: detail,
-        });
-        return `The assistant couldn't finish this turn: ${detail.slice(0, 300)}`;
-      },
+          return `The assistant couldn't finish this turn: ${detail.slice(0, 300)}`;
+        },
+        sendReasoning: true,
+      }),
       // Buffer a tee'd copy of the SSE so a client returning mid-flight can
       // rejoin via GET /chat/resume/:id (in-memory; single replica).
       consumeSseStream: ({ stream }) => {
         resumables.start(resumableId, user.userEntityRef, stream);
       },
-      sendReasoning: true,
       headers: {
         'Cache-Control': 'no-cache, no-transform',
         // AssistantChatTransport reads this to learn the resume id to store.
@@ -1112,7 +1128,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const result = await generateText({
         model,
-        system: TITLE_SYSTEM_PROMPT,
+        instructions: TITLE_SYSTEM_PROMPT,
         prompt: excerpt,
         maxRetries: 1,
       });
