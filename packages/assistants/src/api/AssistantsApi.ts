@@ -3,12 +3,45 @@ import {
   DiscoveryApi,
   FetchApi,
 } from '@backstage/core-plugin-api';
+import { ResponseError } from '@backstage/errors';
 import {
   AssistantDefinition,
   AssistantId,
   CapabilitiesResponse,
+  ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
+
+/**
+ * Per-conversation status row from `GET /threads/status` (all the user's
+ * threads across every assistant).
+ *
+ * @public
+ */
+export interface ConversationStatusRow {
+  threadId: string;
+  assistantId: string;
+  unread: boolean;
+  working: boolean;
+  /** Last completed turn's total tokens (input + output) — drives the gauge. */
+  tokens?: number;
+}
+
+/**
+ * Server-side thread fields patchable outside the runtime adapter (pin, model,
+ * reasoning level). Rename/archive/delete go through the runtime's
+ * `ThreadListItemRuntime`.
+ *
+ * @public
+ */
+export interface ThreadPatch {
+  title?: string;
+  model?: string;
+  /** `null` clears the stored level (back to the provider default). */
+  reasoningLevel?: ReasoningLevel | null;
+  pinned?: boolean;
+  archived?: boolean;
+}
 
 /**
  * Client for the AI Assistants backend.
@@ -36,6 +69,28 @@ export interface AssistantsApi {
   fetch: typeof fetch;
 
   /**
+   * The single authenticated JSON gateway: resolves the base URL, sets the
+   * JSON content type on bodied requests, throws a
+   * {@link @backstage/errors#ResponseError} on a non-2xx status, and parses
+   * the response body (undefined when empty, e.g. a 204). The thread-list
+   * adapter builds its REST calls on this instead of hand-rolling transport.
+   */
+  requestJson<T = void>(path: string, init?: RequestInit): Promise<T>;
+
+  /**
+   * The status of every one of the user's conversations across all assistants —
+   * the single source the client derives all indicators from. Best-effort:
+   * returns `[]` on failure.
+   */
+  getThreadsStatus(): Promise<ConversationStatusRow[]>;
+
+  /** Mark a thread read on the server (clears its unread flag). Best-effort. */
+  markThreadRead(threadId: string): Promise<void>;
+
+  /** Patch a thread's server-side fields (see {@link ThreadPatch}). */
+  patchThread(threadId: string, patch: ThreadPatch): Promise<void>;
+
+  /**
    * Fetch the live, assignable capability inventory that feeds the editor's
    * pickers (Backstage actions, the model pool, and MCP servers with their
    * reachability + tools). Admin-gated server-side — rejects (403) for
@@ -44,10 +99,10 @@ export interface AssistantsApi {
   getCapabilities(): Promise<CapabilitiesResponse>;
 
   /**
-   * List the full assistant definitions for the editor (`GET
-   * /manage/assistants`). Includes prompt/access/audit fields excluded from the
-   * browser-safe `/status` projection. Admin-gated server-side (403 for
-   * non-admins).
+   * List the full assistant definitions for the editor
+   * (`GET /manage/assistants`). Includes prompt/access/audit fields excluded
+   * from the browser-safe `/status` projection. Admin-gated server-side (403
+   * for non-admins).
    */
   listManagedAssistants(): Promise<AssistantDefinition[]>;
 
@@ -94,6 +149,7 @@ export const assistantsApiRef = createApiRef<AssistantsApi>({
 export class AssistantsClient implements AssistantsApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
+  private baseUrlPromise?: Promise<string>;
 
   constructor(options: { discoveryApi: DiscoveryApi; fetchApi: FetchApi }) {
     this.discoveryApi = options.discoveryApi;
@@ -107,108 +163,105 @@ export class AssistantsClient implements AssistantsApi {
   }
 
   async getBaseUrl(): Promise<string> {
-    return this.discoveryApi.getBaseUrl('assistants');
+    this.baseUrlPromise ??= this.discoveryApi.getBaseUrl('assistants');
+    return this.baseUrlPromise;
+  }
+
+  async requestJson<T = void>(path: string, init?: RequestInit): Promise<T> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (!response.ok) {
+      throw await this.toError(response);
+    }
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   async getStatus(): Promise<StatusResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(`${baseUrl}/status`);
-    if (!response.ok) {
-      throw await this.toError(response);
+    return this.requestJson<StatusResponse>('/status');
+  }
+
+  async getThreadsStatus(): Promise<ConversationStatusRow[]> {
+    try {
+      const data = await this.requestJson<{ threads: ConversationStatusRow[] }>(
+        '/threads/status',
+      );
+      return data.threads ?? [];
+    } catch {
+      return [];
     }
-    return (await response.json()) as StatusResponse;
+  }
+
+  async markThreadRead(threadId: string): Promise<void> {
+    try {
+      await this.requestJson(`/threads/${encodeURIComponent(threadId)}/read`, {
+        method: 'POST',
+      });
+    } catch {
+      // best-effort — unread is recomputed server-side on the next list()
+    }
+  }
+
+  async patchThread(threadId: string, patch: ThreadPatch): Promise<void> {
+    await this.requestJson(`/threads/${encodeURIComponent(threadId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
   }
 
   async getCapabilities(): Promise<CapabilitiesResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(`${baseUrl}/capabilities`);
-    if (!response.ok) {
-      throw await this.toError(response);
-    }
-    return (await response.json()) as CapabilitiesResponse;
+    return this.requestJson<CapabilitiesResponse>('/capabilities');
   }
 
   async listManagedAssistants(): Promise<AssistantDefinition[]> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(`${baseUrl}/manage/assistants`);
-    if (!response.ok) {
-      throw await this.toError(response);
-    }
     // The endpoint wraps the list as `{ assistants: [...] }`.
-    const body = (await response.json()) as {
-      assistants?: AssistantDefinition[];
-    };
+    const body = await this.requestJson<{ assistants?: AssistantDefinition[] }>(
+      '/manage/assistants',
+    );
     return body.assistants ?? [];
   }
 
   async createAssistant(
     definition: AssistantDefinition,
   ): Promise<AssistantDefinition> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(`${baseUrl}/manage/assistants`, {
+    return this.requestJson<AssistantDefinition>('/manage/assistants', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(definition),
     });
-    if (!response.ok) {
-      throw await this.toError(response);
-    }
-    return (await response.json()) as AssistantDefinition;
   }
 
   async updateAssistant(
     id: AssistantId,
     definition: AssistantDefinition,
   ): Promise<AssistantDefinition> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(
-      `${baseUrl}/manage/assistants/${encodeURIComponent(id)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(definition),
-      },
+    return this.requestJson<AssistantDefinition>(
+      `/manage/assistants/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: JSON.stringify(definition) },
     );
-    if (!response.ok) {
-      throw await this.toError(response);
-    }
-    return (await response.json()) as AssistantDefinition;
   }
 
   async deleteAssistant(id: AssistantId): Promise<void> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(
-      `${baseUrl}/manage/assistants/${encodeURIComponent(id)}`,
-      { method: 'DELETE' },
-    );
     // Tolerate both 204 (no body) and 200 (echoed body); only the status matters.
-    if (!response.ok) {
-      throw await this.toError(response);
-    }
+    await this.requestJson(`/manage/assistants/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   }
 
   private async toError(response: Response): Promise<Error> {
-    let detail = '';
-    try {
-      const body = await response.json();
-      detail = body?.error?.message ?? body?.message ?? '';
-    } catch {
-      // non-JSON body; fall back to status text
-    }
+    const error = await ResponseError.fromResponse(response);
     // Delta-validation (and other 400s) carry a human-readable reason the editor
     // surfaces inline — throw that message verbatim so callers can show it
-    // without the `Request failed with 400 …` envelope. The original status is
-    // still available on the attached `status` field.
-    if (response.status === 400 && detail) {
-      const error = new Error(detail) as Error & { status?: number };
-      error.status = response.status;
-      return error;
+    // without the `Request failed with 400 …` envelope.
+    const detail = error.body?.error?.message;
+    if (response.status === 400 && typeof detail === 'string' && detail) {
+      return new Error(detail);
     }
-    const suffix = detail ? `: ${detail}` : '';
-    const error = new Error(
-      `Request failed with ${response.status} ${response.statusText}${suffix}`,
-    ) as Error & { status?: number };
-    error.status = response.status;
     return error;
   }
 }

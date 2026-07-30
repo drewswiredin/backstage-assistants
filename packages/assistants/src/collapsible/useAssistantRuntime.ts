@@ -23,7 +23,6 @@ import type {
   ReasoningLevel,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
-import { fetchThreadStatus } from './threadListAdapter';
 import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
 import { createHistoryAdapter } from './threadListAdapter';
@@ -318,7 +317,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       resumedFor.current = remoteId;
       void (async () => {
         try {
-          const rows = await fetchThreadStatus(api);
+          const rows = await api.getThreadsStatus();
           const working = rows.find(r => r.threadId === remoteId)?.working ?? false;
           dbg('resume check', { remoteId, working });
           if (working) {

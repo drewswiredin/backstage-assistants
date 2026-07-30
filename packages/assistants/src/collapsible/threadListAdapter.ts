@@ -18,10 +18,7 @@ import type {
   MessageFormatRepository,
   ExportedMessageRepository,
 } from '@assistant-ui/core';
-import type {
-  AssistantId,
-  ReasoningLevel,
-} from '@drewswiredin/backstage-plugin-assistants-common';
+import type { AssistantId } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 
 /** Browser-side mirror of the backend `Thread` row (see assistants-backend/threads.ts). */
@@ -65,30 +62,6 @@ export interface ThreadSummary {
 }
 
 // ---------------------------------------------------------------------------
-// Authed-fetch helper
-// ---------------------------------------------------------------------------
-
-function createApiHelper(api: AssistantsApi) {
-  let baseUrl: string | undefined;
-  const url = async (path: string): Promise<string> => {
-    if (!baseUrl) baseUrl = await api.getBaseUrl();
-    return `${baseUrl}${path}`;
-  };
-  const json = async <T>(path: string, init?: RequestInit): Promise<T> => {
-    const res = await api.fetch(await url(path), {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    });
-    if (!res.ok) {
-      throw new Error(`${init?.method ?? 'GET'} ${path}: ${res.status}`);
-    }
-    const text = await res.text();
-    return (text ? JSON.parse(text) : null) as T;
-  };
-  return { url, json };
-}
-
-// ---------------------------------------------------------------------------
 // Thread-list adapter
 // ---------------------------------------------------------------------------
 
@@ -96,8 +69,6 @@ export function createThreadListAdapter(
   api: AssistantsApi,
   getActiveAssistantId: () => AssistantId,
 ): RemoteThreadListAdapter {
-  const h = createApiHelper(api);
-
   const toMetadata = (t: ServerThread): RemoteThreadMetadata => ({
     status: t.archived ? 'archived' : 'regular',
     remoteId: t.id,
@@ -119,13 +90,13 @@ export function createThreadListAdapter(
       // caller can currently access); the UI filters by the active agent. One
       // runtime spans the whole tab, so switching agent/conversation never
       // mounts/unmounts a runtime.
-      const data = await h.json<{ threads: ServerThread[] }>(`/threads`);
+      const data = await api.requestJson<{ threads: ServerThread[] }>(`/threads`);
       return { threads: (data.threads ?? []).map(toMetadata) };
     },
 
     async initialize(_threadId) {
       // A new thread is created under whichever agent is active right now.
-      const thread = await h.json<ServerThread>(`/threads`, {
+      const thread = await api.requestJson<ServerThread>(`/threads`, {
         method: 'POST',
         body: JSON.stringify({ assistantId: getActiveAssistantId() }),
       });
@@ -133,32 +104,32 @@ export function createThreadListAdapter(
     },
 
     async fetch(remoteId) {
-      return toMetadata(await h.json<ServerThread>(`/threads/${remoteId}`));
+      return toMetadata(await api.requestJson<ServerThread>(`/threads/${remoteId}`));
     },
 
     async rename(remoteId, title) {
-      await h.json(`/threads/${remoteId}`, {
+      await api.requestJson(`/threads/${remoteId}`, {
         method: 'PATCH',
         body: JSON.stringify({ title }),
       });
     },
 
     async archive(remoteId) {
-      await h.json(`/threads/${remoteId}`, {
+      await api.requestJson(`/threads/${remoteId}`, {
         method: 'PATCH',
         body: JSON.stringify({ archived: true }),
       });
     },
 
     async unarchive(remoteId) {
-      await h.json(`/threads/${remoteId}`, {
+      await api.requestJson(`/threads/${remoteId}`, {
         method: 'PATCH',
         body: JSON.stringify({ archived: false }),
       });
     },
 
     async delete(remoteId) {
-      await api.fetch(await h.url(`/threads/${remoteId}`), { method: 'DELETE' });
+      await api.requestJson(`/threads/${remoteId}`, { method: 'DELETE' });
     },
 
     async generateTitle() {
@@ -185,11 +156,9 @@ export function createHistoryAdapter(
   api: AssistantsApi,
   threadId: string,
 ): ThreadHistoryAdapter {
-  const h = createApiHelper(api);
-
   async function loadItems<TMessage>(): Promise<MessageFormatItem<TMessage>[]> {
     try {
-      const data = await h.json<{
+      const data = await api.requestJson<{
         messages: Array<{
           id: string;
           parentId: string | null;
@@ -238,72 +207,7 @@ export function createHistoryAdapter(
 }
 
 // ---------------------------------------------------------------------------
-// Unread
+// Status types (server rows live on AssistantsApi now)
 // ---------------------------------------------------------------------------
 
-/** Mark a thread read on the server (clears its unread flag). Best-effort. */
-export async function markThreadRead(
-  api: AssistantsApi,
-  threadId: string,
-): Promise<void> {
-  try {
-    const baseUrl = await api.getBaseUrl();
-    await api.fetch(`${baseUrl}/threads/${threadId}/read`, { method: 'POST' });
-  } catch {
-    // best-effort — unread is recomputed server-side on next list()
-  }
-}
-
-/** Per-conversation status row from `GET /threads/status` (all the user's threads). */
-export interface ConversationStatusRow {
-  threadId: string;
-  assistantId: string;
-  unread: boolean;
-  working: boolean;
-  /** Last completed turn's total tokens (input + output) — drives the gauge. */
-  tokens?: number;
-}
-
-/**
- * The status of every one of the user's conversations across all assistants —
- * the single source the client derives all indicators from. Best-effort:
- * returns [] on failure.
- */
-export async function fetchThreadStatus(
-  api: AssistantsApi,
-): Promise<ConversationStatusRow[]> {
-  try {
-    const h = createApiHelper(api);
-    const data = await h.json<{ threads: ConversationStatusRow[] }>(
-      `/threads/status`,
-    );
-    return data.threads ?? [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Patch a thread's server-side fields the runtime adapter doesn't cover (pin,
- * model, reasoning level). Rename/archive/delete go through the runtime's
- * `ThreadListItemRuntime`.
- */
-export async function patchThread(
-  api: AssistantsApi,
-  threadId: string,
-  patch: {
-    title?: string;
-    model?: string;
-    /** `null` clears the stored level (back to the provider default). */
-    reasoningLevel?: ReasoningLevel | null;
-    pinned?: boolean;
-    archived?: boolean;
-  },
-): Promise<void> {
-  const baseUrl = await api.getBaseUrl();
-  await api.fetch(`${baseUrl}/threads/${threadId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
-}
+export type { ConversationStatusRow } from '../api';

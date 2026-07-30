@@ -55,7 +55,6 @@ import { SidePane } from './SidePane';
 import { FullHeightRegion } from './FullHeightRegion';
 import {
   createThreadListAdapter,
-  patchThread,
   type ThreadCustomMetadata,
   type ThreadSummary,
 } from './threadListAdapter';
@@ -822,7 +821,7 @@ function ChatChrome({
         (item.custom as Partial<ThreadCustomMetadata> | undefined)?.pinned ??
         false;
       try {
-        await patchThread(api, item.remoteId, { pinned: !pinned });
+        await api.patchThread(item.remoteId, { pinned: !pinned });
         await runtime.threads.reload();
       } catch {
         // best-effort
@@ -841,7 +840,7 @@ function ChatChrome({
       setReasoningLevel(level);
       reasoningLevelRef.current = level;
       if (activeRemoteId) {
-        void patchThread(api, activeRemoteId, {
+        void api.patchThread(activeRemoteId, {
           model: next,
           reasoningLevel: level,
         });
@@ -855,7 +854,7 @@ function ChatChrome({
       setReasoningLevel(next);
       reasoningLevelRef.current = next;
       if (activeRemoteId) {
-        void patchThread(api, activeRemoteId, { reasoningLevel: next });
+        void api.patchThread(activeRemoteId, { reasoningLevel: next });
       }
     },
     [api, activeRemoteId, reasoningLevelRef],
@@ -866,7 +865,7 @@ function ChatChrome({
     setReasoningLevel(undefined);
     reasoningLevelRef.current = undefined;
     if (activeRemoteId) {
-      void patchThread(api, activeRemoteId, { reasoningLevel: null });
+      void api.patchThread(activeRemoteId, { reasoningLevel: null });
     }
   }, [api, activeRemoteId, reasoningLevelRef]);
 

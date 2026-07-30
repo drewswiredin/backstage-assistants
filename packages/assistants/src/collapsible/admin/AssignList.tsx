@@ -5,9 +5,13 @@
  * that opens a searchable popover to add one unassigned item at a time. Each
  * wrapper supplies its rows, its addable options (optionally grouped), and any
  * per-row action (e.g. the model default ★ or a tool ⓘ); this file owns only the
- * layout, the search/popover, and the add/remove plumbing.
+ * layout, the picker, and the add/remove plumbing.
+ *
+ * The picker itself is MUI lab's `Autocomplete`, rendered statically open
+ * inside the popover (an inline `PopperComponent`), which provides filtering,
+ * grouping, freeSolo, and full keyboard navigation for free.
  */
-import { ReactNode, useMemo, useRef, useState } from 'react';
+import { HTMLAttributes, ReactNode, useMemo, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import Button from '@material-ui/core/Button';
 import IconButton from '@material-ui/core/IconButton';
@@ -19,6 +23,7 @@ import InputAdornment from '@material-ui/core/InputAdornment';
 import AddIcon from '@material-ui/icons/Add';
 import CloseIcon from '@material-ui/icons/Close';
 import SearchIcon from '@material-ui/icons/Search';
+import Autocomplete from '@material-ui/lab/Autocomplete';
 
 /** Tone for a row's left accent + secondary text (drives stale flagging). */
 export type RowTone = 'default' | 'error' | 'warning';
@@ -44,6 +49,13 @@ export interface AssignOption {
   /** Group key for the grouped picker (first-seen order is preserved). */
   group?: string;
 }
+
+/** The freeSolo "Add “x”" affordance, injected as a synthetic option. */
+interface TypedOption extends AssignOption {
+  typedValue: string;
+}
+
+const isTyped = (o: AssignOption): o is TypedOption => 'typedValue' in o;
 
 export interface AssignListProps {
   rows: AssignRow[];
@@ -146,32 +158,31 @@ const useStyles = makeStyles(theme => ({
     maxHeight: 380,
     display: 'flex',
     flexDirection: 'column',
-  },
-  searchBox: {
     padding: theme.spacing(1),
     paddingBottom: theme.spacing(0.5),
   },
-  optionList: {
-    overflowY: 'auto',
-    paddingBottom: theme.spacing(0.5),
+  // The Autocomplete's inline "popper": rendered in place under the input.
+  inlinePopper: {
+    position: 'relative',
+    width: '100% !important',
+  },
+  // Restyle the Autocomplete paper/listbox to sit flush inside the popover.
+  autocompletePaper: {
+    margin: theme.spacing(0.5, 0, 0),
+    boxShadow: 'none',
+  },
+  autocompleteListbox: {
+    maxHeight: 300,
+    padding: theme.spacing(0, 0, 0.5),
+  },
+  autocompleteOption: {
+    alignItems: 'baseline',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5, 1.25),
+    minHeight: 0,
   },
   groupHeader: {
     padding: theme.spacing(0.75, 1.25, 0.25),
-  },
-  option: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: theme.spacing(1),
-    width: '100%',
-    textAlign: 'left',
-    padding: theme.spacing(0.5, 1.25),
-    cursor: 'pointer',
-    border: 'none',
-    background: 'none',
-    font: 'inherit',
-    '&:hover': {
-      backgroundColor: theme.palette.action.hover,
-    },
   },
   optionLabel: {
     fontSize: '0.92rem',
@@ -185,11 +196,6 @@ const useStyles = makeStyles(theme => ({
     whiteSpace: 'nowrap',
     color: theme.palette.text.secondary,
     fontSize: '0.8rem',
-  },
-  empty: {
-    color: theme.palette.text.secondary,
-    fontSize: '0.85rem',
-    padding: theme.spacing(1, 1.25),
   },
 }));
 
@@ -212,43 +218,6 @@ export function AssignList({
   const classes = useStyles();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [query, setQuery] = useState('');
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return options;
-    }
-    return options.filter(
-      o =>
-        o.label.toLowerCase().includes(q) ||
-        (o.secondary?.toLowerCase().includes(q) ?? false),
-    );
-  }, [options, query]);
-
-  // Preserve first-seen group order for the grouped picker.
-  const groups = useMemo(() => {
-    if (!grouped) {
-      return [];
-    }
-    const order: string[] = [];
-    const byGroup = new Map<string, AssignOption[]>();
-    for (const o of filtered) {
-      const g = o.group ?? '';
-      if (!byGroup.has(g)) {
-        byGroup.set(g, []);
-        order.push(g);
-      }
-      byGroup.get(g)!.push(o);
-    }
-    return order.map(g => ({ group: g, items: byGroup.get(g)! }));
-  }, [filtered, grouped]);
-
-  // Show a "create" affordance when freeSolo and the query matches no option.
-  const typedAdd =
-    allowTyped &&
-    query.trim().length > 0 &&
-    !options.some(o => o.label.toLowerCase() === query.trim().toLowerCase());
 
   const rowToneClass = (tone?: RowTone) => {
     if (tone === 'error') {
@@ -275,26 +244,52 @@ export function AssignList({
     setQuery('');
   };
 
-  const commitTyped = () => {
-    if (typedAdd && onAddTyped) {
-      onAddTyped(query.trim());
-      setQuery('');
+  // Match against label AND secondary; append the freeSolo "Add “x”" option
+  // when the query matches no option exactly.
+  const filterOptions = (
+    opts: AssignOption[],
+    state: { inputValue: string },
+  ): AssignOption[] => {
+    const q = state.inputValue.trim().toLowerCase();
+    const filtered = !q
+      ? opts
+      : opts.filter(
+          o =>
+            o.label.toLowerCase().includes(q) ||
+            (o.secondary?.toLowerCase().includes(q) ?? false),
+        );
+    if (
+      allowTyped &&
+      q.length > 0 &&
+      !opts.some(o => o.label.toLowerCase() === q)
+    ) {
+      const typed: TypedOption = {
+        id: `__typed__:${state.inputValue.trim()}`,
+        label: `Add “${state.inputValue.trim()}”`,
+        typedValue: state.inputValue.trim(),
+      };
+      return [typed, ...filtered];
     }
+    return filtered;
   };
 
-  const renderOption = (o: AssignOption) => (
-    <button
-      key={o.id}
-      type="button"
-      className={classes.option}
-      onClick={() => onAdd(o.id)}
-    >
-      <span className={classes.optionLabel}>{o.label}</span>
-      {o.secondary && (
-        <span className={classes.optionSecondary}>{o.secondary}</span>
-      )}
-    </button>
-  );
+  const commitOption = (value: AssignOption | string | null) => {
+    if (!value) {
+      return;
+    }
+    if (typeof value === 'string') {
+      // freeSolo Enter on raw text (no highlighted option).
+      const trimmed = value.trim();
+      if (trimmed && onAddTyped) {
+        onAddTyped(trimmed);
+      }
+    } else if (isTyped(value)) {
+      onAddTyped?.(value.typedValue);
+    } else {
+      onAdd(value.id);
+    }
+    setQuery('');
+  };
 
   const renderRow = (row: AssignRow) => (
     <div key={row.id} className={`${classes.row} ${rowToneClass(row.tone)}`}>
@@ -377,64 +372,89 @@ export function AssignList({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         PaperProps={{ className: classes.popover }}
-        TransitionProps={{ onEntered: () => searchRef.current?.focus() }}
       >
-        <div className={classes.searchBox}>
-          <TextField
-            inputRef={searchRef}
-            fullWidth
-            size="small"
-            variant="outlined"
-            placeholder={searchPlaceholder ?? 'Search…'}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => {
-              if (e.key !== 'Enter') {
-                return;
-              }
-              e.preventDefault();
-              if (typedAdd) {
-                commitTyped();
-              } else if (filtered.length === 1) {
-                // Filtered to a single match — add it without reaching for the mouse.
-                onAdd(filtered[0].id);
-              }
-            }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            }}
-          />
-        </div>
-        <div className={classes.optionList}>
-          {typedAdd && (
-            <button
-              type="button"
-              className={classes.option}
-              onClick={commitTyped}
+        <Autocomplete
+          open
+          autoHighlight
+          disablePortal
+          freeSolo={allowTyped}
+          options={options}
+          value={null}
+          inputValue={query}
+          onInputChange={(_, v, reason) => {
+            // `reset` fires after a selection with the chosen label — the input
+            // should clear instead so the picker is ready for the next add.
+            if (reason !== 'reset') {
+              setQuery(v);
+            }
+          }}
+          onChange={(_, value) => commitOption(value)}
+          getOptionLabel={o => (typeof o === 'string' ? o : o.label)}
+          groupBy={grouped ? o => o.group ?? '' : undefined}
+          renderGroup={params => (
+            <div key={params.key}>
+              <div className={classes.groupHeader}>
+                {renderGroupHeader
+                  ? renderGroupHeader(params.group)
+                  : params.group}
+              </div>
+              {params.children}
+            </div>
+          )}
+          filterOptions={filterOptions}
+          noOptionsText={noOptionsText ?? 'Nothing to add.'}
+          renderOption={o => (
+            <>
+              <span className={classes.optionLabel}>{o.label}</span>
+              {o.secondary && (
+                <span className={classes.optionSecondary}>{o.secondary}</span>
+              )}
+            </>
+          )}
+          // Render the listbox inline under the input (the popover is the
+          // "popup"); a nested floating Popper inside a Popover double-floats.
+          PopperComponent={({ children, ...props }) => (
+            <div
+              {...(props as HTMLAttributes<HTMLDivElement>)}
+              className={classes.inlinePopper}
+              style={{}}
             >
-              <span className={classes.optionLabel}>Add “{query.trim()}”</span>
-            </button>
+              {/* Popper children may be a render-prop; the listbox needs neither
+                  transition nor placement, so call it with a static placement. */}
+              {typeof children === 'function'
+                ? (children as (p: { placement: string }) => ReactNode)({
+                    placement: 'bottom-start',
+                  })
+                : children}
+            </div>
           )}
-          {grouped
-            ? groups.map(({ group, items }) => (
-                <div key={group}>
-                  <div className={classes.groupHeader}>
-                    {renderGroupHeader ? renderGroupHeader(group) : group}
-                  </div>
-                  {items.map(renderOption)}
-                </div>
-              ))
-            : filtered.map(renderOption)}
-          {!typedAdd && filtered.length === 0 && (
-            <Typography className={classes.empty}>
-              {noOptionsText ?? 'Nothing to add.'}
-            </Typography>
+          classes={{
+            paper: classes.autocompletePaper,
+            listbox: classes.autocompleteListbox,
+            option: classes.autocompleteOption,
+          }}
+          renderInput={params => (
+            <TextField
+              {...params}
+              // The popover exists solely to search — focus lands where the
+              // only interaction is, matching the previous picker's behavior.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              fullWidth
+              size="small"
+              variant="outlined"
+              placeholder={searchPlaceholder ?? 'Search…'}
+              InputProps={{
+                ...params.InputProps,
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
           )}
-        </div>
+        />
       </Popover>
     </div>
   );

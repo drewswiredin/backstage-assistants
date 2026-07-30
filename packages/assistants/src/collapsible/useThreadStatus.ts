@@ -14,11 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { AssistantsApi } from '../api';
-import {
-  fetchThreadStatus,
-  markThreadRead,
-  type ConversationStatusRow,
-} from './threadListAdapter';
+import type { ConversationStatusRow } from '../api';
 
 const NOTIFY_CHANNEL = 'assistants:threads';
 
@@ -57,14 +53,14 @@ export function useThreadStatus(
   focusedRef.current = focusedId;
 
   const refresh = useCallback(async () => {
-    const next = await fetchThreadStatus(api);
+    const next = await api.getThreadsStatus();
     setRows(next);
     setTick(t => t + 1);
     // Focus is the only "read" action: converge the focused conversation on the
     // server so the rollups / nav / other tabs clear it too.
     const fid = focusedRef.current;
     if (fid && next.find(r => r.threadId === fid)?.unread) {
-      void markThreadRead(api, fid);
+      void api.markThreadRead(fid);
     }
   }, [api]);
 
@@ -95,7 +91,7 @@ export function useThreadStatus(
     setRows(prev =>
       prev.map(r => (r.threadId === focusedId ? { ...r, unread: false } : r)),
     );
-    void markThreadRead(api, focusedId);
+    void api.markThreadRead(focusedId);
   }, [focusedId, api]);
 
   const statusOf = useCallback(
