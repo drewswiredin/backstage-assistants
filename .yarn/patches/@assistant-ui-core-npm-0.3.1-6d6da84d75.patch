@@ -1,0 +1,17 @@
+diff --git a/dist/react/primitives/message/MessageParts.d.ts b/dist/react/primitives/message/MessageParts.d.ts
+index cc8ad9ec2451a38f79ba78c24e4b4b11d7829c30..156931b1b8fcca60f6e5fc3ae050a0bc39fd7668 100644
+--- a/dist/react/primitives/message/MessageParts.d.ts
++++ b/dist/react/primitives/message/MessageParts.d.ts
+@@ -224,6 +224,12 @@ type EnrichedPartState = (Extract<PartState, {
+ } | {
+   type: "data";
+ }>;
++type MessagePartChildrenProps = {
++  index: number;
++  children: (item: {
++    part: EnrichedPartState;
++  }) => ReactNode;
++};
+ declare const MessagePartChildren: FC<MessagePartChildrenProps>;
+ /**
+  * Renders the parts of a message with support for multiple content types.

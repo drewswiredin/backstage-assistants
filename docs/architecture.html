@@ -91,8 +91,8 @@
             <tr><th>Layer</th><th>Packages</th><th>Role</th></tr>
             <tr>
               <td class="k">Chat UI</td>
-              <td class="k">@assistant-ui/react · -react-ai-sdk · -react-ui · -react-markdown · -core</td>
-              <td>Prebuilt thread / composer / branching, message + tool-call rendering, and the single multi-conversation, multi-agent runtime (<code>useRemoteThreadListRuntime</code>). The AI-SDK bridge (<code>useAISDKRuntime</code>, <code>AssistantChatTransport</code>) and native tool-approval gate (<code>respondToApproval</code>) live here. Our surface is <b>seeded from assistant-ui's prebuilt <code>&lt;Thread&gt;</code></b> (the <code>-react-ui</code> registry template) and vendored in-repo so it stays editable.</td>
+              <td class="k">@assistant-ui/react · -react-ai-sdk · -react-markdown · -core</td>
+              <td>Message + tool-call rendering primitives and the single multi-conversation, multi-agent runtime (<code>useRemoteThreadListRuntime</code>). The AI-SDK bridge (<code>useAISDKRuntime</code>, <code>AssistantChatTransport</code>) and native tool-approval gate (<code>respondToApproval</code>) live here. The prebuilt thread / composer / branching components — assistant-ui's <code>-react-ui</code> registry template — are <b>vendored in-repo</b> (<code>surface/react-ui/</code>, stylesheets under <code>surface/styles/</code>) so they stay editable and don't pin the primitive packages.</td>
             </tr>
             <tr>
               <td class="k">Model + tool loop</td>

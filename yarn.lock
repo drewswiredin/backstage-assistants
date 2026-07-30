@@ -57,29 +57,29 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:4.0.31":
-  version: 4.0.31
-  resolution: "@ai-sdk/gateway@npm:4.0.31"
+"@ai-sdk/gateway@npm:4.0.32":
+  version: 4.0.32
+  resolution: "@ai-sdk/gateway@npm:4.0.32"
   dependencies:
     "@ai-sdk/provider": "npm:4.0.4"
-    "@ai-sdk/provider-utils": "npm:5.0.14"
+    "@ai-sdk/provider-utils": "npm:5.0.15"
     "@vercel/oidc": "npm:3.2.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/c46e3479a17a10c9e4e5eadf02640e7c8b4be0950b1fa1d4e3a257112795bb9f4f1f92a7fb227b3f29e414b31a897102e8ce65c685d18986dbbe7258f7b4995c
+  checksum: 10c0/52b8e7e785ec9a38b561c4495c1c65a8cc6511cf5f10f7916609bf9d578c04671720af82b35d849d82351835096533dc7204cfd7b35c36cf7d270ed31c07a26b
   languageName: node
   linkType: hard
 
-"@ai-sdk/mcp@npm:2.0.18, @ai-sdk/mcp@npm:^2.0.13":
-  version: 2.0.18
-  resolution: "@ai-sdk/mcp@npm:2.0.18"
+"@ai-sdk/mcp@npm:2.0.19, @ai-sdk/mcp@npm:^2.0.16":
+  version: 2.0.19
+  resolution: "@ai-sdk/mcp@npm:2.0.19"
   dependencies:
     "@ai-sdk/provider": "npm:4.0.4"
-    "@ai-sdk/provider-utils": "npm:5.0.14"
+    "@ai-sdk/provider-utils": "npm:5.0.15"
     pkce-challenge: "npm:^5.0.1"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/dc3a3c0217e7ec7d3b9dd37b772c04c8e27f7337147f35c4d3c758c3982167446ada3aafed9cdca2f122471ae76f6feb5814bb1f6e9e4f3246f35763761ff5de
+  checksum: 10c0/35a8d99d2b578a2e158e79b21592fb0cfbb345a5e8180d8735c2c769e0fb651ee254060515311619d79fd198113c7d10eae95ebf9ccb91157e4d46bebfa7c74a
   languageName: node
   linkType: hard
 
@@ -109,6 +109,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/provider-utils@npm:5.0.15":
+  version: 5.0.15
+  resolution: "@ai-sdk/provider-utils@npm:5.0.15"
+  dependencies:
+    "@ai-sdk/provider": "npm:4.0.4"
+    "@standard-schema/spec": "npm:^1.1.0"
+    "@workflow/serde": "npm:4.1.0"
+    eventsource-parser: "npm:^3.0.8"
+    undici: "npm:^7.28.0"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/baacf9dda093c293b31bc880a52b722df6df9026ff4691833f83c129aea82d15884d233218e24e0f6e13ec1db81793c5d601ef6db4d770b3f815539c6d70b343
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/provider@npm:4.0.4":
   version: 4.0.4
   resolution: "@ai-sdk/provider@npm:4.0.4"
@@ -118,19 +133,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/react@npm:^4.0.30, @ai-sdk/react@npm:^4.0.44":
-  version: 4.0.44
-  resolution: "@ai-sdk/react@npm:4.0.44"
+"@ai-sdk/react@npm:^4.0.40, @ai-sdk/react@npm:^4.0.44":
+  version: 4.0.45
+  resolution: "@ai-sdk/react@npm:4.0.45"
   dependencies:
-    "@ai-sdk/mcp": "npm:2.0.18"
+    "@ai-sdk/mcp": "npm:2.0.19"
     "@ai-sdk/provider": "npm:4.0.4"
-    "@ai-sdk/provider-utils": "npm:5.0.14"
-    ai: "npm:7.0.41"
+    "@ai-sdk/provider-utils": "npm:5.0.15"
+    ai: "npm:7.0.42"
     swr: "npm:^2.4.1"
     throttleit: "npm:2.1.0"
   peerDependencies:
     react: ^18 || ~19.0.1 || ~19.1.2 || ^19.2.1
-  checksum: 10c0/68d92998e019fdb8783bf99a38e71013d772debeae488ce619e94a7d53b48a87835db76c1650cc7b28c48e1fa21b0a1586060feb8ed51045f7ce5365f935c025
+  checksum: 10c0/1b0465d4a12f9efde94dd3f3a555389fad410b3ea0b5d5496261b7b5677bdcb3a61b407621d15c258c15423a5157bb748d5c3175d1cdb9f36d72c0917e7b0678
   languageName: node
   linkType: hard
 
@@ -250,14 +265,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:0.2.23, @assistant-ui/core@npm:^0.2.21, @assistant-ui/core@npm:^0.2.23":
-  version: 0.2.23
-  resolution: "@assistant-ui/core@npm:0.2.23"
+"@assistant-ui/core@npm:0.3.1":
+  version: 0.3.1
+  resolution: "@assistant-ui/core@npm:0.3.1"
   dependencies:
-    assistant-stream: "npm:^0.3.28"
+    assistant-stream: "npm:^0.3.30"
     nanoid: "npm:^6.0.0"
   peerDependencies:
-    "@assistant-ui/store": ^0.2.13
+    "@assistant-ui/store": ^0.3.0
     "@assistant-ui/tap": ^0.9.0
     "@types/react": "*"
     assistant-cloud: ^0.1.31
@@ -272,85 +287,83 @@ __metadata:
       optional: true
     zustand:
       optional: true
-  checksum: 10c0/aadaf8d6a309bdb3d65d7dbda85f48a8fb7ab3336e7bcaecf8529fd0a47f52b19f0b518d0bfae637047bc903d968e8946df967714a2c862d041c70b10d8982f9
+  checksum: 10c0/c89eb89d392ef9882389174c5f273f4f370731108013d4ac1faedebbc411dcef700d3481ec71e356c4a7bef326921d7f5cab115cd533d201b947fb0ced687243
   languageName: node
   linkType: hard
 
-"@assistant-ui/react-ai-sdk@npm:1.3.41":
-  version: 1.3.41
-  resolution: "@assistant-ui/react-ai-sdk@npm:1.3.41"
+"@assistant-ui/core@patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch":
+  version: 0.3.1
+  resolution: "@assistant-ui/core@patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch::version=0.3.1&hash=edd92f"
   dependencies:
-    "@ai-sdk/mcp": "npm:^2.0.13"
-    "@ai-sdk/react": "npm:^4.0.30"
-    "@assistant-ui/core": "npm:^0.2.21"
-    "@assistant-ui/store": "npm:^0.2.20"
-    ai: "npm:^7.0.28"
+    assistant-stream: "npm:^0.3.30"
+    nanoid: "npm:^6.0.0"
+  peerDependencies:
+    "@assistant-ui/store": ^0.3.0
+    "@assistant-ui/tap": ^0.9.0
+    "@types/react": "*"
+    assistant-cloud: ^0.1.31
+    react: ^18 || ^19
+    zustand: ^5.0.11
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+    assistant-cloud:
+      optional: true
+    react:
+      optional: true
+    zustand:
+      optional: true
+  checksum: 10c0/bcf52cdc36c26debcb449371f49e608802d788e60936b472af21ed3507b46fffbb283a9643a57d0d5c5c61f5495d211450b5284506f559bfe4372124631d2b0e
+  languageName: node
+  linkType: hard
+
+"@assistant-ui/react-ai-sdk@npm:1.4.1":
+  version: 1.4.1
+  resolution: "@assistant-ui/react-ai-sdk@npm:1.4.1"
+  dependencies:
+    "@ai-sdk/mcp": "npm:^2.0.16"
+    "@ai-sdk/react": "npm:^4.0.40"
+    "@assistant-ui/core": "npm:^0.3.0"
+    "@assistant-ui/store": "npm:^0.3.0"
+    ai: "npm:^7.0.37"
     assistant-cloud: "npm:*"
-    assistant-stream: "npm:^0.3.26"
+    assistant-stream: "npm:^0.3.29"
   peerDependencies:
     "@types/react": "*"
     react: ^18 || ^19
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/066e60639021de90e171b1fe792eafc9f35a980d27376c9d6a9d1ef49a48160c5018143108e20e4c9340913c4b3c60aad4584a927190fb5d210d0de78b0187ed
+  checksum: 10c0/cfa42304cfcc4b60f2b90f93c1596b9398e8637e7e78bc1c4d6681af2e9b3c3353964cf2f23bdbf461a97512b5710497569b35129bfac416ffdc357f08afb3d3
   languageName: node
   linkType: hard
 
-"@assistant-ui/react-markdown@npm:0.14.7":
-  version: 0.14.7
-  resolution: "@assistant-ui/react-markdown@npm:0.14.7"
+"@assistant-ui/react-markdown@npm:0.14.8":
+  version: 0.14.8
+  resolution: "@assistant-ui/react-markdown@npm:0.14.8"
   dependencies:
     "@radix-ui/react-primitive": "npm:^2.1.10"
     "@radix-ui/react-use-callback-ref": "npm:^1.1.4"
     classnames: "npm:^2.5.1"
     react-markdown: "npm:^10.1.0"
   peerDependencies:
-    "@assistant-ui/react": ^0.14.18
+    "@assistant-ui/react": ^0.15.0
     "@types/react": "*"
     react: ^18 || ^19
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/ac4918deda3021ac3ac72c195b41e09aecee4e7d161ffa766798f04cacbc1706616275fd370e073d3151def5aeebc2f836b938d057957b39db35a1b8559e6e38
+  checksum: 10c0/d5600c9ef673e6d0c5b4687ed1bddb15e7ba9eaa49b5344ede2a4d077fb9b74c0489d4d320f2f6dbd8e60f0f60acc083325c4f8f8d2791f19b63a0ce21faeb13
   languageName: node
   linkType: hard
 
-"@assistant-ui/react-ui@npm:0.2.1":
-  version: 0.2.1
-  resolution: "@assistant-ui/react-ui@npm:0.2.1"
+"@assistant-ui/react@npm:0.15.1":
+  version: 0.15.1
+  resolution: "@assistant-ui/react@npm:0.15.1"
   dependencies:
-    "@radix-ui/react-avatar": "npm:^1.1.3"
-    "@radix-ui/react-dialog": "npm:^1.1.6"
-    "@radix-ui/react-primitive": "npm:^2.0.2"
-    "@radix-ui/react-tooltip": "npm:^1.1.8"
-    class-variance-authority: "npm:^0.7.1"
-    classnames: "npm:^2.5.1"
-    lucide-react: "npm:^0.475.0"
-    zustand: "npm:^5.0.3"
-  peerDependencies:
-    "@assistant-ui/react": "*"
-    "@assistant-ui/react-markdown": "*"
-    "@types/react": "*"
-    "@types/react-dom": "*"
-    react: ^18 || ^19 || ^19.0.0-rc
-    react-dom: ^18 || ^19 || ^19.0.0-rc
-  peerDependenciesMeta:
-    "@types/react":
-      optional: true
-    "@types/react-dom":
-      optional: true
-  checksum: 10c0/a00ce98811ccdd54b81ee8b5512388567d7b2784fb27f7e717b95adbc809065559f7cc9e03b4dd382da00a86a04fb1d205884df1a8d4ed8cbd55618d3cb1dca8
-  languageName: node
-  linkType: hard
-
-"@assistant-ui/react@npm:0.14.29":
-  version: 0.14.29
-  resolution: "@assistant-ui/react@npm:0.14.29"
-  dependencies:
-    "@assistant-ui/core": "npm:^0.2.23"
-    "@assistant-ui/store": "npm:^0.2.22"
-    "@assistant-ui/tap": "npm:^0.9.6"
+    "@assistant-ui/core": "npm:^0.3.1"
+    "@assistant-ui/store": "npm:^0.3.1"
+    "@assistant-ui/tap": "npm:^0.9.7"
     "@radix-ui/primitive": "npm:^1.1.7"
     "@radix-ui/react-collection": "npm:^1.1.15"
     "@radix-ui/react-compose-refs": "npm:^1.1.5"
@@ -360,7 +373,7 @@ __metadata:
     "@radix-ui/react-use-controllable-state": "npm:^1.2.6"
     "@radix-ui/react-use-escape-keydown": "npm:^1.1.5"
     assistant-cloud: "npm:^0.1.37"
-    assistant-stream: "npm:^0.3.28"
+    assistant-stream: "npm:^0.3.30"
     nanoid: "npm:^6.0.0"
     radix-ui: "npm:^1.6.7"
     react-textarea-autosize: "npm:^8.5.9"
@@ -377,13 +390,13 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/9d2620002fc70afb82ec890aa354b7acb198f076658f6f29d703954eaac425eea9b225f4760e2b40462a7470e8b36a7a1a9a62ead5764f73ca98b7e6147576cc
+  checksum: 10c0/fc4640900da39659655b30d1f6423dae0e11a92ca29c9b7bb09d6ec0565c09b082007677e0b0f07669be8cae44cd6bf7aa0c72af691e4ca02696cd4eff575f7b
   languageName: node
   linkType: hard
 
-"@assistant-ui/store@npm:0.2.22, @assistant-ui/store@npm:^0.2.20, @assistant-ui/store@npm:^0.2.22":
-  version: 0.2.22
-  resolution: "@assistant-ui/store@npm:0.2.22"
+"@assistant-ui/store@npm:0.3.1, @assistant-ui/store@npm:^0.3.0, @assistant-ui/store@npm:^0.3.1":
+  version: 0.3.1
+  resolution: "@assistant-ui/store@npm:0.3.1"
   dependencies:
     use-effect-event: "npm:^2.0.3"
   peerDependencies:
@@ -393,11 +406,11 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/c5f2ac184fe9112c476766ac3bb05a694c65ea8bb739db20b628fe8ee4f7aad18512d3dc46f1cb88c765dcaaf3d43b8d4fb87214cd4a58939947fb0bd58d68d9
+  checksum: 10c0/f7647f36c7dae446f2d4e8564f9c9dd19c1890df74fcf6bfc7b1fd571ff396da21619da37ccdbc905c8e04bca4f5638179c91ab5c5e496d6569c734ac9906917
   languageName: node
   linkType: hard
 
-"@assistant-ui/tap@npm:0.9.7, @assistant-ui/tap@npm:^0.9.6":
+"@assistant-ui/tap@npm:0.9.7, @assistant-ui/tap@npm:^0.9.7":
   version: 0.9.7
   resolution: "@assistant-ui/tap@npm:0.9.7"
   peerDependencies:
@@ -4732,12 +4745,11 @@ __metadata:
   resolution: "@drewswiredin/backstage-plugin-assistants@workspace:packages/assistants"
   dependencies:
     "@ai-sdk/react": "npm:^4.0.44"
-    "@assistant-ui/core": "npm:0.2.23"
-    "@assistant-ui/react": "npm:0.14.29"
-    "@assistant-ui/react-ai-sdk": "npm:1.3.41"
-    "@assistant-ui/react-markdown": "npm:0.14.7"
-    "@assistant-ui/react-ui": "npm:0.2.1"
-    "@assistant-ui/store": "npm:0.2.22"
+    "@assistant-ui/core": "patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch"
+    "@assistant-ui/react": "npm:0.15.1"
+    "@assistant-ui/react-ai-sdk": "npm:1.4.1"
+    "@assistant-ui/react-markdown": "npm:0.14.8"
+    "@assistant-ui/store": "npm:0.3.1"
     "@assistant-ui/tap": "npm:0.9.7"
     "@backstage/catalog-model": "npm:^1.9.0"
     "@backstage/cli": "npm:^0.36.4"
@@ -4753,6 +4765,10 @@ __metadata:
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
+    "@radix-ui/react-avatar": "npm:^1.1.3"
+    "@radix-ui/react-dialog": "npm:^1.1.6"
+    "@radix-ui/react-primitive": "npm:^2.0.2"
+    "@radix-ui/react-tooltip": "npm:^1.1.8"
     "@remixicon/react": "npm:^4.5.0"
     "@rjsf/core": "npm:^5.24.0"
     "@rjsf/utils": "npm:^5.24.0"
@@ -4760,6 +4776,8 @@ __metadata:
     "@types/react": "npm:^18.0.0"
     ai: "npm:^7.0.41"
     assistant-cloud: "npm:0.1.37"
+    classnames: "npm:^2.5.1"
+    lucide-react: "npm:^0.475.0"
     marked: "npm:^15.0.0"
     mermaid: "npm:^11.0.0"
     react: "npm:^18.0.0"
@@ -14326,16 +14344,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:7.0.41, ai@npm:^7.0.28, ai@npm:^7.0.41":
-  version: 7.0.41
-  resolution: "ai@npm:7.0.41"
+"ai@npm:7.0.42, ai@npm:^7.0.37, ai@npm:^7.0.41":
+  version: 7.0.42
+  resolution: "ai@npm:7.0.42"
   dependencies:
-    "@ai-sdk/gateway": "npm:4.0.31"
+    "@ai-sdk/gateway": "npm:4.0.32"
     "@ai-sdk/provider": "npm:4.0.4"
-    "@ai-sdk/provider-utils": "npm:5.0.14"
+    "@ai-sdk/provider-utils": "npm:5.0.15"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/31f30301167e0221bc37db3e52b76a3dd90ca19b3dfb0814bbd35035be66acf2b7e9893776bf201d4265bb291989e19b508fd361d8aa8690273f8156ef44e8bd
+  checksum: 10c0/9eb021bf9fa92ac9818bdc89c92851ec215dd70c63b7837c18653ed614221af581e8857b9b08010af7f7dbf9545ff31a645bed3df4ead6ce520f7cbb634ee5ab
   languageName: node
   linkType: hard
 
@@ -14912,7 +14930,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"assistant-stream@npm:^0.3.26, assistant-stream@npm:^0.3.28":
+"assistant-stream@npm:^0.3.28, assistant-stream@npm:^0.3.29, assistant-stream@npm:^0.3.30":
   version: 0.3.30
   resolution: "assistant-stream@npm:0.3.30"
   dependencies:
@@ -16237,15 +16255,6 @@ __metadata:
   version: 2.2.0
   resolution: "cjs-module-lexer@npm:2.2.0"
   checksum: 10c0/aec4ca58f87145fac221386790ecaae8b012f2e2359a45acb61d8c75ea4fa84f6ea869f17abc1a7e91a808eff0fed581209632f03540de16f72f0a28f5fd35ac
-  languageName: node
-  linkType: hard
-
-"class-variance-authority@npm:^0.7.1":
-  version: 0.7.1
-  resolution: "class-variance-authority@npm:0.7.1"
-  dependencies:
-    clsx: "npm:^2.1.1"
-  checksum: 10c0/0f438cea22131808b99272de0fa933c2532d5659773bfec0c583de7b3f038378996d3350683426b8e9c74a6286699382106d71fbec52f0dd5fbb191792cccb5b
   languageName: node
   linkType: hard
 
@@ -33600,7 +33609,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^7.24.0":
+"undici@npm:^7.24.0, undici@npm:^7.28.0":
   version: 7.29.0
   resolution: "undici@npm:7.29.0"
   checksum: 10c0/85ea96e91e7f3de24de678cbbc54230fdd641a3b0643005f2aef044af1f1a2db8fbecb88b28e6fa78bb41ffeafda4479b57075b6b6ab92beac4b7b5ab53f9b10
@@ -35089,7 +35098,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zustand@npm:^5.0.14, zustand@npm:^5.0.3":
+"zustand@npm:^5.0.14":
   version: 5.0.14
   resolution: "zustand@npm:5.0.14"
   peerDependencies:

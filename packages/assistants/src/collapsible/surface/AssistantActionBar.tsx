@@ -14,8 +14,7 @@ import {
 import {
   ActionBarPrimitive,
   MessagePrimitive,
-  useMessage,
-  useThread,
+  useAuiState,
 } from '@assistant-ui/react';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import CheckIcon from '@material-ui/icons/Check';
@@ -50,9 +49,12 @@ function messageMarkdown(
 
 function RichCopyButton() {
   const [copied, setCopied] = useState(false);
-  const markdown = useMessage(m =>
+  const markdown = useAuiState(s =>
     messageMarkdown(
-      (m.content ?? []) as ReadonlyArray<{ type?: string; text?: string }>,
+      (s.message.content ?? []) as ReadonlyArray<{
+        type?: string;
+        text?: string;
+      }>,
     ),
   );
 
@@ -106,7 +108,7 @@ function RichCopyButton() {
 }
 
 export function AssistantActionBar() {
-  const allowReload = useThread(t => t.capabilities.reload);
+  const allowReload = useAuiState(s => s.thread.capabilities.reload);
 
   return (
     <ActionBarPrimitive.Root

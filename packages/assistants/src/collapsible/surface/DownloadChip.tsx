@@ -25,7 +25,7 @@ import FileCopyIcon from '@material-ui/icons/FileCopy';
 import CheckIcon from '@material-ui/icons/Check';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
-import { useAttachment } from '@assistant-ui/react';
+import { useAuiState } from '@assistant-ui/react';
 import { PanZoomDialog } from './PanZoomViewer';
 
 const useStyles = makeStyles(theme => ({
@@ -277,20 +277,20 @@ export function DownloadChip({
  */
 export function AttachmentChip() {
   const classes = useStyles();
-  const name = useAttachment(a => a.name) || 'attachment';
-  const dataUrl = useAttachment(a => {
-    const part = (a.content ?? []).find(
+  const name = useAuiState(s => s.attachment.name) || 'attachment';
+  const dataUrl = useAuiState(s => {
+    const part = (s.attachment.content ?? []).find(
       c => c.type === 'file' || c.type === 'image',
     ) as { type?: string; data?: string; image?: string } | undefined;
     if (!part) return undefined;
     return part.type === 'image' ? part.image : part.data;
   });
-  const mimeType = useAttachment(a => {
-    const part = (a.content ?? []).find(
+  const mimeType = useAuiState(s => {
+    const part = (s.attachment.content ?? []).find(
       c => c.type === 'file' || c.type === 'image',
     ) as { type?: string; mimeType?: string } | undefined;
     if (part?.type === 'file') return part.mimeType;
-    return a.contentType;
+    return s.attachment.contentType;
   });
 
   if (!dataUrl) {

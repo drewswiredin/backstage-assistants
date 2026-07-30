@@ -31,8 +31,8 @@ import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
 import StarIcon from '@material-ui/icons/Star';
 import {
   AssistantRuntimeProvider,
-  useAssistantRuntime,
   useRemoteThreadListRuntime,
+  type AssistantRuntime,
   type ThreadListState,
 } from '@assistant-ui/react';
 import type {
@@ -501,6 +501,7 @@ function ChatRuntime({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ChatChrome
+        runtime={runtime}
         status={status}
         api={api}
         modelIdRef={modelIdRef}
@@ -518,6 +519,7 @@ function ChatRuntime({
 // ---------------------------------------------------------------------------
 
 function ChatChrome({
+  runtime,
   status,
   api,
   modelIdRef,
@@ -526,6 +528,9 @@ function ChatChrome({
   initialAssistantId,
   refreshStatus,
 }: {
+  // Passed down from ChatRuntime rather than read from context: the 0.15 line
+  // dropped the `useAssistantRuntime` hook.
+  runtime: AssistantRuntime;
   status: StatusResponse;
   api: AssistantsApi;
   modelIdRef: React.MutableRefObject<ModelId>;
@@ -538,7 +543,6 @@ function ChatChrome({
   // Manage gate: the `assistant.manage` permission (the editor gear + dialog).
   const canManage = usePermission({ permission: assistantManagePermission })
     .allowed;
-  const runtime = useAssistantRuntime();
   const signals = useApi(signalApiRef);
   const [, setSearchParams] = useSearchParams();
 

@@ -1,5 +1,5 @@
 import remarkGfm from 'remark-gfm';
-import { makeMarkdownText } from '@assistant-ui/react-ui';
+import { makeMarkdownText } from './react-ui';
 import { MermaidDiagram } from './MermaidDiagram';
 
 /**

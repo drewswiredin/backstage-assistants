@@ -27,7 +27,7 @@ import {
   Thread,
   ThreadWelcome,
   UserMessage,
-} from '@assistant-ui/react-ui';
+} from './react-ui';
 import { AssistantActionBar } from './AssistantActionBar';
 import { MarkdownText } from './MarkdownText';
 import { ContextGauge } from './ContextGauge';
