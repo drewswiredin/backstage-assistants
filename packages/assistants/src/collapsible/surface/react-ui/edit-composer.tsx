@@ -1,5 +1,6 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `edit-composer.tsx` (see
 // withDefaults.tsx for why).
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
 import { forwardRef } from 'react';
 import { ComposerPrimitive } from '@assistant-ui/react';
 import { Button, type ButtonProps } from './base';

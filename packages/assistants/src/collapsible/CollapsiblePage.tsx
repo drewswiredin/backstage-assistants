@@ -223,12 +223,6 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(0.5),
     flexShrink: 0,
   },
-  manageButton: {
-    color: theme.palette.text.secondary,
-    '&:hover': {
-      backgroundColor: theme.palette.action.hover,
-    },
-  },
   modelSelect: {
     fontSize: theme.typography.caption.fontSize,
     color: theme.palette.text.secondary,

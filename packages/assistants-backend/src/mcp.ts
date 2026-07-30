@@ -130,7 +130,7 @@ function isToolAllowed(allowlist: string[], name: string): boolean {
 
 function transportFor(server: McpServerConfig): MCPClientConfig['transport'] {
   // Local process transport. The library merges the configured env over its
-  // safe inherited defaults (PATH etc.), same semantics as the old SDK merge.
+  // safe inherited defaults (PATH etc.).
   if (server.transport === 'stdio') {
     return new Experimental_StdioMCPTransport({
       command: server.command as string,
@@ -187,13 +187,17 @@ const MIN_MAINTENANCE_TIMEOUT_MS = 60_000;
 
 /** Freshness window for an on-demand /capabilities read before it re-lists. */
 const LIST_TTL_MS = 5 * 60 * 1000;
+/** Ceiling for one tool call — matches the MCP SDK's historical per-request
+ *  default, so a hung server can't hold a turn open indefinitely. */
+const TOOL_CALL_TIMEOUT_MS = 60_000;
 /** Max servers refreshed concurrently per maintenance cycle. */
 const MAINTAIN_CONCURRENCY = 5;
 
 /**
  * Reject after `ms` if `p` hasn't settled. Only needed for the connect step —
- * `createMCPClient` offers no timeout of its own; `listTools`/`callTool` take a
- * native per-request `timeout`.
+ * `createMCPClient` offers no timeout of its own. (Per-request bounds on
+ * `listTools`/`callTool` ride an `AbortSignal` instead: the library types a
+ * `timeout` option but only honours `signal`.)
  */
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -264,7 +268,7 @@ async function refreshServer(
       entry.client = client;
     }
     const { tools } = await client.listTools({
-      options: { timeout: timeoutMs },
+      options: { signal: AbortSignal.timeout(timeoutMs) },
     });
     entry.tools = tools.map(t => ({
       name: t.name,
@@ -441,7 +445,8 @@ export function buildMcpTools(
         inputSchema: jsonSchema(
           (t.inputSchema ?? {}) as Parameters<typeof jsonSchema>[0],
         ),
-        execute: async input => {
+        execute: async (input, options) => {
+          const abortSignal = options?.abortSignal;
           // Re-read the pooled client at call time so a scheduler reconnect is
           // picked up. No per-chat connect — a down server fails gracefully and
           // is healed by the next maintenance cycle.
@@ -459,9 +464,15 @@ export function buildMcpTools(
             };
           }
           try {
+            // Bounded: the turn's abort (Stop) cancels an in-flight call, and
+            // a hung server can't hold the turn past the call ceiling.
+            const signal = abortSignal
+              ? AbortSignal.any([abortSignal, AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS)])
+              : AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS);
             const result = await client.callTool({
               name: t.name,
               arguments: (input ?? {}) as Record<string, unknown>,
+              options: { signal },
             });
             if (result.isError) {
               const detail =

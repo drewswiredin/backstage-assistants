@@ -256,7 +256,7 @@ export function ToolFallback({
   const hasResult = result !== undefined && result !== null;
 
   // Deterministic approval gate. When the backend marked this tool
-  // `needsApproval`, the AI SDK pauses before executing and assistant-ui exposes
+  // the `toolApproval` map, the AI SDK pauses before executing and assistant-ui exposes
   // a pending `approval` (approved === undefined) per call. respondToApproval()
   // is bridged to addToolApprovalResponse by useAISDKRuntime (Allow runs the
   // action server-side, Deny tells the model; the standing "always allow" grant

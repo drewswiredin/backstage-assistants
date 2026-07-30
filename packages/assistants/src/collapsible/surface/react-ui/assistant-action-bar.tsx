@@ -2,6 +2,7 @@
 // withDefaults.tsx for why; `useThread` selectors became `useAuiState`). Only
 // the default-fallback AssistantMessage renders this — ConversationSurface
 // mounts its own richer bar from ../AssistantActionBar.tsx.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
 import { forwardRef } from 'react';
 import {
   AudioLinesIcon,

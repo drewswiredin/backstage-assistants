@@ -9,7 +9,7 @@ import { RiRobot2Line } from '@remixicon/react';
 import { rootRouteRef } from './routes';
 import { assistantsApiRef, AssistantsClient } from './api';
 
-/** Backend client (`/status`, `/title`, base url + authed fetch). */
+/** Backend client (`/status`, threads, manage, base url + authed fetch). */
 const assistantsApi = ApiBlueprint.make({
   params: defineParams =>
     defineParams({

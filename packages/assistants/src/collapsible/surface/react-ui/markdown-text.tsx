@@ -1,5 +1,6 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `markdown/*` (markdown-text,
 // code-header, useCopyToClipboard — see withDefaults.tsx for why).
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
 import { memo, useState, type FC } from 'react';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import classNames from 'classnames';

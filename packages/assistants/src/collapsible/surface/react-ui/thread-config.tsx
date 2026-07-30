@@ -3,6 +3,7 @@
 // wrapped children in an AssistantRuntimeProvider) is dropped — this surface is
 // always "bring your own runtime", and the hook upstream used for the guard
 // (`useAssistantRuntime`) no longer exists on the 0.15 line.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
 import {
   createContext,
   useContext,

@@ -58,7 +58,7 @@ export interface AssistantsApi {
 
   /**
    * Resolve the backend base URL (`.../api/assistants`). Used by the chat
-   * transport to build the `/chat` and `/title` URLs.
+   * transport to build the `/chat` (+ cancel/resume) URLs.
    */
   getBaseUrl(): Promise<string>;
 

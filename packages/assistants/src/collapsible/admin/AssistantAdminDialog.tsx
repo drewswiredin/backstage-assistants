@@ -1,5 +1,5 @@
 /**
- * The assistant admin editor: a full-screen MUI master-detail dialog. The left
+ * The assistant admin editor: a large MUI master-detail dialog (90vh). The left
  * rail lists the managed assistants (ordered by title); the right pane edits the
  * selected one's full {@link AssistantDefinition}. Implements the full lifecycle
  * — Create (blank, open to any signed-in user), Duplicate (clone → "(copy)"), Delete
@@ -11,9 +11,9 @@
  * Sub-components (own files): {@link ToolsTransfer} (compact tool allowlist),
  * {@link ModelsTransfer} (compact model allowlist + default star),
  * {@link AccessList} (one principal list), {@link SuggestionsEditor}
- * (per-assistant starter prompts). All three share the {@link AssignList}
- * primitive (a bare row list + an "＋ Add" search popover). Pure
- * draft/dirty/stale logic lives in {@link ./adminModel}.
+ * (per-assistant starter prompts). The first three share the
+ * {@link AssignList} primitive (a bare row list + an "＋ Add" search picker).
+ * Pure draft/dirty/stale logic lives in {@link ./adminModel}.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { makeStyles, fade } from '@material-ui/core/styles';

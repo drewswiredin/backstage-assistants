@@ -205,9 +205,3 @@ export function createHistoryAdapter(
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// Status types (server rows live on AssistantsApi now)
-// ---------------------------------------------------------------------------
-
-export type { ConversationStatusRow } from '../api';

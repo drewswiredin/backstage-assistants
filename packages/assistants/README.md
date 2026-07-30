@@ -145,7 +145,7 @@ backend:
 See the
 [backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
 for the full configuration reference — the **platform** settings (model
-providers, MCP servers, the approval floor, and global UI defaults).
+providers, MCP servers, and the approval floor).
 Per-assistant settings (prompt, access, tools, models)
 are not config; they're managed in the in-app editor. Tool/action availability
 depends on which action-providing plugins are installed in your backend; the

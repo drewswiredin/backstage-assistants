@@ -217,7 +217,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       // keep matching → infinite re-send).
       //   1. `render_form` submitted/cancelled (a client-side tool whose result
       //      the form UI supplies via addResult).
-      //   2. A DETERMINISTIC approval gate (`needsApproval`) the user answered:
+      //   2. A DETERMINISTIC approval gate (`toolApproval`) the user answered:
       //      the tool part moves to `approval-responded`, and we must send so the
       //      backend runs the approved tool (or records the denial). addToolApproval
       //      Response only flushes when this predicate is true (see AI SDK chat.ts).

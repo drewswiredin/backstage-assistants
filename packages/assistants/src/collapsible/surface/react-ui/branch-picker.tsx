@@ -1,5 +1,6 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `branch-picker.tsx` (see
 // withDefaults.tsx for why; `useThread` selectors became `useAuiState`).
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
 import { forwardRef } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { BranchPickerPrimitive, useAuiState } from '@assistant-ui/react';

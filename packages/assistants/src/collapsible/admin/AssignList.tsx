@@ -437,7 +437,7 @@ export function AssignList({
             <TextField
               {...params}
               // The popover exists solely to search — focus lands where the
-              // only interaction is, matching the previous picker's behavior.
+              // only interaction is.
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               fullWidth

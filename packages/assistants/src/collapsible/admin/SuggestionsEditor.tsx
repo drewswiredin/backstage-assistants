@@ -1,8 +1,7 @@
 /**
  * A small editable list of starter-prompt suggestions ({title, prompt}[]) for an
- * assistant's per-assistant `ui.suggestions`. Add / edit / remove rows; an empty
- * list clears the assistant's own suggestions (the runtime deep-merge then falls
- * back to the global `ui.suggestions`).
+ * assistant's per-assistant `ui.suggestions`. Add / edit / remove rows; an
+ * empty list means no starter chips (there is no global default).
  */
 import { makeStyles } from '@material-ui/core/styles';
 import TextField from '@material-ui/core/TextField';

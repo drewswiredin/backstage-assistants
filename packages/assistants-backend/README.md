@@ -5,7 +5,7 @@ streams chat completions, and runs Backstage actions as tools **on behalf of the
 calling user** (respecting their permissions). Assistant definitions (prompt,
 access, tools, models) live in the plugin **database** and are managed in an
 in-app admin editor; `app-config.yaml` holds only the platform/safety surface
-(providers, MCP servers, the `requireApproval` floor, UI defaults, limits).
+(providers, MCP servers, the `requireApproval` floor, runtime limits).
 Prompts, access policies, and API keys never reach the browser.
 
 Pairs with the frontend plugin
@@ -80,6 +80,8 @@ assistants:
 | `providers.<id>.models[].reasoning` | no | `true` if the model reasons — adds the effort picker (see Reasoning effort). |
 | `mcp.connectTimeoutMs` | no | Global MCP connect/list-tools timeout ceiling in ms (default `8000`). |
 | `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
+| `mcp.servers.<id>.connectTimeoutMs` | no | Per-server connect/list-tools ceiling (overrides the global). |
+| `mcp.servers.<id>.requireApproval` | no | Per-server approval floor: tool names gated by Allow/Deny. |
 | `requestBodyLimit` | no | Express body limit for `/chat` + `/title` (default `10mb`). |
 
 ### Example operating instructions
@@ -168,15 +170,15 @@ models:
 ```
 
 The tiers are fixed and the same for every reasoning model — **low · medium ·
-high · xhigh** — translated to the provider's own knob at request time:
+high · max** — translated to the provider's own knob at request time:
 
 | Provider type | Sent as |
 | --- | --- |
-| `openai`, `openai-compatible`, `azure` | `reasoningEffort: <tier>` |
+| `openai`, `openai-compatible`, `azure` | `reasoningEffort: <tier>` (`max` → `xhigh`) |
 | `anthropic` | `thinking: { type: adaptive }` + `output_config.effort: <tier>` |
 
-Every supported provider now names its tiers the same way, so a tier is
-forwarded rather than converted — nothing here invents token budgets.
+Tiers are forwarded by name — nothing here invents token budgets; the only
+conversion is the top tier's spelling per provider.
 
 > **Anthropic models must be 4.6 or later.** The effort picker uses adaptive
 > thinking plus `output_config.effort`. Claude 4.6 and later accept both; the
@@ -186,9 +188,9 @@ forwarded rather than converted — nothing here invents token budgets.
 > have no `effort` parameter at all — leave them unflagged rather than setting
 > `reasoning: true`.
 >
-> Mapping the top tier to Anthropic's `max` rather than `xhigh` is deliberate:
-> `xhigh` exists only on Opus 4.7 and later, so Opus 4.6 and Sonnet 4.6 reject
-> it, while `max` is accepted by every effort-capable Anthropic model.
+> The top tier is spelled `max`: every effort-capable Anthropic model accepts
+> it (`xhigh` exists only on Opus 4.7+ and older models reject it), while
+> OpenAI-shaped providers have no `max`, so it is sent as `xhigh` there.
 
 Behaviour worth knowing:
 
@@ -383,7 +385,7 @@ These form a global approval floor; the effective set for an assistant is the
 floor ∩ its `allowedTools` (a floored tool an assistant isn't given is simply
 never hit). There is no per-assistant approval field.
 
-For each gated tool the backend sets the AI SDK's `needsApproval` flag, so
+Each gated tool gets an entry in the AI SDK's `toolApproval` map, so
 `streamText` emits an approval request and **skips the tool's execution** until
 the user answers — Allow runs it (under the same run-as-user identity), Deny
 returns an `execution-denied` result to the model. This is deterministic and
@@ -393,15 +395,17 @@ assistant's tool set is logged and ignored. It's a confirmation checkpoint,
 **orthogonal to authorization** — Backstage's per-user permissions still apply
 when an approved action invokes.
 
-### Interactive forms (`render_form`)
+### Client-side tools (`render_form`, `download_file`)
 
-The model can render an inline RJSF form instead of asking a string of questions
-in chat — useful for structured, multi-field, or multiple-choice input. It's a
-built-in **client-side** tool (always available, no config); the user fills and
-submits, and the values flow back as the tool result. Forms render Backstage
-**scaffolder field extensions** (owner / entity / repo pickers, plus any custom
-field the host app has registered) resolved at runtime, so the model can reuse a
-scaffolder template's parameter block verbatim. See the
+Two built-in **client-side** tools are always available (no config; they resolve
+in the browser). `render_form` renders an inline RJSF form instead of asking a
+string of questions in chat — useful for structured, multi-field, or
+multiple-choice input; the user fills and submits, and the values flow back as
+the tool result. Forms render Backstage **scaffolder field extensions** (owner /
+entity / repo pickers, plus any custom field the host app has registered)
+resolved at runtime, so the model can reuse a scaffolder template's parameter
+block verbatim. `download_file` hands a generated artifact back as a download
+chip in the conversation. See the
 [architecture §4](../../docs/architecture.html#hitl).
 
 ## Security

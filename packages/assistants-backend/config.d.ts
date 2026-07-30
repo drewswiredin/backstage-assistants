@@ -58,7 +58,7 @@ export interface Config {
     /**
      * Global approval floor: bare Backstage action ids whose execution must be
      * gated behind an explicit user Allow/Deny in the chat (deterministic,
-     * enforced via the AI SDK's `needsApproval` — not by prompting the model).
+     * enforced via the AI SDK's `toolApproval` map — not by prompting the model).
      * The effective approval set for an assistant is this list (∪ each MCP
      * server's per-server `requireApproval`, namespaced `<serverId>__<tool>`)
      * intersected with that assistant's `allowedTools`. There is no per-assistant
@@ -123,7 +123,7 @@ export interface Config {
            * whose execution must be gated behind an explicit user Allow/Deny.
            * Folded into the global approval set as `<serverId>__<toolName>` and
            * intersected with each assistant's `allowedTools`. Same deterministic
-           * AI-SDK `needsApproval` gate as the top-level `requireApproval`.
+           * AI-SDK `toolApproval` gate as the top-level `requireApproval`.
            */
           requireApproval?: string[];
         };

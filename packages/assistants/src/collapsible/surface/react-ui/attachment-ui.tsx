@@ -3,6 +3,7 @@
 // hook (removed on the 0.15 line) is replaced with equivalent `useAuiState`
 // selectors, and zustand's `useShallow` is dropped by selecting the file and
 // src separately instead of as one shallow-compared object.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
 import { forwardRef, useEffect, useState } from 'react';
 import { CircleXIcon, FileIcon } from 'lucide-react';
 import { AttachmentPrimitive, useAuiState } from '@assistant-ui/react';
