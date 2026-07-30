@@ -53,20 +53,13 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.secondary,
     transition: theme.transitions.create('opacity'),
   },
-  '@keyframes auiPulse': {
-    '0%': { transform: 'scale(1)', opacity: 1 },
-    '50%': { transform: 'scale(1.5)', opacity: 0.45 },
-    '100%': { transform: 'scale(1)', opacity: 1 },
-  },
-  pulseDot: {
-    animation: '$auiPulse 1.2s ease-in-out infinite',
-  },
 }));
 
 /**
  * The in-page assistant switcher (top tier of the left sidebar). Lists every
  * accessible assistant; selecting one drives `?assistant=<id>` via `onSelect`,
- * which remounts the chat onto that assistant's (siloed) conversation set. The
+ * which switches the (never-remounted) runtime onto that assistant's siloed
+ * conversation set. The
  * active assistant is highlighted. A hover-revealed info button opens the
  * {@link AssistantDetailDialog} (description, tools, models).
  *

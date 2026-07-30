@@ -61,10 +61,6 @@ assistants:
           reasoning: true # offers the effort picker
         - name: anthropic/claude-3.5-sonnet # no flag = no picker
 
-  ui: # global UI defaults, deep-merged UNDER each assistant's own ui
-    composer:
-      placeholder: 'Send a message…'
-    suggestions: []
 ```
 
 ### Config reference
@@ -84,7 +80,7 @@ assistants:
 | `providers.<id>.models[].reasoning` | no | `true` if the model reasons — adds the effort picker (see Reasoning effort). |
 | `mcp.connectTimeoutMs` | no | Global MCP connect/list-tools timeout ceiling in ms (default `8000`). |
 | `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
-| `ui` | no | Global composer placeholder + starter suggestions (deep-merged under each assistant). |
+| `requestBodyLimit` | no | Express body limit for `/chat` + `/title` (default `10mb`). |
 
 ### Example operating instructions
 

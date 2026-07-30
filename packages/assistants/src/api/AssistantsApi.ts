@@ -7,23 +7,8 @@ import {
   AssistantDefinition,
   AssistantId,
   CapabilitiesResponse,
-  ModelId,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
-
-/**
- * Arguments for {@link AssistantsApi.getTitle}. Mirrors the backend `POST /title`
- * body (the shared `ChatRequest` schema): the assistant + model to title with
- * and the opening conversation messages.
- *
- * @public
- */
-export interface GetTitleRequest {
-  assistantId: AssistantId;
-  modelId: ModelId;
-  /** Opening UI messages; the backend builds the title prompt from these. */
-  messages: unknown[];
-}
 
 /**
  * Client for the AI Assistants backend.
@@ -49,14 +34,6 @@ export interface AssistantsApi {
    * wire the AI SDK `DefaultChatTransport`.
    */
   fetch: typeof fetch;
-
-  /**
-   * Generate a short conversation title via the backend `POST /title`.
-   * Best-effort by contract — the backend already falls back to a default title
-   * on generation failure; callers should additionally tolerate a rejected
-   * promise (network error) without breaking the conversation list.
-   */
-  getTitle(request: GetTitleRequest): Promise<string>;
 
   /**
    * Fetch the live, assignable capability inventory that feeds the editor's
@@ -140,20 +117,6 @@ export class AssistantsClient implements AssistantsApi {
       throw await this.toError(response);
     }
     return (await response.json()) as StatusResponse;
-  }
-
-  async getTitle(request: GetTitleRequest): Promise<string> {
-    const baseUrl = await this.getBaseUrl();
-    const response = await this.fetchApi.fetch(`${baseUrl}/title`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    });
-    if (!response.ok) {
-      throw await this.toError(response);
-    }
-    const body = (await response.json()) as { title?: unknown };
-    return typeof body.title === 'string' && body.title ? body.title : 'New Chat';
   }
 
   async getCapabilities(): Promise<CapabilitiesResponse> {

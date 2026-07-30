@@ -1124,6 +1124,14 @@ function ChatChrome({
                 <ConversationSurface
                   composerPlaceholder={assistant.ui?.composer?.placeholder}
                   suggestions={assistant.ui?.suggestions}
+                  // Subtitle from the assistant's own description; the greeting
+                  // keeps the personalized default. Falls back to the generic
+                  // catalog subtitle when the assistant has no description.
+                  welcome={
+                    assistant.description
+                      ? { subtitle: assistant.description }
+                      : undefined
+                  }
                   assistantColor={assistant.color}
                   contextWindow={
                     status.models.find(m => m.id === modelId)?.contextWindow

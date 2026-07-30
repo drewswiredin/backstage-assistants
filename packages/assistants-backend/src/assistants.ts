@@ -116,27 +116,6 @@ export class AssistantStore {
     return [...this.snapshot.values()];
   }
 
-  /**
-   * Whether `caller` may access `assistant` under its access policy.
-   * Default-deny: `allowAuthenticated || users.includes(userRef) ||
-   * groups.some(g ∈ ownershipRefs)`. Pure; no I/O.
-   */
-  canAccess(
-    assistant: AssistantDefinition,
-    caller: { userEntityRef: string; ownershipEntityRefs: string[] },
-  ): boolean {
-    const { access } = assistant;
-    if (access.allowAuthenticated) {
-      return true;
-    }
-    if (access.users.includes(caller.userEntityRef)) {
-      return true;
-    }
-    return access.groups.some(g =>
-      caller.ownershipEntityRefs.includes(g),
-    );
-  }
-
   // ---- Derived-at-read -----------------------------------------------------
 
   /**

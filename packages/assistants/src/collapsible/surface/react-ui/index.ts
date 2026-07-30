@@ -1,7 +1,8 @@
-// Vendored @assistant-ui/react-ui@0.2.1 — the subset this plugin uses. The
-// upstream package is unmaintained (its components are designed to be
-// scaffolded into consuming apps) and it pinned us to @assistant-ui/react 0.14.
-// The matching stylesheets live in `../styles/`.
+// Vendored @assistant-ui/react-ui@0.2.1 (MIT License, Copyright (c) 2025
+// AgentbaseAI Inc. — full license text in /THIRD_PARTY_NOTICES.md) — the
+// subset this plugin uses. The upstream package is unmaintained (its
+// components are designed to be scaffolded into consuming apps) and it pinned
+// us to @assistant-ui/react 0.14. The matching stylesheets live in `../styles/`.
 export { AssistantMessage } from './assistant-message';
 export { BranchPicker } from './branch-picker';
 export { Composer } from './composer';

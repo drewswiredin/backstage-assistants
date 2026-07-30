@@ -12,7 +12,6 @@ import { createAzure } from '@ai-sdk/azure';
 import {
   ModelOption,
   ModelId,
-  UiOptions,
   type ReasoningLevel,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 
@@ -112,8 +111,8 @@ export interface McpServerConfig {
  *
  * Assistant *definitions* are NOT here — they live in the plugin database and
  * are read through the assistant store. This config exposes the model pool +
- * resolver, the provider registry, the MCP server connections, the global UI
- * default, the runtime limits, and the global approval set.
+ * resolver, the provider registry, the MCP server connections, the runtime
+ * limits, and the global approval set.
  */
 export interface AssistantsConfig {
   /**
@@ -127,8 +126,6 @@ export interface AssistantsConfig {
   models: ModelOption[];
   /** Global initial model selection (`provider:model`) — the platform default. */
   defaultModel: ModelId;
-  /** Global UI defaults, deep-merged UNDER each assistant's own `ui`. */
-  ui?: UiOptions;
   /** Maximum number of tool-call steps per turn. */
   maxSteps: number;
   /**
@@ -165,33 +162,6 @@ export interface AssistantsConfig {
     modelId: string,
     level: ReasoningLevel,
   ) => Record<string, Record<string, JSONValue>> | undefined;
-}
-
-/**
- * Reads the global `ui` block (browser-safe) from raw config into the shared
- * {@link UiOptions} shape. Returns undefined when the block is absent.
- */
-function readUi(uiConfig: Config | undefined): UiOptions | undefined {
-  if (!uiConfig) {
-    return undefined;
-  }
-  const ui: UiOptions = {};
-
-  const composer = uiConfig.getOptionalConfig('composer');
-  const placeholder = composer?.getOptionalString('placeholder');
-  if (placeholder !== undefined) {
-    ui.composer = { placeholder };
-  }
-
-  const suggestions = uiConfig.getOptionalConfigArray('suggestions');
-  if (suggestions !== undefined) {
-    ui.suggestions = suggestions.map(s => ({
-      title: s.getString('title'),
-      prompt: s.getString('prompt'),
-    }));
-  }
-
-  return Object.keys(ui).length > 0 ? ui : undefined;
 }
 
 /**
@@ -382,7 +352,6 @@ export function readConfig(config: Config): AssistantsConfig {
   }
 
   // --- Global UI defaults -------------------------------------------------
-  const ui = readUi(root.getOptionalConfig('ui'));
 
   // --- External MCP servers ----------------------------------------------
   // Each server's optional per-server `requireApproval` (un-namespaced tool
@@ -488,7 +457,6 @@ export function readConfig(config: Config): AssistantsConfig {
     mcpServers,
     models,
     defaultModel,
-    ui,
     maxSteps,
     toolResultMaxChars,
     requestBodyLimit,

@@ -6,8 +6,8 @@
  * referenced from `package.json` via `"configSchema": "config.d.ts"`.
  *
  * Scope: this block holds the platform/safety surface — providers and the model
- * pool, MCP server connections, the global approval floor, global UI defaults,
- * and the runtime limits. Assistant *definitions* (title/prompt/access/tools/
+ * pool, MCP server connections, the global approval floor, and the runtime
+ * limits. Assistant *definitions* (title/prompt/access/tools/
  * models) live in the plugin database (the `assistants` table, edited at runtime
  * via the admin API/editor); who may use the plugin and who may manage it are
  * the `assistant.use` / `assistant.manage` Backstage permissions.
@@ -18,8 +18,8 @@
  *
  * Visibility: every field here is backend-only by default (never bundled to the
  * frontend). The browser receives only the projection the plugin serves over
- * `GET /status` — the accessible assistants, the model pool + defaults, and the
- * resolved `ui`. `apiKey` is additionally `@visibility secret` so it is
+ * `GET /status` — the accessible assistants, the model pool + defaults, and
+ * each assistant's `ui`. `apiKey` is additionally `@visibility secret` so it is
  * redacted everywhere (logs, frontend, etc.).
  *
  * Theme is intentionally NOT configurable: the chat uses one built-in palette
@@ -203,21 +203,10 @@ export interface Config {
     };
 
     /**
-     * Global UI defaults, deep-merged UNDER each assistant's own `ui` (the
-     * assistant's values win). Browser-safe.
+     * Express body-parser size limit for `/chat` and `/title` requests (the
+     * routes that carry conversation payloads, incl. inline attachments).
+     * Default `'10mb'`.
      */
-    ui?: {
-      composer?: {
-        /** Placeholder text shown in the empty message input. */
-        placeholder?: string;
-      };
-      /** Starter prompts offered on an empty conversation. */
-      suggestions?: Array<{
-        /** Short label shown on the suggestion chip. */
-        title: string;
-        /** The text submitted when the chip is clicked. */
-        prompt: string;
-      }>;
-    };
+    requestBodyLimit?: string;
   };
 }

@@ -37,10 +37,9 @@ export type ModelId = string;
  * UI options for an assistant's chat surface.
  *
  * Used two ways: as the per-assistant `ui` stored on an
- * {@link AssistantDefinition}, and as the resolved value returned in
- * {@link AssistantSummary.ui} via `/status`. The resolved value is computed per
- * assistant as `deepMerge(global ui, assistant.ui)`: objects deep-merge, arrays
- * (e.g. `suggestions`) replace so an assistant can clear inherited values.
+ * {@link AssistantDefinition}, and as the value returned verbatim in
+ * {@link AssistantSummary.ui} via `/status`. There is no global `ui` config —
+ * these are per-assistant settings, edited in the admin editor.
  *
  * @public
  */
@@ -82,7 +81,7 @@ export interface ToolSummary {
  *
  * Prompts and access policies are deliberately excluded — they never leave the
  * backend. Models/defaultModel are the per-assistant allowlist projection (the
- * picker is limited to these); `ui` is the resolved, deep-merged value.
+ * picker is limited to these); `ui` is the assistant's own value.
  *
  * @public
  */
@@ -108,11 +107,11 @@ export interface AssistantSummary {
   defaultModel?: ModelId;
   /**
    * The tools (Backstage actions) available to the caller for this assistant —
-   * its allowlist intersected with the actions this user may see (resolved
-   * wildcard included). Name + description; no schemas.
+   * its allowlist intersected with the actions this user may see. Name +
+   * description; no schemas.
    */
   tools?: ToolSummary[];
-  /** Resolved UI options (deep-merge of global + per-assistant `ui`). */
+  /** The assistant's UI options. */
   ui?: UiOptions;
 }
 
@@ -283,7 +282,7 @@ export interface AssistantDefinition {
    * platform default at read time.
    */
   defaultModel: ModelId | null;
-  /** Optional per-assistant UI (deep-merged over the global `ui` at read). */
+  /** Optional per-assistant UI (composer placeholder + suggestions). */
   ui?: UiOptions;
   /** Audit: entity ref of the creator (present in the manage view). */
   created_by?: string;

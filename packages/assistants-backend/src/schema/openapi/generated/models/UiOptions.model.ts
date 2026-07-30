@@ -7,7 +7,7 @@ import { UiOptionsComposer } from '../models/UiOptionsComposer.model';
 import { UiOptionsSuggestionsInner } from '../models/UiOptionsSuggestionsInner.model';
 
 /**
- * Resolved, browser-safe UI options for an assistant\'s chat surface (deep-merge of global + per-profile `ui`).
+ * Browser-safe UI options for an assistant\'s chat surface (the assistant\'s own `ui` settings).
  * @public
  */
 export interface UiOptions {

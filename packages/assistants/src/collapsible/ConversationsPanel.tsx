@@ -68,18 +68,6 @@ const useStyles = makeStyles(theme => ({
       padding: theme.spacing(0.5, 1),
     },
   },
-  emptyState: {
-    padding: theme.spacing(3, 2),
-    textAlign: 'center',
-  },
-  '@keyframes auiPulse': {
-    '0%': { transform: 'scale(1)', opacity: 1 },
-    '50%': { transform: 'scale(1.5)', opacity: 0.45 },
-    '100%': { transform: 'scale(1)', opacity: 1 },
-  },
-  pulseDot: {
-    animation: '$auiPulse 1.2s ease-in-out infinite',
-  },
 }));
 
 /**

@@ -7,7 +7,6 @@
 import {
   AssistantDefinition,
   CapabilitiesResponse,
-  ModelId,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /** Sentinel `allowedTools` source for built-in Backstage actions. */
@@ -146,15 +145,6 @@ export function partitionTools(
     stale.push({ id, source, reason });
   }
   return { live: liveSet, stale };
-}
-
-/**
- * The effective model pool the editor offers: the live capabilities pool,
- * falling back to the browser-safe `/status` pool when capabilities haven't
- * loaded yet.
- */
-export function modelPoolIds(ids: ModelId[]): ModelId[] {
-  return [...ids];
 }
 
 /** A new assistant requires a non-empty (trimmed) title. */

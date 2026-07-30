@@ -44,7 +44,7 @@ export const SidebarContent = NavContentBlueprint.make({
 
       // Skipped items
       nav.take('page:search'); // Using search modal instead
-      // The Assistants page renders via a custom hover-submenu nav item below;
+      // The Assistants page renders via the permission-gated item below;
       // consume the auto-generated entry so it doesn't duplicate.
       nav.take('page:assistants');
 

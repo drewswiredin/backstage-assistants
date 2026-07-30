@@ -376,13 +376,6 @@ export function selectAssistantActions(
   allowlist: string[],
   logger: LoggerService,
 ): ActionsServiceAction[] {
-  // Wildcard: an allowlist containing '*' grants every action the caller can
-  // see (CONTEXT.md). The caller-visibility gate still applies — `available` is
-  // already scoped to what this user may see — so '*' never widens past it.
-  if (allowlist.includes('*')) {
-    return available;
-  }
-
   const byName = new Map(available.map(a => [a.name, a]));
   const selected: ActionsServiceAction[] = [];
   for (const name of allowlist) {

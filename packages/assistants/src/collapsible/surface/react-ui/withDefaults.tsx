@@ -1,7 +1,8 @@
-// Vendored from @assistant-ui/react-ui@0.2.1 (upstream is unmaintained; its
-// components are designed to be scaffolded into consuming apps). Behavior and
-// `aui-*` class names are kept identical so the vendored stylesheets under
-// `../styles/` continue to apply.
+// Vendored from @assistant-ui/react-ui@0.2.1 — MIT License, Copyright (c)
+// 2025 AgentbaseAI Inc.; full license text in /THIRD_PARTY_NOTICES.md.
+// (Upstream is unmaintained; its components are designed to be scaffolded
+// into consuming apps.) Behavior and `aui-*` class names are kept identical
+// so the vendored stylesheets under `../styles/` continue to apply.
 import { forwardRef, type ComponentPropsWithoutRef, type ComponentType, type ElementType } from 'react';
 import classNames from 'classnames';
 

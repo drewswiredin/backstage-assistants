@@ -11,6 +11,6 @@
 
 export { rootRouteRef } from './routes';
 export { assistantsApiRef } from './api';
-export type { AssistantsApi, GetTitleRequest } from './api';
+export type { AssistantsApi } from './api';
 /** Nav-rail icon with a live working/unread status dot (for a host's custom nav). */
 export { AssistantsNavIcon } from './AssistantsNavIcon';

@@ -19,8 +19,8 @@ import { truncateToolResult } from './truncateToolResult';
  *
  * Auth is a single static credential per server (the configured headers / stdio
  * env) — one shared identity for all users, NOT run-as-user. Access is gated by
- * the assistant's `access` policy, its per-profile `mcpServers` allowlist, and an
- * optional per-server tool allowlist.
+ * the assistant's `access` policy and its explicit per-tool `allowedTools`
+ * entries (`<serverId>__<tool>`; no wildcard).
  */
 
 const NAME_SEPARATOR = '__';
@@ -34,11 +34,11 @@ interface RawMcpTool {
   inputSchema?: unknown;
 }
 
-/** A resolved server connection + this assistant's optional per-tool allowlist. */
+/** A resolved server connection + this assistant's per-tool allowlist. */
 export interface ResolvedMcpSelection {
   server: McpServerConfig;
-  /** undefined or `['*']` = all tools; `[]` = none; else exactly these. */
-  tools?: string[];
+  /** Exactly these (un-namespaced) tool names — explicit only, no wildcard. */
+  tools: string[];
 }
 
 /**
@@ -119,12 +119,11 @@ export function splitAllowedTools(
 }
 
 /**
- * Per-tool allowlist semantics: `undefined` or `['*']` allow everything; `[]`
- * allows nothing; otherwise only the named (un-namespaced) tools.
+ * Per-tool allowlist semantics: explicit names only — `[]` allows nothing,
+ * there is no wildcard, and a tool added to a server later is never
+ * auto-granted (the trust model in architecture §5).
  */
-function isToolAllowed(allowlist: string[] | undefined, name: string): boolean {
-  if (allowlist === undefined) return true;
-  if (allowlist.includes('*')) return true;
+function isToolAllowed(allowlist: string[], name: string): boolean {
   return allowlist.includes(name);
 }
 
@@ -160,8 +159,8 @@ function createTransport(server: McpServerConfig) {
 // One PERSISTENT client per configured server, established and refreshed by the
 // scheduler (maintainMcpConnections, wired in the plugin) — NOT per request.
 // /status reads the cached tool inventory synchronously; /chat reuses the pooled
-// clients for tool execution; /capabilities reads (and can force-refresh) the
-// same pool. Connections are closed only on plugin shutdown (closeMcpPool).
+// clients for tool execution; /capabilities reads the same pool. Connections are
+// closed only on plugin shutdown (closeMcpPool).
 
 /** A pooled server: its persistent client (when connected), last-known tool
  *  inventory (with input schemas, for /chat tool definitions), and reachability. */
@@ -304,11 +303,9 @@ export interface ServerToolProbe {
 export async function probeServerTools(
   server: McpServerConfig,
   logger: LoggerService,
-  force = false,
 ): Promise<ServerToolProbe> {
   const cached = pool.get(server.id);
   if (
-    !force &&
     cached &&
     cached.fetchedAt > 0 &&
     Date.now() - cached.fetchedAt < LIST_TTL_MS
@@ -395,7 +392,7 @@ export async function closeMcpPool(): Promise<void> {
 export function summarizeMcpTools(
   serverId: string,
   raw: RawMcpTool[],
-  allowlist: string[] | undefined,
+  allowlist: string[],
 ): ToolSummary[] {
   return raw
     .filter(t => isToolAllowed(allowlist, t.name))

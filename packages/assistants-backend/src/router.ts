@@ -460,8 +460,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const user = await userInfo.getUserInfo(credentials);
 
     // The actions this caller may see (gate 2, coarse). Used to project each
-    // assistant's effective tool names = its allowlist ∩ this set (wildcard
-    // resolved), matching what `/chat` would actually offer the model.
+    // assistant's effective tool names = its allowlist ∩ this set, matching
+    // what `/chat` would actually offer the model.
     const { actions: available } = await actions.list({ credentials });
 
     // The accessible definitions for this caller (snapshot read; sync). Each
