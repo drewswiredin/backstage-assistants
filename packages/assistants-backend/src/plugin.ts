@@ -7,6 +7,7 @@ import {
   actionsServiceRef,
 } from '@backstage/backend-plugin-api/alpha';
 import { signalsServiceRef } from '@backstage/plugin-signals-node';
+import { assistantsPermissions } from '@drewswiredin/backstage-plugin-assistants-common';
 import { readConfig } from './config';
 import { createRouter } from './router';
 import { registerCoreActions } from './actions';
@@ -22,9 +23,10 @@ import {
  * The Backstage AI Assistants backend plugin.
  *
  * Wires the core services it needs (rootConfig, httpRouter, httpAuth,
- * userInfo, logger, auth, discovery), reads and validates the `assistants`
- * config (building the provider registry), registers the built-in core actions
- * when configured, and mounts the router.
+ * userInfo, logger, auth, discovery), registers the plugin's permissions with
+ * the permissions registry, reads and validates the `assistants` config
+ * (building the provider registry), registers the built-in core actions when
+ * configured, and mounts the router.
  *
  * No `addAuthPolicy` is applied — the routes accept user header tokens only via
  * `httpAuth.credentials(req, { allow: ['user'] })`.
@@ -43,6 +45,7 @@ export const assistantsPlugin = createBackendPlugin({
         httpAuth: coreServices.httpAuth,
         userInfo: coreServices.userInfo,
         permissions: coreServices.permissions,
+        permissionsRegistry: coreServices.permissionsRegistry,
         auth: coreServices.auth,
         discovery: coreServices.discovery,
         // Actions registry (REGISTER our core actions) + actions service
@@ -62,6 +65,7 @@ export const assistantsPlugin = createBackendPlugin({
         httpAuth,
         userInfo,
         permissions,
+        permissionsRegistry,
         auth,
         discovery,
         actionsRegistry,
@@ -70,6 +74,11 @@ export const assistantsPlugin = createBackendPlugin({
         scheduler,
         lifecycle,
       }) {
+        // Publish `assistant.use` / `assistant.manage` on the plugin's
+        // `.well-known/backstage/permissions/metadata` endpoint so permission
+        // UIs (e.g. the RBAC role editor) can discover and grant them.
+        permissionsRegistry.addPermissions(assistantsPermissions);
+
         const assistants = readConfig(config);
 
         // Register the built-in catalog/search/TechDocs actions only when the

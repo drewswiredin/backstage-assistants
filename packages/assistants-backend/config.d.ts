@@ -19,8 +19,12 @@
  * Visibility: every field here is backend-only by default (never bundled to the
  * frontend). The browser receives only the projection the plugin serves over
  * `GET /status` — the accessible assistants, the model pool + defaults, and
- * each assistant's `ui`. `apiKey` is additionally `@visibility secret` so it is
- * redacted everywhere (logs, frontend, etc.).
+ * each assistant's `ui`. `apiKey` and every value under `mcp.servers.*.env` /
+ * `mcp.servers.*.headers` are additionally `@visibility secret` so they are
+ * redacted everywhere (logs, frontend, DevTools config view, etc.). The secret
+ * annotation sits on the index signature — on the leaf — because Backstage
+ * applies visibility per leaf and an object-level annotation never reaches the
+ * values under `additionalProperties`.
  *
  * Theme is intentionally NOT configurable: the chat uses one built-in palette
  * that follows Backstage's light/dark mode automatically.
@@ -94,22 +98,24 @@ export interface Config {
           url?: string;
           /**
            * Headers sent on every request (http/sse), e.g. an `Authorization`
-           * bearer. Treat as secret.
-           *
-           * @visibility secret
+           * bearer. Every value is secret.
            */
-          headers?: { [name: string]: string };
+          headers?: {
+            /** @visibility secret */
+            [name: string]: string;
+          };
           /** stdio: executable to spawn (e.g. `npx`, `node`, `docker`). */
           command?: string;
           /** stdio: arguments for the command. */
           args?: string[];
           /**
            * stdio: extra environment for the child process, merged over a safe
-           * default env. Treat as secret.
-           *
-           * @visibility secret
+           * default env. Every value is secret.
            */
-          env?: { [name: string]: string };
+          env?: {
+            /** @visibility secret */
+            [name: string]: string;
+          };
           /** stdio: working directory for the child process. */
           cwd?: string;
           /**

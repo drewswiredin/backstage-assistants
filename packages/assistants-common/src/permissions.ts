@@ -26,7 +26,7 @@ export const assistantUsePermission = createPermission({
  */
 export const assistantManagePermission = createPermission({
   name: 'assistant.manage',
-  attributes: {},
+  attributes: { action: 'update' },
 });
 
 /**

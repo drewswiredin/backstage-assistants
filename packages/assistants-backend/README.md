@@ -411,7 +411,9 @@ chip in the conversation. See the
 ## Security
 
 - Prompts and access policies are backend-only — never sent to the browser.
-- `apiKey` is `@visibility secret` (redacted in logs/responses).
+- `providers.*.apiKey` and every value under `mcp.servers.*.env` and
+  `mcp.servers.*.headers` are `@visibility secret` (redacted in logs, API
+  responses, and the DevTools config view).
 - The browser receives only a projection over `GET /status`: titles,
   descriptions, the model pool/defaults, the resolved tool list (name +
   description), and `ui`.
@@ -423,15 +425,19 @@ The plugin defines two Backstage permissions in
 `assistantUsePermission`, `assistantManagePermission`, and the
 `assistantsPermissions` array):
 
-| Permission | `name` | Gates |
-| --- | --- | --- |
-| `assistantUsePermission` | `assistant.use` | the user-facing routes (`GET /status`, `POST /chat`, `POST /title`, `/threads`) and the chat surface |
-| `assistantManagePermission` | `assistant.manage` | `/manage/*` + `/capabilities` and the admin editor (the gear) |
+| Permission | `name` | `action` | Gates |
+| --- | --- | --- | --- |
+| `assistantUsePermission` | `assistant.use` | `read` | the user-facing routes (`GET /status`, `POST /chat`, `POST /title`, `/threads`) and the chat surface |
+| `assistantManagePermission` | `assistant.manage` | `update` | `/manage/*` + `/capabilities` and the admin editor (the gear) |
 
 Both are enforced server-side via `coreServices.permissions` (403 when denied)
-and gated client-side with `usePermission`. **Which assistants** an
-`assistant.use` holder then sees is the separate per-assistant **access policy**
-stored on each definition — orthogonal to these permissions.
+and gated client-side with `usePermission`. The plugin registers them with
+`coreServices.permissionsRegistry` at init, so they are published on
+`GET /api/assistants/.well-known/backstage/permissions/metadata` and show up in
+permission UIs that discover plugins' permissions through that endpoint (the
+RBAC role editor, for one). **Which assistants** an `assistant.use` holder then
+sees is the separate per-assistant **access policy** stored on each definition —
+orthogonal to these permissions.
 
 #### Wiring it up — grant the permissions in a permission policy
 
@@ -509,6 +515,28 @@ groups referenced above must exist and the users be members.
 > (`permission.enabled: false`, the default) or the allow-all policy in place,
 > both permissions are granted to everyone. Gating takes effect only once you
 > enable permissions **and** install a policy like the one above.
+
+#### Or: grant them with the RBAC plugin
+
+With [`@backstage-community/plugin-rbac-backend`](https://github.com/backstage/community-plugins/tree/main/workspaces/rbac)
+in place of a hand-written policy, list the plugin so its permissions are
+discoverable, then bind them to roles from the RBAC UI or a policy file:
+
+```yaml
+# app-config.yaml
+permission:
+  enabled: true
+  rbac:
+    pluginsWithPermission: [assistants]
+```
+
+```csv
+# rbac-policy.csv
+p, role:default/assistants-users, assistant.use, read, allow
+p, role:default/assistants-admins, assistant.manage, update, allow
+g, group:default/assistants-users, role:default/assistants-users
+g, group:default/assistants-admins, role:default/assistants-admins
+```
 
 > **Working example in this repo.** The dev app ships a group-based policy at
 > `packages/backend/src/permissionPolicy.ts` and a dev sign-in picker

@@ -75,5 +75,5 @@ The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]`
 _Avoid_: calling it a permission (it is content/assignment, not a Backstage permission)
 
 **Permission**:
-A Backstage permission gating plugin access. Two, defined in `-common`: `assistant.use` (use the plugin — load the surface, chat) and `assistant.manage` (run the admin editor — create / edit / delete definitions). Authorized server-side on every route and gated client-side with `usePermission`; governed by the host app's permission policy. Distinct from the per-Assistant **Access policy** (which Assistants you see) and the per-tool Backstage checks at tool execution.
+A Backstage permission gating plugin access. Two, defined in `-common`: `assistant.use` (use the plugin — load the surface, chat) and `assistant.manage` (run the admin editor — create / edit / delete definitions). Authorized server-side on every route and gated client-side with `usePermission`; registered with `coreServices.permissionsRegistry` so permission UIs (e.g. the RBAC role editor) discover them; governed by the host app's permission policy. Distinct from the per-Assistant **Access policy** (which Assistants you see) and the per-tool Backstage checks at tool execution.
 _Avoid_: an `assistants.admins` config allowlist (management is the `assistant.manage` permission, not config)
