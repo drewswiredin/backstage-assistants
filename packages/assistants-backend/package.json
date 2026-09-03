@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants-backend",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Backend plugin — AI Assistants for Backstage.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -49,7 +49,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.23",
     "@ai-sdk/azure": "^4.0.24",
-    "@ai-sdk/mcp": "^2.0.16",
+    "@ai-sdk/mcp": "^2.0.41",
     "@ai-sdk/openai": "^4.0.23",
     "@backstage/backend-defaults": "^0.17.5",
     "@backstage/backend-openapi-utils": "^0.7.0",
@@ -61,7 +61,7 @@
     "@backstage/plugin-signals-node": "^0.2.3",
     "@backstage/types": "^1.2.2",
     "@drewswiredin/backstage-plugin-assistants-common": "0.10.0",
-    "ai": "^7.0.41",
+    "ai": "^7.0.85",
     "express": "^4.21.2",
     "knex": "^3.1.0",
     "node-html-parser": "^7.1.0",

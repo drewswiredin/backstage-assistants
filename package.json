@@ -58,9 +58,7 @@
   },
   "resolutions": {
     "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "@assistant-ui/core@npm:^0.3.0": "patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch",
-    "@assistant-ui/core@npm:^0.3.1": "patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch"
+    "@types/react-dom": "^18"
   },
   "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {
