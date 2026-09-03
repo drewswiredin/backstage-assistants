@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants-backend",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Backend plugin — AI Assistants for Backstage.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -60,7 +60,7 @@
     "@backstage/plugin-search-common": "^1.2.24",
     "@backstage/plugin-signals-node": "^0.2.3",
     "@backstage/types": "^1.2.2",
-    "@drewswiredin/backstage-plugin-assistants-common": "0.9.0",
+    "@drewswiredin/backstage-plugin-assistants-common": "0.10.0",
     "ai": "^7.0.41",
     "express": "^4.21.2",
     "knex": "^3.1.0",
