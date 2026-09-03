@@ -4826,7 +4826,7 @@ __metadata:
   resolution: "@drewswiredin/backstage-plugin-assistants@workspace:packages/assistants"
   dependencies:
     "@ai-sdk/react": "npm:^4.0.44"
-    "@assistant-ui/core": "patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch"
+    "@assistant-ui/core": "npm:^0.3.1"
     "@assistant-ui/react": "npm:0.15.1"
     "@assistant-ui/react-ai-sdk": "npm:1.4.1"
     "@assistant-ui/react-markdown": "npm:0.14.8"

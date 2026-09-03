@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Frontend plugin — AI Assistants for Backstage.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.44",
-    "@assistant-ui/core": "patch:@assistant-ui/core@npm%3A0.3.1#~/.yarn/patches/@assistant-ui-core-npm-0.3.1-6d6da84d75.patch",
+    "@assistant-ui/core": "^0.3.1",
     "@assistant-ui/react": "0.15.1",
     "@assistant-ui/react-ai-sdk": "1.4.1",
     "@assistant-ui/react-markdown": "0.14.8",
