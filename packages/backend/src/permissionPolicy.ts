@@ -20,7 +20,10 @@
  * must be removed, because the extension point's `setPolicy` throws
  * "Policy already set" if two modules try to install a policy.
  */
-import { createBackendModule, coreServices } from '@backstage/backend-plugin-api';
+import {
+  createBackendModule,
+  coreServices,
+} from '@backstage/backend-plugin-api';
 import {
   AuthorizeResult,
   PolicyDecision,

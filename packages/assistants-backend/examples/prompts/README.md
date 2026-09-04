@@ -1,6 +1,6 @@
 # Example assistant operating instructions
 
-Ready-to-use **system prompts** you can copy into your Backstage app and tailor.
+Ready-to-use **system prompts** to copy into an assistant and tailor.
 
 - `general-assistant.md` — read-only catalog/TechDocs helper (scope, guardrails,
   search strategy, Markdown/Mermaid formatting rules).
@@ -9,26 +9,9 @@ Ready-to-use **system prompts** you can copy into your Backstage app and tailor.
 
 ## Use them
 
-Installing this plugin does **not** copy files into your repo (npm only populates
-`node_modules`). Copy an example into your app and reference it with Backstage's
-built-in `$file`:
-
-```bash
-mkdir -p packages/backend/prompts
-cp node_modules/@drewswiredin/backstage-plugin-assistants-backend/examples/prompts/general-assistant.md \
-   packages/backend/prompts/general-assistant.md
-```
-
-```yaml
-# app-config.yaml
-assistants:
-  profiles:
-    general:
-      title: General Assistant
-      prompt:
-        $file: ./packages/backend/prompts/general-assistant.md
-      # ...access / actions / models
-```
-
-`$file` is read at backend startup, relative to the config file. Edit the copied
-`.md` to make the assistant your own — it's yours to modify or swap.
+Prompts live on the assistant definition in the plugin database, not in
+`app-config.yaml`. After install the files are at
+`node_modules/@drewswiredin/backstage-plugin-assistants-backend/examples/prompts/`.
+Open one, then sign in as a user with `assistant.manage`, open the admin editor
+(the gear in the chat sidebar), and paste it into the assistant's prompt field.
+Edit it there to make the assistant your own.

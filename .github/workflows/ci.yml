@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - run: corepack enable
+      - run: yarn install --immutable
+
+      - run: yarn tsc
+      - run: yarn lint:all
+      - run: yarn prettier:check
+      - run: CI=true yarn test --ci
+      - run: yarn build:all
+
+      - name: Pack guard
+        run: |
+          set -euo pipefail
+          cat > /tmp/check-manifest.js <<'JS'
+          const pkg = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+          const problems = [];
+          for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+            for (const [name, range] of Object.entries(pkg[field] ?? {})) {
+              if (/^(patch|workspace):/.test(range)) problems.push(`${field}.${name}: ${range}`);
+            }
+          }
+          if (JSON.stringify(pkg.exports ?? {}).includes('./src/')) problems.push('exports references ./src/');
+          if (problems.length) {
+            console.error(`${pkg.name}: unpublishable manifest\n  ${problems.join('\n  ')}`);
+            process.exit(1);
+          }
+          console.log(`${pkg.name}: manifest ok`);
+          JS
+          status=0
+          for pkg in packages/assistants packages/assistants-backend packages/assistants-common; do
+            tmp=$(mktemp -d)
+            tarball=$(cd "$pkg" && npm pack --json --pack-destination "$tmp" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+            echo "== $pkg -> $tarball"
+            tar -tzf "$tmp/$tarball"
+            tar -xzf "$tmp/$tarball" -C "$tmp"
+            node /tmp/check-manifest.js "$tmp/package/package.json" || status=1
+          done
+          exit $status

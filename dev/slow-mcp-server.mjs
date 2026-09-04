@@ -53,14 +53,26 @@ const schedule = job =>
   });
 
 const TOOLS = [
-  ['search_jira_issues', 'Search Jira for issues, epics and stories matching a query.'],
-  ['search_confluence_docs', 'Search Confluence spaces and pages for documentation.'],
+  [
+    'search_jira_issues',
+    'Search Jira for issues, epics and stories matching a query.',
+  ],
+  [
+    'search_confluence_docs',
+    'Search Confluence spaces and pages for documentation.',
+  ],
   ['search_github_code', 'Search code across GitHub repositories.'],
   ['search_slack_messages', 'Search Slack channels and threads for messages.'],
   ['query_datadog_metrics', 'Query Datadog metrics, monitors and dashboards.'],
   ['search_pagerduty_incidents', 'Search PagerDuty for incidents and alerts.'],
-  ['search_snowflake_tables', 'Search Snowflake databases for tables and columns.'],
-  ['lookup_servicenow_tickets', 'Look up ServiceNow change and incident tickets.'],
+  [
+    'search_snowflake_tables',
+    'Search Snowflake databases for tables and columns.',
+  ],
+  [
+    'lookup_servicenow_tickets',
+    'Look up ServiceNow change and incident tickets.',
+  ],
 ].map(([name, description]) => ({
   name,
   description,
@@ -72,17 +84,26 @@ const TOOLS = [
 }));
 
 function fakeResult(name, query) {
-  const prefix = name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase();
+  const prefix = name
+    .replace(/[^a-z]/gi, '')
+    .slice(0, 3)
+    .toUpperCase();
   const rows = [];
   for (let i = 1; i <= ROWS; i++) {
     rows.push(
       `${i}. [${name}] hit for "${query}" — id=${prefix}-${1000 + i}, ` +
-        `status=${['open', 'in-progress', 'resolved'][i % 3]}, owner=team-${(i % 4) + 1}`,
+        `status=${['open', 'in-progress', 'resolved'][i % 3]}, owner=team-${
+          (i % 4) + 1
+        }`,
     );
   }
-  let text = `${name} returned ${ROWS} result(s) for "${query}" after ${DELAY_MS}ms:\n${rows.join('\n')}`;
+  let text = `${name} returned ${ROWS} result(s) for "${query}" after ${DELAY_MS}ms:\n${rows.join(
+    '\n',
+  )}`;
   if (RESULT_KB > 0) {
-    text += `\n\n--- padding (${RESULT_KB}KB) ---\n${'x'.repeat(RESULT_KB * 1024)}`;
+    text += `\n\n--- padding (${RESULT_KB}KB) ---\n${'x'.repeat(
+      RESULT_KB * 1024,
+    )}`;
   }
   return text;
 }
@@ -114,24 +135,39 @@ async function handle(msg) {
       const name = params?.name;
       const query = params?.arguments?.query ?? '';
       if (!TOOLS.some(t => t.name === name)) {
-        send({ jsonrpc: '2.0', id, error: { code: -32602, message: `Unknown tool: ${name}` } });
+        send({
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32602, message: `Unknown tool: ${name}` },
+        });
         return;
       }
       log(`tools/call ${name} q="${query}" — queued`);
       await schedule(async () => {
-        log(`tools/call ${name} — running (active=${active}/${CONCURRENCY || '∞'}), sleeping ${DELAY_MS}ms`);
+        log(
+          `tools/call ${name} — running (active=${active}/${
+            CONCURRENCY || '∞'
+          }), sleeping ${DELAY_MS}ms`,
+        );
         await sleep(DELAY_MS);
       });
       log(`tools/call ${name} — responding`);
       send({
         jsonrpc: '2.0',
         id,
-        result: { content: [{ type: 'text', text: fakeResult(name, query) }], isError: false },
+        result: {
+          content: [{ type: 'text', text: fakeResult(name, query) }],
+          isError: false,
+        },
       });
       return;
     }
     default:
-      send({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } });
+      send({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32601, message: `Method not found: ${method}` },
+      });
   }
 }
 
@@ -147,9 +183,13 @@ rl.on('line', line => {
     return;
   }
   // Don't await — handle concurrently so parallel tool calls overlap.
-  Promise.resolve(handle(msg)).catch(e => log(`handler error: ${e?.message ?? String(e)}`));
+  Promise.resolve(handle(msg)).catch(e =>
+    log(`handler error: ${e?.message ?? String(e)}`),
+  );
 });
 rl.on('close', () => process.exit(0));
 log(
-  `ready — ${TOOLS.length} tools, delay ${DELAY_MS}ms, concurrency ${CONCURRENCY || '∞'}, rows ${ROWS}, pad ${RESULT_KB}KB`,
+  `ready — ${TOOLS.length} tools, delay ${DELAY_MS}ms, concurrency ${
+    CONCURRENCY || '∞'
+  }, rows ${ROWS}, pad ${RESULT_KB}KB`,
 );

@@ -22,12 +22,26 @@ yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backen
 backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
 ```
 
-Requires the new backend system (`@backstage/backend-defaults`).
+Under create-app's default allow-all permission policy every signed-in user
+can use and manage assistants; see [Permissions](#permissions) to gate either.
+
+Add `assistants` (and `catalog`, `scaffolder`, etc.) to
+`backend.actions.pluginSources`, or an assistant's tools resolve to an empty
+list — see [Tools](#tools-actions).
+
+### Requirements
+
+- Backstage 1.53 or later on the new backend system
+  (`@backstage/backend-defaults`).
+- Node 22.12 or later.
+- A plugin database: SQLite or Postgres (MySQL is supported).
+- Recommended: `@backstage/plugin-signals-backend`, so working/unread status
+  reaches the browser as signals rather than by polling.
 
 ## Configuration
 
-All options live under `assistants` in `app-config.yaml`. This block now holds
-only the platform/safety surface — there is **no `profiles:` block**.
+All options live under `assistants` in `app-config.yaml`. The block holds only
+the platform/safety surface.
 
 ### Assistant definitions (database + admin editor)
 
@@ -40,7 +54,7 @@ Definitions are created, edited, and deleted at runtime via the **admin editor**
 
 ```yaml
 assistants:
-  defaultModel: openrouter:google/gemini-2.5-flash # provider:model; must exist in a provider
+  defaultModel: openrouter:anthropic/claude-sonnet-5 # provider:model; must exist in a provider
   maxSteps: 8 # max tool-call steps per turn (default 10)
   builtinActions: true # register built-in catalog/TechDocs read tools
 
@@ -56,33 +70,35 @@ assistants:
       apiKey: ${OPENROUTER_API_KEY} # @visibility secret
       baseUrl: https://openrouter.ai/api/v1 # optional
       models: # object list: required name, optional contextWindow (drives the gauge)
-        - name: google/gemini-2.5-flash
-          contextWindow: 1048576
+        - name: anthropic/claude-sonnet-5
+          contextWindow: 1000000
           reasoning: true # offers the effort picker
-        - name: anthropic/claude-3.5-sonnet # no flag = no picker
-
+        - name: openai/gpt-5.5
+          contextWindow: 400000
+          reasoning: true
 ```
 
 ### Config reference
 
-| Key | Required | Description |
-| --- | --- | --- |
-| `defaultModel` | yes | Initial `provider:model`; must exist in a provider. |
-| `maxSteps` | no | Max tool-call steps per turn (default `10`). |
-| `builtinActions` | no | Register built-in catalog/TechDocs read tools (default `false`). |
-| `toolResultMaxChars` | no | Max chars of a single tool result (head+tail truncation; `0` disables; default `30000`). |
-| `requireApproval` | no | Global approval floor: action ids gated by Allow/Deny in chat. |
-| `providers.<id>.type` | yes | `openai` \| `anthropic` \| `azure` \| `openai-compatible`. |
-| `providers.<id>.apiKey` | yes | Provider key (`@visibility secret`). |
-| `providers.<id>.baseUrl` | no | Base URL override. |
-| `providers.<id>.models` | yes | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. |
-| `providers.<id>.models[].maxOutputTokens` | no | Output-token ceiling; only needed when the provider misjudges an unrecognized model id. |
-| `providers.<id>.models[].reasoning` | no | `true` if the model reasons — adds the effort picker (see Reasoning effort). |
-| `mcp.connectTimeoutMs` | no | Global MCP connect/list-tools timeout ceiling in ms (default `8000`). |
-| `mcp.servers.<id>` | no | External MCP server connections (see MCP section). |
-| `mcp.servers.<id>.connectTimeoutMs` | no | Per-server connect/list-tools ceiling (overrides the global). |
-| `mcp.servers.<id>.requireApproval` | no | Per-server approval floor: tool names gated by Allow/Deny. |
-| `requestBodyLimit` | no | Express body limit for `/chat` + `/title` (default `10mb`). |
+| Key                                       | Required | Description                                                                                                                                                  |
+| ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `defaultModel`                            | yes      | Initial `provider:model`; must exist in a provider.                                                                                                          |
+| `maxSteps`                                | no       | Max tool-call steps per turn (default `10`).                                                                                                                 |
+| `builtinActions`                          | no       | Register built-in catalog/TechDocs read tools (default `false`).                                                                                             |
+| `toolResultMaxChars`                      | no       | Max chars of a single tool result (head+tail truncation; `0` disables; default `30000`).                                                                     |
+| `requireApproval`                         | no       | Global approval floor: action ids gated by Allow/Deny in chat.                                                                                               |
+| `providers.<id>.type`                     | yes      | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                   |
+| `providers.<id>.apiKey`                   | yes      | Provider key (`@visibility secret`).                                                                                                                         |
+| `providers.<id>.baseUrl`                  | no       | Base URL override.                                                                                                                                           |
+| `providers.<id>.options`                  | no       | Untyped passthrough object spread into the `@ai-sdk/*` factory (e.g. Azure `apiVersion`). Not schema-validated; keep credentials out of it and use `apiKey`. |
+| `providers.<id>.models`                   | yes      | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. A plain string list is rejected at startup.                                      |
+| `providers.<id>.models[].maxOutputTokens` | no       | Output-token ceiling; only needed when the provider misjudges an unrecognized model id.                                                                      |
+| `providers.<id>.models[].reasoning`       | no       | `true` if the model reasons — adds the effort picker (see Reasoning effort).                                                                                 |
+| `mcp.connectTimeoutMs`                    | no       | Global MCP connect/list-tools timeout ceiling in ms (default `8000`).                                                                                        |
+| `mcp.servers.<id>`                        | no       | External MCP server connections (see MCP section).                                                                                                           |
+| `mcp.servers.<id>.connectTimeoutMs`       | no       | Per-server connect/list-tools ceiling (overrides the global).                                                                                                |
+| `mcp.servers.<id>.requireApproval`        | no       | Per-server approval floor: tool names gated by Allow/Deny.                                                                                                   |
+| `requestBodyLimit`                        | no       | Express body limit for `/chat` + `/title` (default `10mb`).                                                                                                  |
 
 ### Example operating instructions
 
@@ -105,6 +121,10 @@ Model ids are `<providerId>:<model>`, where `providerId` is your key under
 this plugin — no extra packages to install**. You can configure several providers
 at once; the union of their `models` is the global pool.
 
+Every `models` entry is an object with a `name`; `contextWindow`, `reasoning`,
+and `maxOutputTokens` are optional. A plain string list fails validation at
+startup.
+
 **OpenAI-compatible** (OpenRouter, local gateways, etc.) — uses the OpenAI SDK
 with a `baseUrl`:
 
@@ -114,8 +134,14 @@ providers:
     type: openai-compatible
     apiKey: ${OPENROUTER_API_KEY}
     baseUrl: https://openrouter.ai/api/v1
-    models: [google/gemini-2.5-flash, anthropic/claude-3.5-sonnet]
-# -> ids: openrouter:google/gemini-2.5-flash
+    models:
+      - name: anthropic/claude-sonnet-5
+        contextWindow: 1000000
+        reasoning: true
+      - name: openai/gpt-5.5
+        contextWindow: 400000
+        reasoning: true
+# -> ids: openrouter:anthropic/claude-sonnet-5, openrouter:openai/gpt-5.5
 ```
 
 **OpenAI**:
@@ -125,8 +151,11 @@ providers:
   openai:
     type: openai
     apiKey: ${OPENAI_API_KEY}
-    models: [gpt-4o, gpt-4o-mini]
-# -> ids: openai:gpt-4o
+    models:
+      - name: gpt-5.5
+        contextWindow: 400000
+        reasoning: true
+# -> ids: openai:gpt-5.5
 ```
 
 **Anthropic**:
@@ -136,8 +165,14 @@ providers:
   anthropic:
     type: anthropic
     apiKey: ${ANTHROPIC_API_KEY}
-    models: [claude-3-5-sonnet-latest, claude-3-5-haiku-latest]
-# -> ids: anthropic:claude-3-5-sonnet-latest
+    models:
+      - name: claude-opus-5
+        contextWindow: 1000000
+        reasoning: true
+      - name: claude-sonnet-5
+        contextWindow: 1000000
+        reasoning: true
+# -> ids: anthropic:claude-opus-5, anthropic:claude-sonnet-5
 ```
 
 **Azure OpenAI / AI Foundry** — `models` are your **deployment names**; point
@@ -152,37 +187,40 @@ providers:
     baseUrl: https://<resource>.openai.azure.com # or your Foundry endpoint
     options:
       apiVersion: '2024-10-21'
-    models: [my-gpt4o-deployment]
-# -> ids: azure:my-gpt4o-deployment
+    models:
+      - name: my-gpt-5-5-deployment
+        contextWindow: 400000
+        reasoning: true
+# -> ids: azure:my-gpt-5-5-deployment
 ```
 
 ## Reasoning effort
 
 A model that reasons gets an **effort picker** in the chat header, next to the
-model picker. Config says only *whether* a model reasons — never which tiers it
+model picker. Config says only _whether_ a model reasons — never which tiers it
 has:
 
 ```yaml
 models:
   - name: gpt-5.5
     reasoning: true
-  - name: gpt-4o-mini # no flag -> no picker for this model
+  - name: my-small-deployment # no flag -> no picker for this model
 ```
 
 The tiers are fixed and the same for every reasoning model — **low · medium ·
 high · max** — translated to the provider's own knob at request time:
 
-| Provider type | Sent as |
-| --- | --- |
-| `openai`, `openai-compatible`, `azure` | `reasoningEffort: <tier>` (`max` → `xhigh`) |
-| `anthropic` | `thinking: { type: adaptive }` + `output_config.effort: <tier>` |
+| Provider type                          | Sent as                                                         |
+| -------------------------------------- | --------------------------------------------------------------- |
+| `openai`, `openai-compatible`, `azure` | `reasoningEffort: <tier>` (`max` → `xhigh`)                     |
+| `anthropic`                            | `thinking: { type: adaptive }` + `output_config.effort: <tier>` |
 
 Tiers are forwarded by name — nothing here invents token budgets; the only
 conversion is the top tier's spelling per provider.
 
 > **Anthropic models must be 4.6 or later.** The effort picker uses adaptive
 > thinking plus `output_config.effort`. Claude 4.6 and later accept both; the
-> newest models *require* them, rejecting the older
+> newest models _require_ them, rejecting the older
 > `thinking: { type: enabled, budget_tokens }` shape outright. Older models
 > (Claude 4.5 and earlier) accept only that older shape and, below Opus 4.5,
 > have no `effort` parameter at all — leave them unflagged rather than setting
@@ -206,7 +244,7 @@ Behaviour worth knowing:
   at debug) rather than failing the turn — a client whose model changed under it
   must not break.
 
-Reasoning *output* (where the model streams its thinking) is already rendered as
+Reasoning _output_ (where the model streams its thinking) is already rendered as
 a collapsible **Reasoning** block in the chat, independent of this setting.
 
 ## Output token ceiling
@@ -224,7 +262,7 @@ models:
 ```
 
 `@ai-sdk/anthropic` falls back to **4096** for an id that doesn't look like a
-Claude model. That is not enough for a reasoning model to think *and* answer:
+Claude model. That is not enough for a reasoning model to think _and_ answer:
 tool calls each fit, so the turn appears to run normally, then ends with no
 reply at all. A custom deployment name is the usual way to hit this — plain
 `claude-*` ids fall back to 128000 instead.
@@ -405,8 +443,37 @@ the tool result. Forms render Backstage **scaffolder field extensions** (owner /
 entity / repo pickers, plus any custom field the host app has registered)
 resolved at runtime, so the model can reuse a scaffolder template's parameter
 block verbatim. `download_file` hands a generated artifact back as a download
-chip in the conversation. See the
-[architecture §4](../../docs/architecture.html#hitl).
+chip in the conversation.
+
+Both are human-in-the-loop pauses in the same model loop: the stream stops at
+the tool call, the browser renders the approval card or the form, and the
+user's answer (Allow / Deny, or the submitted form values) is sent back as the
+tool result, at which point the turn resumes. A turn waiting on the user
+survives navigation and a page reload — it rejoins the stream where it left
+off.
+
+## Deployment and scaling
+
+Run one backend replica, or pin session affinity for `/api/assistants/*`.
+Several pieces of per-conversation state live in process memory: the in-flight
+stream buffer that lets a reload rejoin a running reply, the `working` flag,
+the abort handle behind the Stop button, and a 60-second snapshot of assistant
+definitions. The MCP connection pool is per process, with its own maintenance
+task on each replica.
+
+Turns always complete and persist on the replica that serves them, so with
+several replicas and no affinity a reload still shows the full reply once it
+finishes; only live resume and Stop are affected. Signals fan out across
+replicas when the host installs `@backstage/plugin-events-backend`; otherwise a
+signal reaches only clients connected to the emitting replica.
+
+## Upgrading
+
+The schema is forward-only. Backend 0.12.0 and later apply migration
+`20260728120000_add_reasoning_level`; a backend at 0.11.1 or earlier started
+against a database that carries it fails with knex's "migration directory is
+corrupt". Upgrade the backend before or with the database, never roll it back
+against a migrated database, and take a backup before a major-version step.
 
 ## Security
 
@@ -418,6 +485,38 @@ chip in the conversation. See the
   descriptions, the model pool/defaults, the resolved tool list (name +
   description), and `ui`.
 
+### What leaves the cluster
+
+Per turn the backend sends the configured model provider the assistant's
+system prompt, the full conversation history (including attachments as base64
+and prior tool results), and the results of tools called in that turn —
+catalog entities, TechDocs pages, MCP results. Auto-title makes one extra
+model call on a thread's first turn. The caller's identity (user entity ref,
+groups, credentials) is not sent to the provider. MCP servers receive only the
+tool arguments the model produces, under the server's configured static
+credential.
+
+### What is stored
+
+Three tables in the plugin database: `assistants` (`definition_json`, including
+the prompt and access policy), `threads`, and `messages`. Every message —
+user text, attachments, assistant output, and tool results truncated at
+`toolResultMaxChars` (default 30000) — persists in `messages.content_json`
+until the user deletes the thread, which is a hard delete. Nothing is
+retained after that. Provider API keys and MCP secrets live only in config.
+
+### Untrusted content and prompt injection
+
+Everything a tool returns — TechDocs pages, catalog entity fields, MCP results
+— is untrusted input to the model. A page an assistant reads can carry
+instructions the model may follow. The approval floor (`requireApproval`, and
+`mcp.servers.<id>.requireApproval`) is the enforced checkpoint: a listed tool
+never runs without an explicit Allow in the chat, whatever the model was told.
+The floor defaults to empty, so list every write-capable action
+(`register-entity`, `unregister-entity`, `execute-template`, and any MCP tool
+that mutates) there. Backstage permissions still apply to each approved
+action, since it runs as the calling user.
+
 ### Permissions
 
 The plugin defines two Backstage permissions in
@@ -425,10 +524,10 @@ The plugin defines two Backstage permissions in
 `assistantUsePermission`, `assistantManagePermission`, and the
 `assistantsPermissions` array):
 
-| Permission | `name` | `action` | Gates |
-| --- | --- | --- | --- |
-| `assistantUsePermission` | `assistant.use` | `read` | the user-facing routes (`GET /status`, `POST /chat`, `POST /title`, `/threads`) and the chat surface |
-| `assistantManagePermission` | `assistant.manage` | `update` | `/manage/*` + `/capabilities` and the admin editor (the gear) |
+| Permission                  | `name`             | `action` | Gates                                                                                                |
+| --------------------------- | ------------------ | -------- | ---------------------------------------------------------------------------------------------------- |
+| `assistantUsePermission`    | `assistant.use`    | `read`   | the user-facing routes (`GET /status`, `POST /chat`, `POST /title`, `/threads`) and the chat surface |
+| `assistantManagePermission` | `assistant.manage` | `update` | `/manage/*` + `/capabilities` and the admin editor (the gear)                                        |
 
 Both are enforced server-side via `coreServices.permissions` (403 when denied)
 and gated client-side with `usePermission`. The plugin registers them with
@@ -511,10 +610,12 @@ who may run the editor. Group membership comes from the caller's
 `ownershipEntityRefs`, resolved by your auth provider from the catalog — so the
 groups referenced above must exist and the users be members.
 
-> **Default-allow, like every plugin.** With permissions disabled
-> (`permission.enabled: false`, the default) or the allow-all policy in place,
-> both permissions are granted to everyone. Gating takes effect only once you
-> enable permissions **and** install a policy like the one above.
+> **Default-allow, like every plugin.** A create-app backend ships
+> `permission.enabled: true` with the allow-all policy, under which every
+> signed-in user holds both permissions; with `permission.enabled` unset or
+> `false` Backstage skips policy evaluation, with the same effect. Gating takes
+> effect only once permissions are enabled **and** a policy like the one above
+> is installed.
 
 #### Or: grant them with the RBAC plugin
 
@@ -537,11 +638,6 @@ p, role:default/assistants-admins, assistant.manage, update, allow
 g, group:default/assistants-users, role:default/assistants-users
 g, group:default/assistants-admins, role:default/assistants-admins
 ```
-
-> **Working example in this repo.** The dev app ships a group-based policy at
-> `packages/backend/src/permissionPolicy.ts` and a dev sign-in picker
-> (`packages/app/src/modules/signIn`) that lets you log in as a no-access / user
-> / admin identity to exercise all three roles end to end.
 
 ### Admin / management API
 

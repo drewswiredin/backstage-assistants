@@ -1,0 +1,12 @@
+dist
+dist-types
+.handoff
+.local-db
+e2e-test-report
+coverage
+node_modules
+.yarn
+packages/*/dist
+packages/*/dist-dynamic
+**/schema/openapi/generated/**
+yarn.lock

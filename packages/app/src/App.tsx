@@ -8,5 +8,11 @@ import { signInModule } from './modules/signIn';
 export default createApp({
   // signalsPlugin registers the signalApi the assistants plugin uses for
   // real-time conversation notifications (working / unread).
-  features: [catalogPlugin, signalsPlugin, assistantsPlugin, navModule, signInModule],
+  features: [
+    catalogPlugin,
+    signalsPlugin,
+    assistantsPlugin,
+    navModule,
+    signInModule,
+  ],
 });
