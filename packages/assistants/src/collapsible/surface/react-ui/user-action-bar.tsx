@@ -1,6 +1,7 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `user-action-bar.tsx` (see
 // withDefaults.tsx for why; `useThread` selectors became `useAuiState`).
-// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — full license text in
+// THIRD_PARTY_NOTICES.md at the package root.
 import { forwardRef } from 'react';
 import { PencilIcon } from 'lucide-react';
 import { ActionBarPrimitive, useAuiState } from '@assistant-ui/react';

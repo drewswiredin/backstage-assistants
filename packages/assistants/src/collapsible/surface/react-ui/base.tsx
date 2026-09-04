@@ -1,8 +1,14 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `base/*` (see withDefaults.tsx for
 // why). The cva() button-variant helper is replaced with a plain lookup — same
 // class output, one less dependency.
-// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
-import { forwardRef, type ComponentPropsWithoutRef, type FC, type PropsWithChildren } from 'react';
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — full license text in
+// THIRD_PARTY_NOTICES.md at the package root.
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type FC,
+  type PropsWithChildren,
+} from 'react';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import * as DialogPrimitive from '@radix-ui/react-dialog';

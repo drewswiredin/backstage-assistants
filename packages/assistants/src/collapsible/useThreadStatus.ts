@@ -5,18 +5,22 @@
  * The single source of truth is `GET /threads/status`: per conversation
  * `{ working, unread }` (+ `assistantId`). We refetch it on any Signals message
  * (delivered even while the tab is backgrounded) and when the tab becomes
- * visible — never on window focus. Every indicator is a pure derivation:
+ * visible — never on window focus. Signals is optional: a host app without
+ * `@backstage/plugin-signals` polls the endpoint instead. Every indicator is a
+ * pure derivation:
  *   - `working` (in-flight) shows ALWAYS, even for the focused conversation
  *   - `unread` shows until you FOCUS the conversation (focusing marks it read)
  *   - rollups (agent, nav, tab): `working` wins over `unread`
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApiHolder } from '@backstage/core-plugin-api';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { AssistantsApi } from '../api';
 import type { ConversationStatusRow } from '../api';
 
 const NOTIFY_CHANNEL = 'assistants:threads';
+/** Refetch cadence when the host app has no Signals API installed. */
+const POLL_INTERVAL_MS = 10_000;
 
 export type ConvStatus = 'read' | 'working' | 'unread';
 
@@ -46,7 +50,8 @@ export function useThreadStatus(
   api: AssistantsApi,
   focusedId: string | undefined,
 ): ThreadStatusStore {
-  const signals = useApi(signalApiRef);
+  // Optional: `undefined` when the host app does not install Signals.
+  const signals = useApiHolder().get(signalApiRef);
   const [rows, setRows] = useState<ConversationStatusRow[]>([]);
   const [tick, setTick] = useState(0);
   const focusedRef = useRef(focusedId);
@@ -65,7 +70,8 @@ export function useThreadStatus(
   }, [api]);
 
   // Signal-driven (delivered even while backgrounded), debounced, plus a refetch
-  // when the tab becomes visible. No window-focus reconcile.
+  // when the tab becomes visible. No window-focus reconcile. Without Signals the
+  // same refresh runs on a fixed interval instead.
   useEffect(() => {
     void refresh();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -73,14 +79,18 @@ export function useThreadStatus(
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void refresh(), 120);
     };
-    const sub = signals.subscribe(NOTIFY_CHANNEL, () => schedule());
+    const sub = signals?.subscribe(NOTIFY_CHANNEL, () => schedule());
+    const poll = signals
+      ? undefined
+      : setInterval(() => void refresh(), POLL_INTERVAL_MS);
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       if (timer) clearTimeout(timer);
-      sub.unsubscribe();
+      if (poll) clearInterval(poll);
+      sub?.unsubscribe();
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [signals, refresh]);

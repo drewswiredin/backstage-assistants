@@ -15,7 +15,10 @@
  */
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { useAISDKRuntime, AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
+import {
+  useAISDKRuntime,
+  AssistantChatTransport,
+} from '@assistant-ui/react-ai-sdk';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
@@ -43,13 +46,6 @@ function awaitingHumanInput(message: {
         (p.state === 'input-available' || p.state === 'input-streaming')),
   );
 }
-
-/** Verbose resume tracing for local debugging (open the browser console). */
-const DEBUG = false;
-const dbg = (...a: unknown[]) => {
-  // eslint-disable-next-line no-console
-  if (DEBUG) console.info('[aui-resume]', ...a);
-};
 
 interface RuntimeHookOptions {
   api: AssistantsApi;
@@ -238,7 +234,9 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
         );
         const latestStepTools = parts
           .slice(lastStepStart + 1)
-          .filter(p => typeof p.type === 'string' && p.type.startsWith('tool-'));
+          .filter(
+            p => typeof p.type === 'string' && p.type.startsWith('tool-'),
+          );
         if (latestStepTools.length === 0) return false;
         // Every tool in the step must be client-settled — nothing still streaming,
         // awaiting input, or awaiting the user's approval decision.
@@ -310,7 +308,10 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     const resumedFor = useRef<string | undefined>(undefined);
     useEffect(() => {
       if (!remoteId || resumedFor.current === remoteId) return;
-      if (chatRef.current.status === 'streaming' || chatRef.current.status === 'submitted') {
+      if (
+        chatRef.current.status === 'streaming' ||
+        chatRef.current.status === 'submitted'
+      ) {
         resumedFor.current = remoteId; // a local turn already owns the stream
         return;
       }
@@ -318,14 +319,12 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       void (async () => {
         try {
           const rows = await api.getThreadsStatus();
-          const working = rows.find(r => r.threadId === remoteId)?.working ?? false;
-          dbg('resume check', { remoteId, working });
-          if (working) {
-            await chatRef.current.resumeStream();
-            dbg('resumed', { remoteId });
-          }
-        } catch (e) {
-          dbg('resume error', e);
+          const working =
+            rows.find(r => r.threadId === remoteId)?.working ?? false;
+          if (working) await chatRef.current.resumeStream();
+        } catch {
+          // A failed resume probe is deliberately ignored: the thread simply
+          // renders its loaded history without rejoining a live stream.
         }
       })();
       // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -52,7 +52,12 @@ export interface ContextGaugeProps {
   size?: number;
 }
 
-export function ContextGauge({ used, max, color, size = 22 }: ContextGaugeProps) {
+export function ContextGauge({
+  used,
+  max,
+  color,
+  size = 22,
+}: ContextGaugeProps) {
   const classes = useStyles();
   const theme = useTheme();
 
@@ -93,7 +98,11 @@ export function ContextGauge({ used, max, color, size = 22 }: ContextGaugeProps)
             style={{ color: fill }}
           />
         </span>
-        <Typography variant="caption" component="span" className={classes.readout}>
+        <Typography
+          variant="caption"
+          component="span"
+          className={classes.readout}
+        >
           {readout}
         </Typography>
       </Box>

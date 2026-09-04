@@ -1,6 +1,7 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `composer.tsx` (see
 // withDefaults.tsx for why; `useThread` selectors became `useAuiState`).
-// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — full license text in
+// THIRD_PARTY_NOTICES.md at the package root.
 import { forwardRef } from 'react';
 import { PaperclipIcon, SendHorizontalIcon } from 'lucide-react';
 import {

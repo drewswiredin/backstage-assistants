@@ -9,8 +9,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { useApi } from '@backstage/core-plugin-api';
-import { Content, Progress, ResponseErrorPanel } from '@backstage/core-components';
+import { useApi, useApiHolder } from '@backstage/core-plugin-api';
+import {
+  Content,
+  Progress,
+  ResponseErrorPanel,
+} from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   Button,
@@ -400,14 +404,19 @@ function mostRecentThreadFor(
   threadList: ThreadListState,
 ): string | undefined {
   const updatedAt = (id: string) =>
-    (threadList.threadItems[id]?.custom as Partial<ThreadCustomMetadata> | undefined)
-      ?.updatedAt ?? '';
+    (
+      threadList.threadItems[id]?.custom as
+        | Partial<ThreadCustomMetadata>
+        | undefined
+    )?.updatedAt ?? '';
   return [...threadList.threadIds]
     .filter(
       id =>
-        (threadList.threadItems[id]?.custom as
-          | Partial<ThreadCustomMetadata>
-          | undefined)?.assistantId === assistantId,
+        (
+          threadList.threadItems[id]?.custom as
+            | Partial<ThreadCustomMetadata>
+            | undefined
+        )?.assistantId === assistantId,
     )
     .sort((a, b) => (updatedAt(a) < updatedAt(b) ? 1 : -1))[0];
 }
@@ -534,17 +543,18 @@ function ChatChrome({
 }) {
   const classes = useStyles();
   // Manage gate: the `assistant.manage` permission (the editor gear + dialog).
-  const canManage = usePermission({ permission: assistantManagePermission })
-    .allowed;
-  const signals = useApi(signalApiRef);
+  const canManage = usePermission({
+    permission: assistantManagePermission,
+  }).allowed;
+  // Optional: `undefined` when the host app does not install Signals.
+  const signals = useApiHolder().get(signalApiRef);
   const [, setSearchParams] = useSearchParams();
 
   // Active agent: UI state, with a ref mirror so the adapter/runtime can tag a
   // brand-new thread synchronously (before React re-renders). The active
   // conversation always belongs to this agent (the list is filtered by it).
-  const [activeAssistantId, setActiveAssistantIdState] = useState(
-    initialAssistantId,
-  );
+  const [activeAssistantId, setActiveAssistantIdState] =
+    useState(initialAssistantId);
   const setActiveAssistantId = useCallback(
     (id: string) => {
       activeAssistantIdRef.current = id;
@@ -582,7 +592,8 @@ function ChatChrome({
 
   // Single source of truth for read/working/unread + token usage, derived from
   // server + signals.
-  const { statusOf, agentStatus, usageOf } = useThreadStatus(api, activeRemoteId);
+  const { statusOf, agentStatus, usageOf, overallStatus, tick } =
+    useThreadStatus(api, activeRemoteId);
 
   // On first load for this agent (the component is keyed by assistant.id), land
   // on the agent's MOST RECENT conversation. The runtime defaults the main thread
@@ -624,7 +635,9 @@ function ChatChrome({
         })
         .map(id => {
           const item = threadList.threadItems[id];
-          const custom = item?.custom as Partial<ThreadCustomMetadata> | undefined;
+          const custom = item?.custom as
+            | Partial<ThreadCustomMetadata>
+            | undefined;
           // Every dot derives from the single status snapshot. `working` shows
           // even for the focused conversation; `unread` is suppressed for it.
           const st: ConvStatus = statusOf(item?.remoteId);
@@ -644,6 +657,7 @@ function ChatChrome({
   // mid-turn: reloading re-keys an in-flight new thread (localId → remoteId) and
   // would break its stream. The 'updated' signal fires after a turn completes.
   useEffect(() => {
+    if (!signals) return undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const sub = signals.subscribe('assistants:threads', (msg: JsonObject) => {
       if ((msg as { type?: string }).type !== 'updated') return;
@@ -655,6 +669,18 @@ function ChatChrome({
       sub.unsubscribe();
     };
   }, [signals, runtime]);
+
+  // Without Signals, the thread-status poll drives the same reload: `tick`
+  // bumps on every refetch. The reload is skipped while any turn is in flight
+  // (server- or client-side) for the reason above, and on the first tick, which
+  // coincides with the runtime's own initial list load.
+  useEffect(() => {
+    if (signals || tick <= 1) return;
+    if (overallStatus === 'working' || runtime.thread.getState().isRunning) {
+      return;
+    }
+    void runtime.threads.reload();
+  }, [signals, runtime, tick, overallStatus]);
 
   // Model picker: limited to the assistant's allowlist (else the global pool).
   const allowedModels = useMemo<ModelId[]>(
@@ -678,7 +704,9 @@ function ChatChrome({
   );
 
   const [modelId, setModelId] = useState<ModelId>(() =>
-    resolveModel((activeItem?.custom as Partial<ThreadCustomMetadata> | undefined)?.model),
+    resolveModel(
+      (activeItem?.custom as Partial<ThreadCustomMetadata> | undefined)?.model,
+    ),
   );
 
   // Effort tiers are the same everywhere; only WHETHER a model reasons varies,
@@ -702,12 +730,17 @@ function ChatChrome({
     [reasons],
   );
 
-  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel | undefined>(
-    () => {
-      const custom = activeItem?.custom as Partial<ThreadCustomMetadata> | undefined;
-      return resolveReasoning(custom?.reasoningLevel, resolveModel(custom?.model));
-    },
-  );
+  const [reasoningLevel, setReasoningLevel] = useState<
+    ReasoningLevel | undefined
+  >(() => {
+    const custom = activeItem?.custom as
+      | Partial<ThreadCustomMetadata>
+      | undefined;
+    return resolveReasoning(
+      custom?.reasoningLevel,
+      resolveModel(custom?.model),
+    );
+  });
 
   // Adopt the active thread's saved model + level on switch (keyed on the active
   // id only). The level is validated against the thread's own model, not the
@@ -725,7 +758,9 @@ function ChatChrome({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  const [sidePaneCollapsed, setSidePaneCollapsed] = useState(loadSidePaneCollapsed);
+  const [sidePaneCollapsed, setSidePaneCollapsed] = useState(
+    loadSidePaneCollapsed,
+  );
   useEffect(() => {
     try {
       localStorage.setItem(SIDEPANE_COLLAPSED_KEY, String(sidePaneCollapsed));
@@ -755,7 +790,13 @@ function ChatChrome({
       if (mostRecent) void runtime.threads.switchToThread(mostRecent);
       else void runtime.threads.switchToNewThread();
     },
-    [activeAssistantId, setActiveAssistantId, setSearchParams, threadList, runtime],
+    [
+      activeAssistantId,
+      setActiveAssistantId,
+      setSearchParams,
+      threadList,
+      runtime,
+    ],
   );
 
   const handleNew = useCallback(() => {
@@ -892,7 +933,9 @@ function ChatChrome({
       >
         <MenuItem value="" className={classes.modelItem}>
           <ListItemIcon className={classes.modelItemCheck}>
-            {reasoningLevel === undefined ? <CheckIcon fontSize="small" /> : null}
+            {reasoningLevel === undefined ? (
+              <CheckIcon fontSize="small" />
+            ) : null}
           </ListItemIcon>
           <span style={{ flexGrow: 1 }}>Default</span>
         </MenuItem>
@@ -936,7 +979,9 @@ function ChatChrome({
               <ListItemIcon className={classes.modelItemCheck}>
                 {id === modelId ? <CheckIcon fontSize="small" /> : null}
               </ListItemIcon>
-              <span style={{ flexGrow: 1 }}>{modelLabel(id, status.models)}</span>
+              <span style={{ flexGrow: 1 }}>
+                {modelLabel(id, status.models)}
+              </span>
               {id === defaultModel && (
                 <Tooltip title="Assistant default">
                   <StarIcon
@@ -973,7 +1018,10 @@ function ChatChrome({
                   </IconButton>
                 </Tooltip>
               </div>
-              <nav className={classes.sidePaneRailAssistants} aria-label="Assistants">
+              <nav
+                className={classes.sidePaneRailAssistants}
+                aria-label="Assistants"
+              >
                 {status.assistants.map(a => (
                   <Tooltip key={a.id} title={a.title} placement="right">
                     <IconButton
@@ -1076,7 +1124,10 @@ function ChatChrome({
             <div className={classes.threadHeader}>
               <div className={classes.threadIdentity}>
                 <AssistantAvatar color={assistant.color} size={22} />
-                <Typography variant="subtitle2" className={classes.assistantName}>
+                <Typography
+                  variant="subtitle2"
+                  className={classes.assistantName}
+                >
                   {assistant.title}
                 </Typography>
                 {activeTitle && (

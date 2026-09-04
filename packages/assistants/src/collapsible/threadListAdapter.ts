@@ -90,7 +90,9 @@ export function createThreadListAdapter(
       // caller can currently access); the UI filters by the active agent. One
       // runtime spans the whole tab, so switching agent/conversation never
       // mounts/unmounts a runtime.
-      const data = await api.requestJson<{ threads: ServerThread[] }>(`/threads`);
+      const data = await api.requestJson<{ threads: ServerThread[] }>(
+        `/threads`,
+      );
       return { threads: (data.threads ?? []).map(toMetadata) };
     },
 
@@ -104,7 +106,9 @@ export function createThreadListAdapter(
     },
 
     async fetch(remoteId) {
-      return toMetadata(await api.requestJson<ServerThread>(`/threads/${remoteId}`));
+      return toMetadata(
+        await api.requestJson<ServerThread>(`/threads/${remoteId}`),
+      );
     },
 
     async rename(remoteId, title) {

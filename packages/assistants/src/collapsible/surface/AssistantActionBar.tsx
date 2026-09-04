@@ -6,11 +6,7 @@
  * lands as formatted rich text instead of raw markdown. (The stock Copy still
  * copies the raw markdown.)
  */
-import {
-  forwardRef,
-  useState,
-  type ButtonHTMLAttributes,
-} from 'react';
+import { forwardRef, useState, type ButtonHTMLAttributes } from 'react';
 import {
   ActionBarPrimitive,
   MessagePrimitive,

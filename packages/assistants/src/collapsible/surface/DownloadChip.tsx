@@ -117,7 +117,8 @@ function dataUrlToText(dataUrl: string): string {
 export function textToDataUrl(text: string, mimeType: string): string {
   const bytes = new TextEncoder().encode(text);
   let bin = '';
-  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += 1)
+    bin += String.fromCharCode(bytes[i]);
   return `data:${mimeType};base64,${btoa(bin)}`;
 }
 

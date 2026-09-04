@@ -1,6 +1,7 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `markdown/*` (markdown-text,
 // code-header, useCopyToClipboard — see withDefaults.tsx for why).
-// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — full license text in
+// THIRD_PARTY_NOTICES.md at the package root.
 import { memo, useState, type FC } from 'react';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import classNames from 'classnames';
@@ -79,7 +80,10 @@ const defaultComponents = unstable_memoizeMarkdownComponents({
     <a className={classNames('aui-md-a', className)} {...props} />
   ),
   blockquote: ({ className, ...props }) => (
-    <blockquote className={classNames('aui-md-blockquote', className)} {...props} />
+    <blockquote
+      className={classNames('aui-md-blockquote', className)}
+      {...props}
+    />
   ),
   ul: ({ className, ...props }) => (
     <ul className={classNames('aui-md-ul', className)} {...props} />

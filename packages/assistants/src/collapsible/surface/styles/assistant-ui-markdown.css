@@ -1,44 +1,98 @@
 /* Vendored from @assistant-ui/react-ui@0.2.1 — MIT License,
    Copyright (c) 2025 AgentbaseAI Inc.
-   Full license text: /THIRD_PARTY_NOTICES.md. */
+   Full license text: THIRD_PARTY_NOTICES.md at the package root. */
 /* src/styles/tailwindcss/markdown.css */
 @keyframes aui-pulse {
   50% {
-    opacity: .5;
+    opacity: 0.5;
   }
 }
 :where(.aui-md-running):empty::after,
 :where(.aui-md-running) > :where(:not(ol):not(ul):not(pre)):last-child::after,
 :where(.aui-md-running) > pre:last-child code::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li)))::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li)))::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child)::after {
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li)))::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li)))::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)::after {
   animation: aui-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    sans-serif,
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji";
-  --aui-content: "\25cf";
+  font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --aui-content: '\25cf';
   content: var(--aui-content);
 }
-:where(.aui-md-running):empty:where([dir=ltr], [dir=ltr] *)::after,
-:where(.aui-md-running) > :where(:not(ol):not(ul):not(pre)):last-child:where([dir=ltr], [dir=ltr] *)::after,
-:where(.aui-md-running) > pre:last-child code:where([dir=ltr], [dir=ltr] *)::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li))):where([dir=ltr], [dir=ltr] *)::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li))):where([dir=ltr], [dir=ltr] *)::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child):where([dir=ltr], [dir=ltr] *)::after {
+:where(.aui-md-running):empty:where([dir='ltr'], [dir='ltr'] *)::after,
+:where(.aui-md-running)
+  > :where(:not(ol):not(ul):not(pre)):last-child:where(
+    [dir='ltr'],
+    [dir='ltr'] *
+  )::after,
+:where(.aui-md-running)
+  > pre:last-child
+  code:where([dir='ltr'], [dir='ltr'] *)::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li))):where(
+    [dir='ltr'],
+    [dir='ltr'] *
+  )::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li))):where(
+    [dir='ltr'],
+    [dir='ltr'] *
+  )::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child):where([dir='ltr'], [dir='ltr'] *)::after {
   margin-left: 0.25rem;
 }
-:where(.aui-md-running):empty:where([dir=rtl], [dir=rtl] *)::after,
-:where(.aui-md-running) > :where(:not(ol):not(ul):not(pre)):last-child:where([dir=rtl], [dir=rtl] *)::after,
-:where(.aui-md-running) > pre:last-child code:where([dir=rtl], [dir=rtl] *)::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li))):where([dir=rtl], [dir=rtl] *)::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li))):where([dir=rtl], [dir=rtl] *)::after,
-:where(.aui-md-running) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child):where([dir=rtl], [dir=rtl] *)::after {
+:where(.aui-md-running):empty:where([dir='rtl'], [dir='rtl'] *)::after,
+:where(.aui-md-running)
+  > :where(:not(ol):not(ul):not(pre)):last-child:where(
+    [dir='rtl'],
+    [dir='rtl'] *
+  )::after,
+:where(.aui-md-running)
+  > pre:last-child
+  code:where([dir='rtl'], [dir='rtl'] *)::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li))):where(
+    [dir='rtl'],
+    [dir='rtl'] *
+  )::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li))):where(
+    [dir='rtl'],
+    [dir='rtl'] *
+  )::after,
+:where(.aui-md-running)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child):where([dir='rtl'], [dir='rtl'] *)::after {
   margin-right: 0.25rem;
 }
 .aui-md-h1 {
@@ -191,10 +245,10 @@
 .aui-md-th:last-child {
   border-top-right-radius: var(--aui-radius);
 }
-.aui-md-th[align=center] {
+.aui-md-th[align='center'] {
   text-align: center;
 }
-.aui-md-th[align=right] {
+.aui-md-th[align='right'] {
   text-align: right;
 }
 .aui-md-td {
@@ -209,10 +263,10 @@
 .aui-md-td:last-child {
   border-right-width: 1px;
 }
-.aui-md-td[align=center] {
+.aui-md-td[align='center'] {
   text-align: center;
 }
-.aui-md-td[align=right] {
+.aui-md-td[align='right'] {
   text-align: right;
 }
 .aui-md-tr {

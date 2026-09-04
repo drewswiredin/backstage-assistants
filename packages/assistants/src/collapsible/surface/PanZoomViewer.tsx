@@ -217,7 +217,10 @@ function Viewport({
       </div>
 
       {/* stopPropagation so clicking a control doesn't also start a pan drag */}
-      <div className={classes.controls} onPointerDown={e => e.stopPropagation()}>
+      <div
+        className={classes.controls}
+        onPointerDown={e => e.stopPropagation()}
+      >
         <Tooltip title="Zoom in">
           <IconButton
             className={classes.controlButton}

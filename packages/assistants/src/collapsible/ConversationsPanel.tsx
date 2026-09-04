@@ -109,7 +109,9 @@ export function ConversationsPanel({
   const [renameValue, setRenameValue] = useState('');
   // The conversation queued for rename while the menu animates closed (applied
   // in the menu's onExited below — see handleRenameStart).
-  const [pendingRename, setPendingRename] = useState<ThreadSummary | null>(null);
+  const [pendingRename, setPendingRename] = useState<ThreadSummary | null>(
+    null,
+  );
 
   const handleMenuOpen = (e: MouseEvent<HTMLElement>, id: string) => {
     e.stopPropagation();

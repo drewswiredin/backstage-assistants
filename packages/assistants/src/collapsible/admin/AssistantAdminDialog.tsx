@@ -44,12 +44,21 @@ import {
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../../api';
-import { AssistantAvatar, DEFAULT_AVATAR_COLOR } from '../surface/AssistantAvatar';
+import {
+  AssistantAvatar,
+  DEFAULT_AVATAR_COLOR,
+} from '../surface/AssistantAvatar';
 import { AccessList } from './AccessList';
 import { ModelsTransfer } from './ModelsTransfer';
 import { ToolsTransfer } from './ToolsTransfer';
 import { SuggestionsEditor } from './SuggestionsEditor';
-import { blankDraft, cloneDraft, duplicateDraft, isDirty, isValid } from './adminModel';
+import {
+  blankDraft,
+  cloneDraft,
+  duplicateDraft,
+  isDirty,
+  isValid,
+} from './adminModel';
 
 /** A complete 6-digit hex — the only shape a native color input accepts. */
 const HEX6 = /^#[0-9a-f]{6}$/i;
@@ -346,7 +355,10 @@ function AvatarColorPicker({
       <ButtonBase
         className={classes.colorTrigger}
         style={{
-          backgroundColor: fade(HEX6.test(current) ? current : DEFAULT_AVATAR_COLOR, 0.15),
+          backgroundColor: fade(
+            HEX6.test(current) ? current : DEFAULT_AVATAR_COLOR,
+            0.15,
+          ),
           padding: Math.round(size * 0.18),
         }}
         aria-label="Change avatar color"
@@ -479,9 +491,8 @@ export function AssistantAdminDialog({
     id?: string;
     src?: AssistantDefinition;
   } | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<AssistantDefinition | null>(
-    null,
-  );
+  const [pendingDelete, setPendingDelete] =
+    useState<AssistantDefinition | null>(null);
 
   const dirty = useMemo(
     () => (draft ? isDirty(draft, baseline) : false),
@@ -619,7 +630,10 @@ export function AssistantAdminDialog({
     }
     switch (action.kind) {
       case 'select':
-        selectInto(action.id, list.find(a => a.id === action.id));
+        selectInto(
+          action.id,
+          list.find(a => a.id === action.id),
+        );
         break;
       case 'create':
         doCreate();
@@ -773,9 +787,7 @@ export function AssistantAdminDialog({
             </Typography>
             <SuggestionsEditor
               value={ui.suggestions ?? []}
-              onChange={suggestions =>
-                patch({ ui: { ...ui, suggestions } })
-              }
+              onChange={suggestions => patch({ ui: { ...ui, suggestions } })}
             />
           </div>
 
@@ -839,9 +851,7 @@ export function AssistantAdminDialog({
 
           {(draft.created_by || draft.updated_by) && (
             <Typography variant="caption" className={classes.audit}>
-              {draft.created_by && (
-                <>Created by {draft.created_by}</>
-              )}
+              {draft.created_by && <>Created by {draft.created_by}</>}
               {draft.created_at && <> on {draft.created_at}</>}
               {draft.updated_by && (
                 <>
@@ -997,11 +1007,7 @@ export function AssistantAdminDialog({
             <Typography variant="h6" className={classes.headerTitle}>
               Manage assistants
             </Typography>
-            <IconButton
-              aria-label="Close"
-              size="small"
-              onClick={guardedClose}
-            >
+            <IconButton aria-label="Close" size="small" onClick={guardedClose}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </div>

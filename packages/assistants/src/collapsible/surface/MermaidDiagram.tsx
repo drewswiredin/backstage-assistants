@@ -1,10 +1,4 @@
-import {
-  KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import { CircularProgress, Tooltip, Typography } from '@material-ui/core';
 import { makeStyles, useTheme, type Theme } from '@material-ui/core/styles';
@@ -273,7 +267,9 @@ export function MermaidDiagram({ code }: { code: string }) {
   // its content box has a definite size — mermaid's `width:100%` svg would otherwise
   // collapse to 0 in the absolutely-positioned pan/zoom container (a blank view).
   const dims = useMemo(() => {
-    const m = svg.match(/viewBox="\s*[\d.-]+\s+[\d.-]+\s+([\d.-]+)\s+([\d.-]+)/);
+    const m = svg.match(
+      /viewBox="\s*[\d.-]+\s+[\d.-]+\s+([\d.-]+)\s+([\d.-]+)/,
+    );
     return m ? { w: parseFloat(m[1]), h: parseFloat(m[2]) } : null;
   }, [svg]);
 

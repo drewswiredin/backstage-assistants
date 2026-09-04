@@ -1,6 +1,7 @@
 // Vendored from @assistant-ui/react-ui@0.2.1 `message-part.tsx` (see
 // withDefaults.tsx for why).
-// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — full license text in
+// THIRD_PARTY_NOTICES.md at the package root.
 import { MessagePartPrimitive, INTERNAL } from '@assistant-ui/react';
 import classNames from 'classnames';
 

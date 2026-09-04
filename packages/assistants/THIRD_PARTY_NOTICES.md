@@ -1,12 +1,12 @@
 # Third-party notices
 
-This repository vendors source code and stylesheets from
+This package vendors source code and stylesheets from
 [assistant-ui](https://github.com/assistant-ui/assistant-ui)
 (`@assistant-ui/react-ui@0.2.1`), licensed under the MIT License:
 
-- `packages/assistants/src/collapsible/surface/react-ui/` — component source
+- `src/collapsible/surface/react-ui/` — component source
   ported from the package's `dist/ui` modules.
-- `packages/assistants/src/collapsible/surface/styles/assistant-ui.css` and
+- `src/collapsible/surface/styles/assistant-ui.css` and
   `assistant-ui-markdown.css` — the package's prebuilt stylesheets.
 
 ```

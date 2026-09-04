@@ -1,6 +1,6 @@
 /* Vendored from @assistant-ui/react-ui@0.2.1 — MIT License,
    Copyright (c) 2025 AgentbaseAI Inc.
-   Full license text: /THIRD_PARTY_NOTICES.md. */
+   Full license text: THIRD_PARTY_NOTICES.md at the package root. */
 /* src/styles/base.css */
 :where(.aui-root) *,
 :where(.aui-root) ::before,
@@ -96,7 +96,7 @@
 }
 :where(.aui-root) ::before,
 :where(.aui-root) ::after {
-  --aui-content: "";
+  --aui-content: '';
 }
 :where(.aui-root) html,
 :where(.aui-root) :host {
@@ -105,14 +105,8 @@
   -moz-tab-size: 4;
   -o-tab-size: 4;
   tab-size: 4;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    sans-serif,
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji";
+  font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   font-feature-settings: normal;
   font-variation-settings: normal;
   -webkit-tap-highlight-color: transparent;
@@ -151,15 +145,8 @@
 :where(.aui-root) kbd,
 :where(.aui-root) samp,
 :where(.aui-root) pre {
-  font-family:
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    "Liberation Mono",
-    "Courier New",
-    monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
   font-feature-settings: normal;
   font-variation-settings: normal;
   font-size: 1em;
@@ -206,9 +193,9 @@
   text-transform: none;
 }
 :where(.aui-root) button,
-:where(.aui-root) input:where([type=button]),
-:where(.aui-root) input:where([type=reset]),
-:where(.aui-root) input:where([type=submit]) {
+:where(.aui-root) input:where([type='button']),
+:where(.aui-root) input:where([type='reset']),
+:where(.aui-root) input:where([type='submit']) {
   -webkit-appearance: button;
   background-color: transparent;
   background-image: none;
@@ -226,7 +213,7 @@
 :where(.aui-root) ::-webkit-outer-spin-button {
   height: auto;
 }
-:where(.aui-root) [type=search] {
+:where(.aui-root) [type='search'] {
   -webkit-appearance: textfield;
   outline-offset: -2px;
 }
@@ -286,7 +273,7 @@
   color: #9ca3af;
 }
 :where(.aui-root) button,
-:where(.aui-root) [role=button] {
+:where(.aui-root) [role='button'] {
   cursor: pointer;
 }
 :where(.aui-root) :disabled {
@@ -308,19 +295,39 @@
   max-width: 100%;
   height: auto;
 }
-:where(.aui-root) [hidden]:where(:not([hidden=until-found])) {
+:where(.aui-root) [hidden]:where(:not([hidden='until-found'])) {
   display: none;
 }
 @keyframes aui-enter {
   from {
     opacity: var(--aui-enter-opacity, 1);
-    transform: translate3d(var(--aui-enter-translate-x, 0), var(--aui-enter-translate-y, 0), 0) scale3d(var(--aui-enter-scale, 1), var(--aui-enter-scale, 1), var(--aui-enter-scale, 1)) rotate(var(--aui-enter-rotate, 0));
+    transform: translate3d(
+        var(--aui-enter-translate-x, 0),
+        var(--aui-enter-translate-y, 0),
+        0
+      )
+      scale3d(
+        var(--aui-enter-scale, 1),
+        var(--aui-enter-scale, 1),
+        var(--aui-enter-scale, 1)
+      )
+      rotate(var(--aui-enter-rotate, 0));
   }
 }
 @keyframes aui-exit {
   to {
     opacity: var(--aui-exit-opacity, 1);
-    transform: translate3d(var(--aui-exit-translate-x, 0), var(--aui-exit-translate-y, 0), 0) scale3d(var(--aui-exit-scale, 1), var(--aui-exit-scale, 1), var(--aui-exit-scale, 1)) rotate(var(--aui-exit-rotate, 0));
+    transform: translate3d(
+        var(--aui-exit-translate-x, 0),
+        var(--aui-exit-translate-y, 0),
+        0
+      )
+      scale3d(
+        var(--aui-exit-scale, 1),
+        var(--aui-exit-scale, 1),
+        var(--aui-exit-scale, 1)
+      )
+      rotate(var(--aui-exit-rotate, 0));
   }
 }
 
@@ -341,26 +348,21 @@
   font-size: 0.875rem;
   line-height: 1.25rem;
   font-weight: 500;
-  transition-property:
-    color,
-    background-color,
-    border-color,
-    text-decoration-color,
-    fill,
-    stroke;
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
 .aui-button:focus-visible {
   outline: 2px solid transparent;
   outline-offset: 2px;
-  --aui-ring-offset-shadow: var(--aui-ring-inset) 0 0 0 var(--aui-ring-offset-width) var(--aui-ring-offset-color);
-  --aui-ring-shadow: var(--aui-ring-inset) 0 0 0 calc(1px + var(--aui-ring-offset-width)) var(--aui-ring-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow),
-    var(--aui-ring-shadow),
+  --aui-ring-offset-shadow: var(--aui-ring-inset) 0 0 0
+    var(--aui-ring-offset-width) var(--aui-ring-offset-color);
+  --aui-ring-shadow: var(--aui-ring-inset) 0 0 0
+    calc(1px + var(--aui-ring-offset-width)) var(--aui-ring-color);
+  box-shadow: var(--aui-ring-offset-shadow), var(--aui-ring-shadow),
     var(--aui-shadow, 0 0 #0000);
-  --aui-ring-color: hsl(var(--aui-ring)) ;
+  --aui-ring-color: hsl(var(--aui-ring));
 }
 .aui-button:disabled {
   pointer-events: none;
@@ -376,11 +378,10 @@
   background-color: hsl(var(--aui-primary));
   color: hsl(var(--aui-primary-foreground));
   --aui-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --aui-shadow-colored: 0 1px 3px 0 var(--aui-shadow-color), 0 1px 2px -1px var(--aui-shadow-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow, 0 0 #0000),
-    var(--aui-ring-shadow, 0 0 #0000),
-    var(--aui-shadow);
+  --aui-shadow-colored: 0 1px 3px 0 var(--aui-shadow-color),
+    0 1px 2px -1px var(--aui-shadow-color);
+  box-shadow: var(--aui-ring-offset-shadow, 0 0 #0000),
+    var(--aui-ring-shadow, 0 0 #0000), var(--aui-shadow);
 }
 .aui-button-primary:hover {
   background-color: hsl(var(--aui-primary) / 0.9);
@@ -391,10 +392,8 @@
   background-color: hsl(var(--aui-background));
   --aui-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --aui-shadow-colored: 0 1px 2px 0 var(--aui-shadow-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow, 0 0 #0000),
-    var(--aui-ring-shadow, 0 0 #0000),
-    var(--aui-shadow);
+  box-shadow: var(--aui-ring-offset-shadow, 0 0 #0000),
+    var(--aui-ring-shadow, 0 0 #0000), var(--aui-shadow);
 }
 .aui-button-outline:hover {
   background-color: hsl(var(--aui-accent));
@@ -472,9 +471,9 @@
   --aui-enter-translate-x: initial;
   --aui-enter-translate-y: initial;
   --aui-enter-opacity: 0;
-  --aui-enter-scale: .95 ;
+  --aui-enter-scale: 0.95;
 }
-.aui-tooltip-content[data-state=closed] {
+.aui-tooltip-content[data-state='closed'] {
   animation-name: aui-exit;
   animation-duration: 150ms;
   --aui-exit-opacity: initial;
@@ -483,19 +482,19 @@
   --aui-exit-translate-x: initial;
   --aui-exit-translate-y: initial;
   --aui-exit-opacity: 0;
-  --aui-exit-scale: .95 ;
+  --aui-exit-scale: 0.95;
 }
-.aui-tooltip-content[data-side=bottom] {
-  --aui-enter-translate-y: -0.5rem ;
+.aui-tooltip-content[data-side='bottom'] {
+  --aui-enter-translate-y: -0.5rem;
 }
-.aui-tooltip-content[data-side=left] {
-  --aui-enter-translate-x: 0.5rem ;
+.aui-tooltip-content[data-side='left'] {
+  --aui-enter-translate-x: 0.5rem;
 }
-.aui-tooltip-content[data-side=right] {
-  --aui-enter-translate-x: -0.5rem ;
+.aui-tooltip-content[data-side='right'] {
+  --aui-enter-translate-x: -0.5rem;
 }
-.aui-tooltip-content[data-side=top] {
-  --aui-enter-translate-y: 0.5rem ;
+.aui-tooltip-content[data-side='top'] {
+  --aui-enter-translate-y: 0.5rem;
 }
 .aui-dialog-overlay {
   position: fixed;
@@ -503,16 +502,16 @@
   z-index: 50;
   background-color: rgb(0 0 0 / 0.8);
 }
-.aui-dialog-overlay[data-state=open] {
+.aui-dialog-overlay[data-state='open'] {
   animation-name: aui-enter;
   animation-duration: 150ms;
   --aui-enter-opacity: initial;
   --aui-enter-scale: initial;
   --aui-enter-rotate: initial;
   --aui-enter-translate-x: initial;
-  --aui-enter-translate-y: initial ;
+  --aui-enter-translate-y: initial;
 }
-.aui-dialog-overlay[data-state=closed] {
+.aui-dialog-overlay[data-state='closed'] {
   animation-name: aui-exit;
   animation-duration: 150ms;
   --aui-exit-opacity: initial;
@@ -520,10 +519,10 @@
   --aui-exit-rotate: initial;
   --aui-exit-translate-x: initial;
   --aui-exit-translate-y: initial;
-  --aui-exit-opacity: 0 ;
+  --aui-exit-opacity: 0;
 }
-.aui-dialog-overlay[data-state=open] {
-  --aui-enter-opacity: 0 ;
+.aui-dialog-overlay[data-state='open'] {
+  --aui-enter-opacity: 0;
 }
 .aui-dialog-content {
   position: fixed;
@@ -531,16 +530,16 @@
   top: 50%;
   z-index: 50;
 }
-.aui-dialog-content[data-state=open] {
+.aui-dialog-content[data-state='open'] {
   animation-name: aui-enter;
   animation-duration: 150ms;
   --aui-enter-opacity: initial;
   --aui-enter-scale: initial;
   --aui-enter-rotate: initial;
   --aui-enter-translate-x: initial;
-  --aui-enter-translate-y: initial ;
+  --aui-enter-translate-y: initial;
 }
-.aui-dialog-content[data-state=closed] {
+.aui-dialog-content[data-state='closed'] {
   animation-name: aui-exit;
   animation-duration: 150ms;
   --aui-exit-opacity: initial;
@@ -548,36 +547,38 @@
   --aui-exit-rotate: initial;
   --aui-exit-translate-x: initial;
   --aui-exit-translate-y: initial;
-  --aui-exit-opacity: 0 ;
+  --aui-exit-opacity: 0;
 }
-.aui-dialog-content[data-state=open] {
-  --aui-enter-opacity: 0 ;
+.aui-dialog-content[data-state='open'] {
+  --aui-enter-opacity: 0;
 }
-.aui-dialog-content[data-state=closed] {
-  --aui-exit-scale: .95 ;
+.aui-dialog-content[data-state='closed'] {
+  --aui-exit-scale: 0.95;
 }
-.aui-dialog-content[data-state=open] {
-  --aui-enter-scale: .95 ;
+.aui-dialog-content[data-state='open'] {
+  --aui-enter-scale: 0.95;
 }
-.aui-dialog-content[data-state=closed] {
+.aui-dialog-content[data-state='closed'] {
   --aui-exit-translate-x: -50%;
-  --aui-exit-translate-y: -48% ;
+  --aui-exit-translate-y: -48%;
 }
-.aui-dialog-content[data-state=open] {
+.aui-dialog-content[data-state='open'] {
   --aui-enter-translate-x: -50%;
-  --aui-enter-translate-y: -48% ;
+  --aui-enter-translate-y: -48%;
 }
 .aui-dialog-content {
   display: grid;
   --aui-translate-x: -50%;
   --aui-translate-y: -50%;
-  transform: translate(var(--aui-translate-x), var(--aui-translate-y)) rotate(var(--aui-rotate)) skewX(var(--aui-skew-x)) skewY(var(--aui-skew-y)) scaleX(var(--aui-scale-x)) scaleY(var(--aui-scale-y));
-  --aui-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --aui-shadow-colored: 0 10px 15px -3px var(--aui-shadow-color), 0 4px 6px -4px var(--aui-shadow-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow, 0 0 #0000),
-    var(--aui-ring-shadow, 0 0 #0000),
-    var(--aui-shadow);
+  transform: translate(var(--aui-translate-x), var(--aui-translate-y))
+    rotate(var(--aui-rotate)) skewX(var(--aui-skew-x)) skewY(var(--aui-skew-y))
+    scaleX(var(--aui-scale-x)) scaleY(var(--aui-scale-y));
+  --aui-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --aui-shadow-colored: 0 10px 15px -3px var(--aui-shadow-color),
+    0 4px 6px -4px var(--aui-shadow-color);
+  box-shadow: var(--aui-ring-offset-shadow, 0 0 #0000),
+    var(--aui-ring-shadow, 0 0 #0000), var(--aui-shadow);
   transition-duration: 200ms;
   animation-duration: 200ms;
 }
@@ -643,13 +644,8 @@
   padding-bottom: 0.25rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
-  transition-property:
-    color,
-    background-color,
-    border-color,
-    text-decoration-color,
-    fill,
-    stroke;
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
@@ -696,13 +692,8 @@
   border-radius: var(--aui-radius);
   border-width: 1px;
   padding: 0.75rem;
-  transition-property:
-    color,
-    background-color,
-    border-color,
-    text-decoration-color,
-    fill,
-    stroke;
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
@@ -733,17 +724,10 @@
   padding-right: 0.625rem;
   --aui-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --aui-shadow-colored: 0 1px 2px 0 var(--aui-shadow-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow, 0 0 #0000),
-    var(--aui-ring-shadow, 0 0 #0000),
-    var(--aui-shadow);
-  transition-property:
-    color,
-    background-color,
-    border-color,
-    text-decoration-color,
-    fill,
-    stroke;
+  box-shadow: var(--aui-ring-offset-shadow, 0 0 #0000),
+    var(--aui-ring-shadow, 0 0 #0000), var(--aui-shadow);
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
@@ -774,11 +758,11 @@
   color: hsl(var(--aui-muted-foreground));
 }
 .aui-composer-input:focus {
-  --aui-ring-offset-shadow: var(--aui-ring-inset) 0 0 0 var(--aui-ring-offset-width) var(--aui-ring-offset-color);
-  --aui-ring-shadow: var(--aui-ring-inset) 0 0 0 calc(0px + var(--aui-ring-offset-width)) var(--aui-ring-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow),
-    var(--aui-ring-shadow),
+  --aui-ring-offset-shadow: var(--aui-ring-inset) 0 0 0
+    var(--aui-ring-offset-width) var(--aui-ring-offset-color);
+  --aui-ring-shadow: var(--aui-ring-inset) 0 0 0
+    calc(0px + var(--aui-ring-offset-width)) var(--aui-ring-color);
+  box-shadow: var(--aui-ring-offset-shadow), var(--aui-ring-shadow),
     var(--aui-shadow, 0 0 #0000);
 }
 .aui-composer-input:disabled {
@@ -845,13 +829,8 @@
 }
 .aui-attachment-preview-trigger {
   cursor: pointer;
-  transition-property:
-    color,
-    background-color,
-    border-color,
-    text-decoration-color,
-    fill,
-    stroke;
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
@@ -1060,10 +1039,8 @@
   padding: 0.25rem;
   --aui-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --aui-shadow-colored: 0 1px 2px 0 var(--aui-shadow-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow, 0 0 #0000),
-    var(--aui-ring-shadow, 0 0 #0000),
-    var(--aui-shadow);
+  box-shadow: var(--aui-ring-offset-shadow, 0 0 #0000),
+    var(--aui-ring-shadow, 0 0 #0000), var(--aui-shadow);
 }
 .aui-assistant-action-bar-feedback-positive[data-submitted] {
   --aui-text-opacity: 1;
@@ -1116,26 +1093,20 @@
 }
 @keyframes aui-pulse {
   50% {
-    opacity: .5;
+    opacity: 0.5;
   }
 }
 .aui-text-running::after {
   animation: aui-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    sans-serif,
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji";
-  --aui-content: "\25cf";
+  font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --aui-content: '\25cf';
   content: var(--aui-content);
 }
-.aui-text-running:where([dir=ltr], [dir=ltr] *)::after {
+.aui-text-running:where([dir='ltr'], [dir='ltr'] *)::after {
   margin-left: 0.25rem;
 }
-.aui-text-running:where([dir=rtl], [dir=rtl] *)::after {
+.aui-text-running:where([dir='rtl'], [dir='rtl'] *)::after {
   margin-right: 0.25rem;
 }
 .aui-thread-list-root {
@@ -1160,13 +1131,13 @@
   background-color: hsl(var(--aui-muted));
   outline: 2px solid transparent;
   outline-offset: 2px;
-  --aui-ring-offset-shadow: var(--aui-ring-inset) 0 0 0 var(--aui-ring-offset-width) var(--aui-ring-offset-color);
-  --aui-ring-shadow: var(--aui-ring-inset) 0 0 0 calc(2px + var(--aui-ring-offset-width)) var(--aui-ring-color);
-  box-shadow:
-    var(--aui-ring-offset-shadow),
-    var(--aui-ring-shadow),
+  --aui-ring-offset-shadow: var(--aui-ring-inset) 0 0 0
+    var(--aui-ring-offset-width) var(--aui-ring-offset-color);
+  --aui-ring-shadow: var(--aui-ring-inset) 0 0 0
+    calc(2px + var(--aui-ring-offset-width)) var(--aui-ring-color);
+  box-shadow: var(--aui-ring-offset-shadow), var(--aui-ring-shadow),
     var(--aui-shadow, 0 0 #0000);
-  --aui-ring-color: hsl(var(--aui-ring)) ;
+  --aui-ring-color: hsl(var(--aui-ring));
 }
 .aui-thread-list-item[data-active] {
   background-color: hsl(var(--aui-muted));

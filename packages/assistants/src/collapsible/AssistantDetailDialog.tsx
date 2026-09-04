@@ -9,7 +9,10 @@ import CloseIcon from '@material-ui/icons/Close';
 import StarIcon from '@material-ui/icons/Star';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
-import { AssistantAvatar, resolveAssistantColor } from './surface/AssistantAvatar';
+import {
+  AssistantAvatar,
+  resolveAssistantColor,
+} from './surface/AssistantAvatar';
 
 const MONO =
   '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace';

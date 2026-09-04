@@ -2,7 +2,8 @@
 // withDefaults.tsx for why; `useThread` selectors became `useAuiState`). Only
 // the default-fallback AssistantMessage renders this — ConversationSurface
 // mounts its own richer bar from ../AssistantActionBar.tsx.
-// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — /THIRD_PARTY_NOTICES.md.
+// MIT License, Copyright (c) 2025 AgentbaseAI Inc. — full license text in
+// THIRD_PARTY_NOTICES.md at the package root.
 import { forwardRef } from 'react';
 import {
   AudioLinesIcon,
@@ -93,7 +94,9 @@ const AssistantActionBarCopy = forwardRef<
   Partial<TooltipIconButtonProps> & { copiedDuration?: number }
 >(({ copiedDuration, ...props }, ref) => {
   const {
-    strings: { assistantMessage: { copy: { tooltip = 'Copy' } = {} } = {} } = {},
+    strings: {
+      assistantMessage: { copy: { tooltip = 'Copy' } = {} } = {},
+    } = {},
   } = useThreadConfig();
   return (
     <ActionBarPrimitive.Copy copiedDuration={copiedDuration} asChild>

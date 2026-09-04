@@ -13,7 +13,11 @@ import {
   type MouseEvent,
 } from 'react';
 import type { ProfileInfo } from '@backstage/core-plugin-api';
-import { alertApiRef, identityApiRef, useApi } from '@backstage/core-plugin-api';
+import {
+  alertApiRef,
+  identityApiRef,
+  useApi,
+} from '@backstage/core-plugin-api';
 import { Avatar as BackstageAvatar } from '@backstage/core-components';
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Button, Typography } from '@material-ui/core';
@@ -451,7 +455,10 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   const theme = useTheme();
   // One mode-appropriate shade for every place the agent color appears here
   // (chat bot avatar via context, welcome logo, composer focus border).
-  const resolvedColor = resolveAssistantColor(assistantColor, theme.palette.type);
+  const resolvedColor = resolveAssistantColor(
+    assistantColor,
+    theme.palette.type,
+  );
 
   function EmptyThreadWelcome() {
     const profile = useProfile();

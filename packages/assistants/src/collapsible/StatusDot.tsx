@@ -45,7 +45,9 @@ export function StatusDot({
       variant="dot"
       overlap={overlap}
       invisible={status === 'read'}
-      classes={{ badge: status === 'working' ? classes.working : classes.unread }}
+      classes={{
+        badge: status === 'working' ? classes.working : classes.unread,
+      }}
     >
       {children}
     </Badge>

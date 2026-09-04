@@ -39,22 +39,79 @@ const MAX_ATTACHMENT_BYTES = 7 * 1024 * 1024;
  * extension list (paste ignores `accept` and routes by the file itself).
  */
 const TEXT_FILE_EXTENSIONS = [
-  '.txt', '.text', '.md', '.markdown', '.rst', '.log',
-  '.csv', '.tsv', '.json', '.jsonc', '.ndjson', '.yaml', '.yml', '.toml', '.ini',
-  '.env', '.xml', '.html', '.htm', '.css', '.scss', '.less',
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
-  '.py', '.go', '.rs', '.java', '.kt', '.kts', '.rb', '.php', '.pl',
-  '.c', '.h', '.cpp', '.cc', '.hpp', '.cs', '.swift', '.scala', '.dart',
-  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat',
-  '.sql', '.graphql', '.gql', '.proto', '.dockerfile', '.makefile',
-  '.gradle', '.tf', '.hcl', '.vue', '.svelte', '.lua', '.r',
+  '.txt',
+  '.text',
+  '.md',
+  '.markdown',
+  '.rst',
+  '.log',
+  '.csv',
+  '.tsv',
+  '.json',
+  '.jsonc',
+  '.ndjson',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.ini',
+  '.env',
+  '.xml',
+  '.html',
+  '.htm',
+  '.css',
+  '.scss',
+  '.less',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.kts',
+  '.rb',
+  '.php',
+  '.pl',
+  '.c',
+  '.h',
+  '.cpp',
+  '.cc',
+  '.hpp',
+  '.cs',
+  '.swift',
+  '.scala',
+  '.dart',
+  '.sh',
+  '.bash',
+  '.zsh',
+  '.fish',
+  '.ps1',
+  '.bat',
+  '.sql',
+  '.graphql',
+  '.gql',
+  '.proto',
+  '.dockerfile',
+  '.makefile',
+  '.gradle',
+  '.tf',
+  '.hcl',
+  '.vue',
+  '.svelte',
+  '.lua',
+  '.r',
 ];
 
 const readAsDataURL = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
 
@@ -67,7 +124,8 @@ const assertSize = (file: File) => {
   }
 };
 
-const isImage = (file: { type?: string }) => (file.type ?? '').startsWith('image/');
+const isImage = (file: { type?: string }) =>
+  (file.type ?? '').startsWith('image/');
 
 /**
  * Monotonic counter for unique attachment ids. The browser names EVERY pasted

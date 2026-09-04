@@ -210,7 +210,9 @@ export function ToolsTransfer({
         label: bareToolName(s.id),
         tone: gone ? 'error' : 'warning',
         secondary: gone
-          ? `${s.source === BACKSTAGE_SOURCE ? 'action' : s.source} — no longer available`
+          ? `${
+              s.source === BACKSTAGE_SOURCE ? 'action' : s.source
+            } — no longer available`
           : `${s.source} unreachable — unverifiable`,
         icon: gone ? (
           <ErrorIcon className={classes.staleIconGone} />

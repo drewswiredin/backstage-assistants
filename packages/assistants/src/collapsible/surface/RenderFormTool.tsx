@@ -211,7 +211,10 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
     }
 
     // A separately-supplied args.uiSchema overrides the hoisted keys per entry.
-    const uiSchema: UiSchema = { ...hoistedUiSchema, ...(args?.uiSchema ?? {}) };
+    const uiSchema: UiSchema = {
+      ...hoistedUiSchema,
+      ...(args?.uiSchema ?? {}),
+    };
 
     return (
       <Box className={classes.card}>
@@ -237,14 +240,21 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
             ) : (
               // Active: custom footer with Submit + an always-present Cancel.
               <div className={classes.actions}>
-                <Button type="submit" variant="contained" color="primary" size="small">
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  size="small"
+                >
                   {args?.submitLabel ?? 'Submit'}
                 </Button>
                 <Button
                   type="button"
                   variant="text"
                   size="small"
-                  onClick={() => addResult({ submitted: false, cancelled: true })}
+                  onClick={() =>
+                    addResult({ submitted: false, cancelled: true })
+                  }
                 >
                   Cancel
                 </Button>

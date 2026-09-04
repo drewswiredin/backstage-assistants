@@ -193,26 +193,48 @@ function isErrorResult(result: unknown): boolean {
 }
 
 /** Map a tool-call status to a human label + status icon. */
-export function getToolStatus(status: ToolCallMessagePartProps['status'], theme: Theme, result?: unknown) {
+export function getToolStatus(
+  status: ToolCallMessagePartProps['status'],
+  theme: Theme,
+  result?: unknown,
+) {
   switch (status?.type) {
     case 'complete':
       if (isErrorResult(result)) {
         return {
           label: 'Error',
-          icon: <ErrorOutlineIcon fontSize="small" htmlColor={theme.palette.warning?.main ?? '#ff9800'} />,
+          icon: (
+            <ErrorOutlineIcon
+              fontSize="small"
+              htmlColor={theme.palette.warning?.main ?? '#ff9800'}
+            />
+          ),
         };
       }
       return {
         label: 'Complete',
-        icon: <CheckCircleOutlineIcon fontSize="small" htmlColor={theme.palette.success?.main ?? '#4caf50'} />,
+        icon: (
+          <CheckCircleOutlineIcon
+            fontSize="small"
+            htmlColor={theme.palette.success?.main ?? '#4caf50'}
+          />
+        ),
       };
     case 'incomplete':
       return {
         label: 'Incomplete',
-        icon: <ErrorOutlineIcon fontSize="small" htmlColor={theme.palette.error.main} />,
+        icon: (
+          <ErrorOutlineIcon
+            fontSize="small"
+            htmlColor={theme.palette.error.main}
+          />
+        ),
       };
     case 'running':
-      return { label: 'Running', icon: <CircularProgress size={16} color="inherit" /> };
+      return {
+        label: 'Running',
+        icon: <CircularProgress size={16} color="inherit" />,
+      };
     default:
       // No result and the turn is no longer running ('requires-action' / unknown):
       // the call never returned because the turn was stopped or disconnected.
@@ -313,7 +335,11 @@ export function ToolFallback({
     mirroredRef.current = false;
   }, [toolCallId]);
   useEffect(() => {
-    if (awaitingApproval && groupDecided !== undefined && !mirroredRef.current) {
+    if (
+      awaitingApproval &&
+      groupDecided !== undefined &&
+      !mirroredRef.current
+    ) {
       mirroredRef.current = true;
       respondToApproval?.({ approved: groupDecided });
     }
@@ -457,7 +483,9 @@ export function ToolFallback({
               >
                 Output
               </Typography>
-              <pre className={classes.payloadBlock}>{formatPayload(result)}</pre>
+              <pre className={classes.payloadBlock}>
+                {formatPayload(result)}
+              </pre>
             </Box>
           )}
         </div>
@@ -520,7 +548,8 @@ function errorToText(error: unknown): string {
 export function MessageError() {
   const classes = useStyles();
   const error = useAuiState(s =>
-    s.message.status?.type === 'incomplete' && s.message.status.reason === 'error'
+    s.message.status?.type === 'incomplete' &&
+    s.message.status.reason === 'error'
       ? errorToText(s.message.status.error ?? 'An error occurred')
       : undefined,
   );

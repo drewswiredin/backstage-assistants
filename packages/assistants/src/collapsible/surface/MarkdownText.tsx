@@ -30,7 +30,11 @@ export function closeStreamingMermaidFence(text: string) {
   const opening = text.match(/```([a-z]+)$/i);
   if (opening && opening.index !== undefined) {
     const lang = opening[1].toLowerCase();
-    if (lang.length >= 2 && lang.length < 'mermaid'.length && 'mermaid'.startsWith(lang)) {
+    if (
+      lang.length >= 2 &&
+      lang.length < 'mermaid'.length &&
+      'mermaid'.startsWith(lang)
+    ) {
       return `${text.slice(0, opening.index)}\`\`\`mermaid\n\`\`\``;
     }
   }

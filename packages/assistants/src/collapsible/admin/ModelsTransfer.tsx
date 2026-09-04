@@ -121,7 +121,9 @@ export function ModelsTransfer({
           <IconButton
             size="small"
             aria-label={
-              active ? `Unset default ${row.label}` : `Make ${row.label} default`
+              active
+                ? `Unset default ${row.label}`
+                : `Make ${row.label} default`
             }
             aria-pressed={active}
             className={active ? classes.starActive : classes.star}
