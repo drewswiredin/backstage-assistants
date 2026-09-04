@@ -51,7 +51,7 @@ spec:
     Admins create and manage assistants in an in-app editor: prompt, model, tools, and who can use it.
     Definitions live in the plugin database, so adding or changing an assistant is a save, not a deploy.
   installation: |
-    Requires the Backstage new frontend system and new backend system: Backstage 1.53 or later, Node 22.12 or later.
+    Requires the Backstage new frontend system and new backend system: Backstage 1.54 or later, Node 22.12 or later.
     On Red Hat Developer Hub this means RHDH 1.10 or later with `APP_CONFIG_app_packageName=app-next` and
     `ENABLE_STANDARD_MODULE_FEDERATION=true`. The plugin does not mount on the default (legacy) RHDH shell.
 

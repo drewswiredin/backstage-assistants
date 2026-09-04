@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Backstage dependency ranges track the 1.54 release line.
 - Timestamps are written as ISO-8601 strings on Postgres.
 - The MCP maintenance task is registered with local scope, one per process.
 - `PATCH /threads/:id` validates its body.

@@ -7,6 +7,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Backstage dependency ranges track the 1.54 release line.
 - `@backstage/plugin-signals` is optional: status updates use signals when the
   app has them and poll otherwise.
 - `engines.node` is `>=22.12`.

@@ -45,7 +45,7 @@
     "test": "backstage-cli package test"
   },
   "dependencies": {
-    "@backstage/plugin-permission-common": "^0.9.9"
+    "@backstage/plugin-permission-common": "^0.9.10"
   },
   "keywords": [
     "backstage",
@@ -63,6 +63,6 @@
   "homepage": "https://github.com/drewswiredin/backstage-assistants#readme",
   "bugs": "https://github.com/drewswiredin/backstage-assistants/issues",
   "devDependencies": {
-    "@backstage/cli": "^0.36.4"
+    "@backstage/cli": "^0.36.5"
   }
 }

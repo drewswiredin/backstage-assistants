@@ -31,7 +31,7 @@ list — see [Tools](#tools-actions).
 
 ### Requirements
 
-- Backstage 1.53 or later on the new backend system
+- Backstage 1.54 or later on the new backend system
   (`@backstage/backend-defaults`).
 - Node 22.12 or later.
 - A plugin database: SQLite or Postgres (MySQL is supported).
