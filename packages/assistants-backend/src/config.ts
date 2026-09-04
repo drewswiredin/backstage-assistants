@@ -75,6 +75,21 @@ export function isPolicyAccessible(
   return policy.groups.some(g => caller.ownershipEntityRefs.includes(g));
 }
 
+/**
+ * The per-turn approval set: the global approval floor (top-level action ids ∪
+ * per-server `<serverId>__<tool>` entries, as {@link readConfig} flattens it)
+ * intersected with one assistant's `allowedTools`. Order follows
+ * `allowedTools`; floor entries the assistant can't use are dropped.
+ *
+ * @public
+ */
+export function effectiveApprovalSet(
+  allowedTools: readonly string[],
+  requireApproval: ReadonlySet<string>,
+): string[] {
+  return allowedTools.filter(t => requireApproval.has(t));
+}
+
 /** Supported MCP client transports (the @ai-sdk/mcp set). */
 export type McpTransport = 'http' | 'sse' | 'stdio';
 
@@ -169,10 +184,7 @@ export interface AssistantsConfig {
  * discriminator, spreading the passthrough `options` bag verbatim into the
  * factory and keeping the top-level `apiKey`/`baseUrl`.
  */
-function buildProvider(
-  type: SupportedProviderType,
-  providerConfig: Config,
-) {
+function buildProvider(type: SupportedProviderType, providerConfig: Config) {
   const apiKey = providerConfig.getString('apiKey');
   const baseUrl = providerConfig.getOptionalString('baseUrl');
   // Untyped passthrough bag, spread verbatim into the factory. Not
@@ -287,7 +299,10 @@ export function readConfig(config: Config): AssistantsConfig {
   /** Configured output-token ceiling per `provider:model` id. */
   const maxOutputTokensByModelId = new Map<string, number>();
 
-  const registryProviders: Record<string, ReturnType<typeof buildProvider>> = {};
+  const registryProviders: Record<
+    string,
+    ReturnType<typeof buildProvider>
+  > = {};
   const models: ModelOption[] = [];
 
   for (const providerId of providerIds) {

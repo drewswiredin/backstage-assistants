@@ -8,6 +8,7 @@ import type {
   ModelId,
   ModelOption,
 } from '@drewswiredin/backstage-plugin-assistants-common';
+import { toIsoTimestamp } from './timestamps';
 
 /**
  * Server-side persistence for assistant DEFINITIONS.
@@ -368,13 +369,7 @@ export class AssistantStore {
  * `id`/`title` mirror to columns; audit columns are written separately.
  */
 function toRow(def: AssistantDefinition): Record<string, unknown> {
-  const {
-    created_by,
-    created_at,
-    updated_by,
-    updated_at,
-    ...content
-  } = def;
+  const { created_by, created_at, updated_by, updated_at, ...content } = def;
   return {
     id: def.id,
     title: def.title,
@@ -388,9 +383,9 @@ function toRow(def: AssistantDefinition): Record<string, unknown> {
 
 /** Normalize a possibly-malformed stored access blob to a SAFE (deny) default. */
 function normalizeAccess(raw: unknown): AssistantAccess {
-  const a = (raw && typeof raw === 'object' ? raw : {}) as Partial<
-    AssistantAccess
-  >;
+  const a = (
+    raw && typeof raw === 'object' ? raw : {}
+  ) as Partial<AssistantAccess>;
   return {
     // Default to DENY when missing/malformed — a corrupt row is closed, not open.
     allowAuthenticated:
@@ -409,23 +404,6 @@ function stringArray(raw: unknown): string[] {
   return Array.isArray(raw)
     ? raw.filter((v): v is string => typeof v === 'string')
     : [];
-}
-
-/**
- * A timestamp column value as an ISO string. Postgres returns a `Date` for
- * `timestamp` columns while SQLite returns the stored text — normalize both to
- * ISO. Critical for portability: a raw `Date.toString()` (e.g.
- * "… GMT-0400 (Eastern Daylight Time)") is NOT valid timestamp input, so a
- * pg `Date` round-tripped through `String()` would be rejected on the next write.
- */
-function toIsoTimestamp(v: unknown): string | undefined {
-  if (v === null || v === undefined) {
-    return undefined;
-  }
-  if (v instanceof Date) {
-    return v.toISOString();
-  }
-  return String(v);
 }
 
 /**
@@ -465,8 +443,7 @@ function toDefinition(
     models: stringArray(content.models),
     defaultModel:
       typeof content.defaultModel === 'string' ? content.defaultModel : null,
-    ui:
-      content.ui && typeof content.ui === 'object' ? content.ui : undefined,
+    ui: content.ui && typeof content.ui === 'object' ? content.ui : undefined,
     created_by: (row.created_by as string) ?? content.created_by,
     created_at: toIsoTimestamp(row.created_at) ?? content.created_at,
     updated_by: (row.updated_by as string) ?? content.updated_by,

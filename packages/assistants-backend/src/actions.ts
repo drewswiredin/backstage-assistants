@@ -37,6 +37,7 @@ import {
   ActionsServiceAction,
 } from '@backstage/backend-plugin-api/alpha';
 import { SearchResultSet } from '@backstage/plugin-search-common';
+import { InputError } from '@backstage/errors';
 import { tool, jsonSchema, type Tool } from 'ai';
 import { parse } from 'node-html-parser';
 import TurndownService from 'turndown';
@@ -99,20 +100,20 @@ DO NOT try to filter on kinds in the query string, always use the "kinds" parame
     action: async ({ input, credentials }) => {
       const { kinds, pageCursor, query, pageLimit } = input;
 
-      const filters: string[] = [];
-      if (kinds) {
-        kinds.split(',').forEach(kind => filters.push(`filters[kind]=${kind}`));
-      }
-
-      let fullQuery = `types[0]=software-catalog&term=${query}&pageLimit=${pageLimit}`;
+      // Every model-supplied value is a query parameter, encoded as one.
+      const params = new URLSearchParams({
+        'types[0]': 'software-catalog',
+        term: query,
+        pageLimit: String(pageLimit),
+      });
       if (pageCursor) {
-        fullQuery += `&pageCursor=${pageCursor}`;
+        params.set('pageCursor', pageCursor);
       }
-      if (filters.length > 0) {
-        fullQuery += `&${filters.join('&')}`;
+      if (kinds) {
+        kinds.split(',').forEach(kind => params.append('filters[kind]', kind));
       }
 
-      const url = `${await discovery.getBaseUrl('search')}/query?${fullQuery}`;
+      const url = `${await discovery.getBaseUrl('search')}/query?${params}`;
       const { token } = await auth.getPluginRequestToken({
         onBehalfOf: credentials,
         targetPluginId: 'search',
@@ -181,12 +182,17 @@ function registerSearchTechDocsAction({
     action: async ({ input, credentials }) => {
       const { pageCursor, query, pageLimit } = input;
 
-      let fullQuery = `types[0]=techdocs&term=${query}&pageLimit=${pageLimit}`;
+      // Every model-supplied value is a query parameter, encoded as one.
+      const params = new URLSearchParams({
+        'types[0]': 'techdocs',
+        term: query,
+        pageLimit: String(pageLimit),
+      });
       if (pageCursor) {
-        fullQuery += `&pageCursor=${pageCursor}`;
+        params.set('pageCursor', pageCursor);
       }
 
-      const url = `${await discovery.getBaseUrl('search')}/query?${fullQuery}`;
+      const url = `${await discovery.getBaseUrl('search')}/query?${params}`;
       const { token } = await auth.getPluginRequestToken({
         onBehalfOf: credentials,
         targetPluginId: 'search',
@@ -202,7 +208,9 @@ function registerSearchTechDocsAction({
       // instead of blindly reading `.results` and throwing a generic TypeError.
       if (!response.ok) {
         throw new Error(
-          `TechDocs search failed (${response.status} ${response.statusText}): ${await response.text()}`,
+          `TechDocs search failed (${response.status} ${
+            response.statusText
+          }): ${await response.text()}`,
         );
       }
       const payload = (await response.json()) as SearchResultSet;
@@ -219,6 +227,24 @@ function registerSearchTechDocsAction({
       };
     },
   });
+}
+
+/**
+ * A model-supplied TechDocs location as a path under the TechDocs `static`
+ * root: absolute, no query or fragment, and no `..` segment — so the model can
+ * only ever read a documentation page, never a URL of its own choosing.
+ * Throws {@link InputError} otherwise.
+ */
+export function techDocsLocationPath(location: string): string {
+  if (!/^\/[^?#]*$/.test(location)) {
+    throw new InputError(
+      `location must be an absolute path without query or fragment; got '${location}'`,
+    );
+  }
+  if (location.split('/').some(segment => segment === '..')) {
+    throw new InputError(`location must not contain '..' segments`);
+  }
+  return location;
 }
 
 /**
@@ -254,10 +280,9 @@ The response will be formatted as Markdown.`,
       output: z => z.object({ content: z.string() }),
     },
     action: async ({ input, credentials }) => {
-      const url = new URL(
-        `${await discovery.getBaseUrl('techdocs')}/static${input.location}`,
-      );
-      const pageUrl = `${url.origin}${url.pathname}`;
+      const location = techDocsLocationPath(input.location);
+      const base = await discovery.getBaseUrl('techdocs');
+      const pageUrl = `${base}/static${encodeURI(location)}`;
 
       const { token } = await auth.getPluginRequestToken({
         onBehalfOf: credentials,
@@ -275,7 +300,9 @@ The response will be formatted as Markdown.`,
       );
       if (!response.ok) {
         throw new Error(
-          `Failed to read TechDocs page (${response.status} ${response.statusText}): ${await response.text()}`,
+          `Failed to read TechDocs page (${response.status} ${
+            response.statusText
+          }): ${await response.text()}`,
         );
       }
       const html = await response.text();

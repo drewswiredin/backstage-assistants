@@ -2,6 +2,9 @@ import type { Knex } from 'knex';
 import { randomUUID } from 'crypto';
 import { resolvePackagePath } from '@backstage/backend-plugin-api';
 import type { UIMessage } from 'ai';
+import { InputError } from '@backstage/errors';
+import { REASONING_LEVELS } from '@drewswiredin/backstage-plugin-assistants-common';
+import { toIsoTimestamp } from './timestamps';
 
 /**
  * Server-side conversation persistence.
@@ -43,9 +46,74 @@ export interface StoredMessage {
   sortOrder: number;
 }
 
-type ThreadPatch = Partial<
+/** The metadata fields a thread may be patched with. */
+export type ThreadPatch = Partial<
   Pick<Thread, 'title' | 'model' | 'reasoningLevel' | 'pinned' | 'archived'>
 >;
+
+/** Longest title the `threads.title` column holds. */
+const THREAD_TITLE_MAX_CHARS = 512;
+
+/**
+ * Validates a `PATCH /threads/:id` body: only the metadata fields, each of the
+ * right type, and nothing else. Throws {@link InputError} (400) otherwise.
+ */
+export function parseThreadPatch(body: unknown): ThreadPatch {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new InputError('Request body must be a JSON object');
+  }
+  const allowed = ['title', 'model', 'reasoningLevel', 'pinned', 'archived'];
+  const unknown = Object.keys(body).filter(k => !allowed.includes(k));
+  if (unknown.length > 0) {
+    throw new InputError(`Unknown field(s): ${unknown.join(', ')}`);
+  }
+  const { title, model, reasoningLevel, pinned, archived } = body as Record<
+    string,
+    unknown
+  >;
+  const patch: ThreadPatch = {};
+  if (title !== undefined) {
+    if (typeof title !== 'string' || title.trim().length === 0) {
+      throw new InputError('title must be a non-empty string');
+    }
+    if (title.length > THREAD_TITLE_MAX_CHARS) {
+      throw new InputError(
+        `title must be at most ${THREAD_TITLE_MAX_CHARS} characters`,
+      );
+    }
+    patch.title = title;
+  }
+  if (model !== undefined) {
+    if (model !== null && (typeof model !== 'string' || model.length === 0)) {
+      throw new InputError('model must be a non-empty string or null');
+    }
+    patch.model = model;
+  }
+  if (reasoningLevel !== undefined) {
+    if (
+      reasoningLevel !== null &&
+      !(REASONING_LEVELS as string[]).includes(reasoningLevel as string)
+    ) {
+      throw new InputError(
+        `reasoningLevel must be one of ${REASONING_LEVELS.join(', ')} or null`,
+      );
+    }
+    patch.reasoningLevel = reasoningLevel as ThreadPatch['reasoningLevel'];
+  }
+  if (pinned !== undefined) {
+    if (typeof pinned !== 'boolean') {
+      throw new InputError('pinned must be a boolean');
+    }
+    patch.pinned = pinned;
+  }
+  if (archived !== undefined) {
+    if (typeof archived !== 'boolean') {
+      throw new InputError('archived must be a boolean');
+    }
+    patch.archived = archived;
+  }
+  return patch;
+}
 
 export class ThreadService {
   constructor(private readonly db: Knex) {}
@@ -170,9 +238,7 @@ export class ThreadService {
    * from. `unread` (`updated_at > last_read_at`) is durable; the live `working`
    * flag is merged in by the router from its in-flight set. One cheap query.
    */
-  async listUserThreadStatuses(
-    userRef: string,
-  ): Promise<
+  async listUserThreadStatuses(userRef: string): Promise<
     Array<{
       threadId: string;
       assistantId: string;
@@ -182,10 +248,16 @@ export class ThreadService {
   > {
     const rows = await this.db('threads')
       .where({ user_ref: userRef, archived: false })
-      .select('id', 'assistant_id', 'updated_at', 'last_read_at', 'last_tokens');
+      .select(
+        'id',
+        'assistant_id',
+        'updated_at',
+        'last_read_at',
+        'last_tokens',
+      );
     return rows.map(r => {
-      const updatedAt = String(r.updated_at);
-      const lastReadAt = r.last_read_at ? String(r.last_read_at) : null;
+      const updatedAt = toIsoTimestamp(r.updated_at)!;
+      const lastReadAt = toIsoTimestamp(r.last_read_at) ?? null;
       return {
         threadId: r.id as string,
         assistantId: r.assistant_id as string,
@@ -270,7 +342,9 @@ export class ThreadService {
         }
       }
 
-      const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      const fields: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
       if (model) fields.model = model;
       if (typeof lastTokens === 'number') fields.last_tokens = lastTokens;
       await trx('threads').where({ id: threadId }).update(fields);
@@ -284,8 +358,8 @@ export class ThreadService {
 // ---------------------------------------------------------------------------
 
 function toThread(row: Record<string, unknown>): Thread {
-  const updatedAt = String(row.updated_at);
-  const lastReadAt = row.last_read_at ? String(row.last_read_at) : null;
+  const updatedAt = toIsoTimestamp(row.updated_at)!;
+  const lastReadAt = toIsoTimestamp(row.last_read_at) ?? null;
   return {
     id: row.id as string,
     assistantId: row.assistant_id as string,
@@ -294,7 +368,7 @@ function toThread(row: Record<string, unknown>): Thread {
     reasoningLevel: (row.reasoning_level as string) ?? null,
     pinned: Boolean(row.pinned),
     archived: Boolean(row.archived),
-    createdAt: String(row.created_at),
+    createdAt: toIsoTimestamp(row.created_at)!,
     updatedAt,
     lastReadAt,
     unread: lastReadAt ? new Date(updatedAt) > new Date(lastReadAt) : false,

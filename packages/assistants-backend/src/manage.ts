@@ -132,7 +132,10 @@ function requireStringArray(value: unknown, field: string): string[] {
  */
 function parseDefinitionBody(
   body: unknown,
-): Omit<AssistantDefinition, 'id' | 'created_by' | 'created_at' | 'updated_by' | 'updated_at'> {
+): Omit<
+  AssistantDefinition,
+  'id' | 'created_by' | 'created_at' | 'updated_by' | 'updated_at'
+> {
   if (!body || typeof body !== 'object') {
     throw new InputError('request body must be an assistant definition object');
   }
@@ -274,7 +277,9 @@ function validateDelta(
  * and enforces the `assistant.manage` permission (403 otherwise) before doing
  * any work.
  */
-export function createManageRouter(options: ManageRouterOptions): express.Router {
+export function createManageRouter(
+  options: ManageRouterOptions,
+): express.Router {
   const { httpAuth, userInfo, assistantStore, logger } = options;
 
   const router = express.Router();

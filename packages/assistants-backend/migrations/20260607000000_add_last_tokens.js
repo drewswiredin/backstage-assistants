@@ -37,7 +37,9 @@ exports.up = async function up(knex) {
       ) {
         await knex('threads')
           .where({ id: t.id })
-          .update({ last_tokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0) });
+          .update({
+            last_tokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+          });
         break;
       }
     }

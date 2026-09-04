@@ -5,7 +5,7 @@
 // ******************************************************************
 
 /**
- * Request body shared by `POST /chat` and `POST /title`. Tools/actions are never accepted from the client — they are resolved server-side per turn.
+ * Request body shared by `POST /chat` and `POST /title` (the latter is retained for API completeness — the shipped client titles conversations server-side in `/chat`). Tools/actions are never accepted from the client — they are resolved server-side per turn.
  * @public
  */
 export interface ChatRequest {

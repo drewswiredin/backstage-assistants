@@ -32,7 +32,11 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
-import { AssistantsConfig, isPolicyAccessible } from './config';
+import {
+  AssistantsConfig,
+  effectiveApprovalSet,
+  isPolicyAccessible,
+} from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
 import {
   buildMcpTools,
@@ -43,7 +47,7 @@ import {
 import type { AssistantStore } from './assistants';
 import { createOpenApiRouter } from './schema/openapi';
 import { createManageRouter } from './manage';
-import type { ThreadService } from './threads';
+import { parseThreadPatch, type ThreadService } from './threads';
 import { ResumableStreamRegistry } from './resumableStreams';
 import type { SignalsService } from '@backstage/plugin-signals-node';
 
@@ -340,7 +344,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       .catch(() => {});
   }
 
-  function noteFinished(userRef: string, threadId: string, assistantId: string) {
+  function noteFinished(
+    userRef: string,
+    threadId: string,
+    assistantId: string,
+  ) {
     const m = inFlight.get(userRef);
     if (m) {
       m.delete(threadId);
@@ -563,6 +571,20 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       );
     }
 
+    // 4a. Thread ownership. Resolved owner-scoped before any side effect (the
+    //     abort handle, the in-flight registry, the resumable stream, the
+    //     user-turn persist) so a thread the caller doesn't own is a plain 404
+    //     with nothing registered against its id.
+    if (threadId) {
+      const thread = await threadService.getThread(
+        user.userEntityRef,
+        threadId,
+      );
+      if (!thread) {
+        throw new NotFoundError(`Thread '${threadId}' not found`);
+      }
+    }
+
     // 5. Resolve the model; unknown or out-of-allowlist modelId → 400. An empty
     //    allowlist means the full platform pool — defer to the store's derived
     //    effective model list.
@@ -750,8 +772,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     survives reloads, and it is per-tool by design (granting one tool never
     //     auto-approves another).
     // The per-turn approval set = global floor ∩ this assistant's allowedTools.
-    const approvalSet = assistant.allowedTools.filter(t =>
-      assistants.requireApproval.has(t),
+    const approvalSet = effectiveApprovalSet(
+      assistant.allowedTools,
+      assistants.requireApproval,
     );
     const toolApproval: Record<
       string,
@@ -798,11 +821,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const missing = approvalSet.filter(n => !gated.includes(n));
       if (missing.length > 0) {
         logger.warn(
-          `requireApproval lists tool(s) not available to assistant '${assistant.id}': ${missing.join(', ')}`,
+          `requireApproval lists tool(s) not available to assistant '${
+            assistant.id
+          }': ${missing.join(', ')}`,
         );
       }
       logger.info(
-        `Approval gate active for assistant '${assistant.id}': ${gated.join(', ') || '(none)'}`,
+        `Approval gate active for assistant '${assistant.id}': ${
+          gated.join(', ') || '(none)'
+        }`,
       );
     }
 
@@ -996,10 +1023,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
               modelId,
             );
             if (!saved) {
-              logger.warn('chat turn not persisted: thread not found or not owned', {
-                requestId,
-                threadId,
-              });
+              logger.warn(
+                'chat turn not persisted: thread not found or not owned',
+                {
+                  requestId,
+                  threadId,
+                },
+              );
             }
           } catch (error) {
             logger.error('failed to persist chat turn', {
@@ -1017,17 +1047,27 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           // lightweight 'updated' signal so views refresh the title (no status change).
           void (async () => {
             try {
-              const thread = await threadService.getThread(user.userEntityRef, threadId);
+              const thread = await threadService.getThread(
+                user.userEntityRef,
+                threadId,
+              );
               if (!thread || thread.title !== 'New Chat') return;
               const titled = await generateText({
                 model,
                 instructions: TITLE_SYSTEM_PROMPT,
-                prompt: buildTitleExcerpt(finalMessages as unknown as TitleMessage[]),
+                prompt: buildTitleExcerpt(
+                  finalMessages as unknown as TitleMessage[],
+                ),
                 maxRetries: 1,
               });
-              const title = titled.text.trim().replace(/["']+/g, '').slice(0, 80);
+              const title = titled.text
+                .trim()
+                .replace(/["']+/g, '')
+                .slice(0, 80);
               if (title) {
-                await threadService.updateThread(user.userEntityRef, threadId, { title });
+                await threadService.updateThread(user.userEntityRef, threadId, {
+                  title,
+                });
                 noteUpdated(user.userEntityRef, threadId, assistantId);
               }
             } catch (titleError) {
@@ -1053,7 +1093,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             threadId,
             error: detail,
           });
-          return `The assistant couldn't finish this turn: ${detail.slice(0, 300)}`;
+          return `The assistant couldn't finish this turn: ${detail.slice(
+            0,
+            300,
+          )}`;
         },
         sendReasoning: true,
       }),
@@ -1186,7 +1229,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const { userRef, accessibleIds } = await resolveAccess(req);
       const assistantId = req.query.assistantId;
       const scoped =
-        typeof assistantId === 'string' && assistantId ? assistantId : undefined;
+        typeof assistantId === 'string' && assistantId
+          ? assistantId
+          : undefined;
       const all = await threadService.listThreads(userRef, scoped);
       res.json({
         threads: all.filter(t => accessibleIds.has(t.assistantId)),
@@ -1244,7 +1289,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     (async () => {
       const userRef = await resolveUserRef(req);
       const thread = await threadService.getThread(userRef, req.params.id);
-      if (!thread) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      if (!thread)
+        throw new NotFoundError(`Thread '${req.params.id}' not found`);
       res.json(thread);
     })().catch(next);
   });
@@ -1253,15 +1299,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   threads.patch('/:id', (req, res, next) => {
     (async () => {
       const userRef = await resolveUserRef(req);
-      const { title, model, reasoningLevel, pinned, archived } = req.body ?? {};
-      const thread = await threadService.updateThread(userRef, req.params.id, {
-        title,
-        model,
-        reasoningLevel,
-        pinned,
-        archived,
-      });
-      if (!thread) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      const thread = await threadService.updateThread(
+        userRef,
+        req.params.id,
+        parseThreadPatch(req.body),
+      );
+      if (!thread)
+        throw new NotFoundError(`Thread '${req.params.id}' not found`);
       res.json(thread);
     })().catch(next);
   });
@@ -1271,7 +1315,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     (async () => {
       const userRef = await resolveUserRef(req);
       const deleted = await threadService.deleteThread(userRef, req.params.id);
-      if (!deleted) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      if (!deleted)
+        throw new NotFoundError(`Thread '${req.params.id}' not found`);
       res.status(204).end();
     })().catch(next);
   });
@@ -1281,7 +1326,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     (async () => {
       const userRef = await resolveUserRef(req);
       const assistantId = await threadService.markRead(userRef, req.params.id);
-      if (!assistantId) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      if (!assistantId)
+        throw new NotFoundError(`Thread '${req.params.id}' not found`);
       // Tell every one of this user's views (chat page + nav icon) it's read, so
       // their derived indicators converge — same channel as working/unread.
       void signals
@@ -1300,7 +1346,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     (async () => {
       const userRef = await resolveUserRef(req);
       const messages = await threadService.getMessages(userRef, req.params.id);
-      if (!messages) throw new NotFoundError(`Thread '${req.params.id}' not found`);
+      if (!messages)
+        throw new NotFoundError(`Thread '${req.params.id}' not found`);
       res.json({ messages });
     })().catch(next);
   });

@@ -30,10 +30,7 @@ exports.up = async function up(knex) {
     table.timestamp('created_at').notNullable();
 
     table.index('thread_id', 'messages_thread_idx');
-    table
-      .foreign('thread_id')
-      .references('threads.id')
-      .onDelete('CASCADE');
+    table.foreign('thread_id').references('threads.id').onDelete('CASCADE');
   });
 };
 

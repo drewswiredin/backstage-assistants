@@ -48,7 +48,10 @@ export interface ResolvedMcpSelection {
  * on the name the model sees.
  */
 export function mcpToolName(serverId: string, toolName: string): string {
-  return `${serverId.replace(/[^a-zA-Z0-9_-]/g, '_')}${NAME_SEPARATOR}${toolName}`;
+  return `${serverId.replace(
+    /[^a-zA-Z0-9_-]/g,
+    '_',
+  )}${NAME_SEPARATOR}${toolName}`;
 }
 
 /**
@@ -88,7 +91,10 @@ export function splitAllowedTools(
 
   const actionIds: string[] = [];
   // Preserve first-seen server order; collect each server's allowlisted tools.
-  const selByServerId = new Map<string, { server: McpServerConfig; tools: string[] }>();
+  const selByServerId = new Map<
+    string,
+    { server: McpServerConfig; tools: string[] }
+  >();
 
   for (const entry of allowedTools) {
     const sep = entry.indexOf(NAME_SEPARATOR);
@@ -467,7 +473,10 @@ export function buildMcpTools(
             // Bounded: the turn's abort (Stop) cancels an in-flight call, and
             // a hung server can't hold the turn past the call ceiling.
             const signal = abortSignal
-              ? AbortSignal.any([abortSignal, AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS)])
+              ? AbortSignal.any([
+                  abortSignal,
+                  AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS),
+                ])
               : AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS);
             const result = await client.callTool({
               name: t.name,

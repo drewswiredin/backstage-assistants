@@ -134,6 +134,8 @@ export const assistantsPlugin = createBackendPlugin({
           const mcpServers = [...assistants.mcpServers.values()];
           await scheduler.scheduleTask({
             id: 'assistants-mcp-maintain',
+            // The connection pool is per-process, so every replica maintains its own.
+            scope: 'local',
             frequency: { minutes: 2 },
             initialDelay: { seconds: 0 },
             // Derived from the configured per-server timeouts so raising
