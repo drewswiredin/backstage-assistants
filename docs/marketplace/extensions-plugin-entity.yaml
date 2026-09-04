@@ -1,61 +1,64 @@
-# In-product Backstage "Extensions" / Marketplace catalog entity for this plugin
-# (Red Hat Developer Hub & the community marketplace plugin). Register it in a
-# consuming instance by pointing a catalog Location at this file, e.g. in
-# app-config.yaml:
-#
-#   catalog:
-#     locations:
-#       - type: url
-#         target: https://github.com/drewswiredin/backstage-assistants/blob/v1.0.0/docs/marketplace/extensions-plugin-entity.yaml
-#         rules: [{ allow: [Plugin] }]
-#
-# Schema + docs: https://github.com/redhat-developer/rhdh-plugins/tree/main/workspaces/extensions
+# Plugin entity for the Backstage Extensions catalog (Red Hat Developer Hub).
+# Ingested by @red-hat-developer-hub/backstage-plugin-extensions, either from the Extensions catalog-index
+# directory or from a catalog Location with rules: [{ allow: [Plugin] }] targeting
+# https://github.com/drewswiredin/backstage-assistants/blob/main/docs/marketplace/extensions-plugin-entity.yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/redhat-developer/rhdh-plugins/main/workspaces/extensions/json-schema/plugins.json
 apiVersion: extensions.backstage.io/v1alpha1
 kind: Plugin
 metadata:
+  namespace: drewswiredin
   name: assistants
   title: AI Assistants
-  description: AI chat assistants whose tools are your Backstage actions, run as the signed-in user.
+  description: AI chat assistants in a Backstage side panel whose tools are your Backstage actions, run as the signed-in user.
   tags:
     - ai
     - chatbot
     - llm
   links:
-    - url: https://github.com/drewswiredin/backstage-assistants
-      title: Source & docs
+    - title: Source & docs
+      url: https://github.com/drewswiredin/backstage-assistants
 spec:
-  author: drewswiredin
+  author: Andrew Holder
+  authors:
+    - name: Andrew Holder
+      url: https://github.com/drewswiredin
+  publisher: Andrew Holder
   support:
-    provider: drewswiredin
+    provider: Andrew Holder
     level: community
   lifecycle: production
   categories:
-    - AI
-  # npm package names — used to detect install status in the catalog.
-  packages:
-    - '@drewswiredin/backstage-plugin-assistants'
-    - '@drewswiredin/backstage-plugin-assistants-backend'
-  icon: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/icon.png
-  # Screenshots/gallery (type: image) shown on the plugin detail page.
-  assets:
-    - type: image
-      filename: chat.png
-      originUri: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/chat.png
-    - type: image
-      filename: editor.png
-      originUri: https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/editor.png
-  # Markdown body shown on the detail page.
+    - AI Assistant
+  highlights:
+    - Assistants are created and managed in-app; no redeploy to add or change one
+    - Tools are Backstage actions, run as the signed-in user with their permissions
+    - Connect MCP servers to give assistants external tools
+    - Approval gate before any tool runs (Allow / Deny)
+    - Rendered Markdown and Mermaid, plus interactive forms in the chat
+  icon: data:image/svg+xml;base64,
+    PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiIgd2lkdGg9Ijk2IiBoZWln
+    aHQ9Ijk2Ij4KICA8ZyBmaWxsPSJub25lIiBzdHJva2U9IiMzNkJBQTIiIHN0cm9rZS13aWR0aD0iNiIgc3Ryb2tlLWxpbmVqb2lu
+    PSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0yMCAxNEg3NkExMiAxMiAwIDAgMSA4OCAyNlY2
+    MEExMiAxMiAwIDAgMSA3NiA3Mkg0MEwyMiA4NlY3MkgyMEExMiAxMiAwIDAgMSA4IDYwVjI2QTEyIDEyIDAgMCAxIDIwIDE0WiIv
+    PgogICAgPHBhdGggZD0iTTQ4IDM2VjI5Ii8+CiAgPC9nPgogIDxnIGZpbGw9IiMzNkJBQTIiPgogICAgPGNpcmNsZSBjeD0iNDgi
+    IGN5PSIyNSIgcj0iNCIvPgogICAgPGNpcmNsZSBjeD0iMzYiIGN5PSI0OSIgcj0iNiIvPgogICAgPGNpcmNsZSBjeD0iNjAiIGN5
+    PSI0OSIgcj0iNiIvPgogIDwvZz4KPC9zdmc+Cg==
   description: |
-    AI chat assistants in a collapsible Backstage side panel. Their tools are
-    your Backstage actions, executed as the signed-in user. Admins create and
-    manage assistants — prompt, tools, models, and access — in an in-app editor
-    backed by the plugin database (no redeploy to add or change an assistant).
+    AI chat assistants in a collapsible Backstage side panel. An assistant's tools are Backstage actions
+    and MCP server tools, executed as the signed-in user, so every call carries that user's identity and
+    permissions. Each tool call is gated behind an Allow / Deny prompt in the chat.
 
-    ![Chat](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/chat.png)
-  # Markdown shown on the install page.
+    Admins create and manage assistants in an in-app editor: prompt, model, tools, and who can use it.
+    Definitions live in the plugin database, so adding or changing an assistant is a save, not a deploy.
   installation: |
-    Install the frontend (`@drewswiredin/backstage-plugin-assistants`) and backend
-    (`@drewswiredin/backstage-plugin-assistants-backend`) packages and configure a
-    model provider under `assistants:` in app-config. See the project README for
-    the full setup.
+    Requires the Backstage new frontend system and new backend system: Backstage 1.53 or later, Node 22.12 or later.
+    On Red Hat Developer Hub this means RHDH 1.10 or later with `APP_CONFIG_app_packageName=app-next` and
+    `ENABLE_STANDARD_MODULE_FEDERATION=true`. The plugin does not mount on the default (legacy) RHDH shell.
+
+    ```sh
+    yarn --cwd packages/app add @drewswiredin/backstage-plugin-assistants
+    yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backend
+    ```
+
+    Configure a model provider under `assistants:` in app-config. The project README covers the full setup:
+    https://github.com/drewswiredin/backstage-assistants#readme

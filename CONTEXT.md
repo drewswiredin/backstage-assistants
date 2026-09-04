@@ -68,10 +68,10 @@ The single component boundary at which a conversation surface plugs in: a BYO-ru
 The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model picker. Owned by the `backstage-assistants` plugin, not the gen-ui library.
 
 **gen-ui library** (`@drewswiredin/gen-ui`):
-The standalone, publishable library that owns *its* Conversation surface + generative-UI machinery (iframe artifacts, OpenUI, mermaid, trusted-component allowlist). BYO-runtime core + a minimal OpenAI-compatible/OpenRouter wrapper. Agent-agnostic — no Mastra. Consumed by its own demo app. **Not a dependency of the plugin**: the two share only a copy-paste starting point and the **surface seam**, so a matured gen-ui can drop in via one import without ever being a build-time coupling.
+The standalone, publishable library that owns _its_ Conversation surface + generative-UI machinery (iframe artifacts, OpenUI, mermaid, trusted-component allowlist). BYO-runtime core + a minimal OpenAI-compatible/OpenRouter wrapper. Agent-agnostic — no Mastra. Consumed by its own demo app. **Not a dependency of the plugin**: the two share only a copy-paste starting point and the **surface seam**, so a matured gen-ui can drop in via one import without ever being a build-time coupling.
 
 **Access policy**:
-The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`), stored on the definition in the DB. Deny by default. It filters *which* Assistants a user sees — distinct from the plugin **Permission**s (whether they may use the plugin at all) and from the per-tool Backstage checks at execution.
+The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`), stored on the definition in the DB. Deny by default. It filters _which_ Assistants a user sees — distinct from the plugin **Permission**s (whether they may use the plugin at all) and from the per-tool Backstage checks at execution.
 _Avoid_: calling it a permission (it is content/assignment, not a Backstage permission)
 
 **Permission**:

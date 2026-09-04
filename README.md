@@ -7,16 +7,25 @@ models, and prompt, and chat with them in a collapsible, multi-conversation
 panel. Platform config — model providers, MCP servers, and the safety/approval
 floor — lives in `app-config.yaml`.
 
-It aims to be the most complete open-source AI chat plugin for Backstage — the
-alternatives today are either minimal or hosted and paid.
+## Requirements
+
+- Backstage 1.53 or later, on the new frontend system
+  (`@backstage/frontend-defaults` `createApp`) and the new backend system
+  (`@backstage/backend-defaults`).
+- Node 22.12 or later.
+- React 18 and `react-router-dom` ^6.30.2 in the app.
+- A plugin database: SQLite or Postgres (MySQL is supported).
+- A model provider and API key — OpenAI, Anthropic, Azure OpenAI / AI Foundry,
+  or any OpenAI-compatible endpoint such as [OpenRouter](https://openrouter.ai).
+- Recommended: `@backstage/plugin-signals` in the app and
+  `@backstage/plugin-signals-backend` in the backend. The frontend uses signals
+  for live status when the app has them and polls when it does not.
 
 ## Screenshots
 
-<!-- Drop docs/images/chat.png and editor.png (see docs/images/README.md). Referenced by raw URL pinned to the release tag so they also render on the npm package page. -->
+![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
 
-![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/chat.png)
-
-![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/v1.0.0/docs/images/editor.png)
+![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
 
 ## Features
 
@@ -52,40 +61,31 @@ alternatives today are either minimal or hosted and paid.
 
 ## Approach
 
-We set out to build a robust, full-featured multi-assistant chat plugin for
-Backstage by stitching prebuilt packages together — **glue, not build**. It
-wires [assistant-ui](https://www.assistant-ui.com/) (chat UI + runtime), the
-[Vercel AI SDK](https://sdk.vercel.ai/) (model + tool loop), and Backstage
-(identity, the Actions registry, database, signals) with thin glue; the
-capabilities are the libraries'.
-
-No spec, no ADRs — the design lives in two living diagrams and a short set of
-decision principles, updated alongside the code:
-
-- [Architecture](docs/architecture.html)
-- [Configuration flow](docs/config-flow.html)
-- [Principles](docs/PRINCIPLES.md)
+Glue, not build: [assistant-ui](https://www.assistant-ui.com/) (chat UI +
+runtime), the [Vercel AI SDK](https://sdk.vercel.ai/) (model + tool loop), and
+Backstage (identity, the Actions registry, database, signals), wired with thin
+glue. The design lives in [docs/PRINCIPLES.md](docs/PRINCIPLES.md) and two
+diagrams, [docs/architecture.html](docs/architecture.html) and
+[docs/config-flow.html](docs/config-flow.html) (HTML source; download and open
+locally).
 
 ## Packages
 
-| Package | Role |
-| --- | --- |
-| [`@drewswiredin/backstage-plugin-assistants`](packages/assistants) | Frontend plugin (new frontend system) |
-| [`@drewswiredin/backstage-plugin-assistants-backend`](packages/assistants-backend) | Backend plugin |
-| [`@drewswiredin/backstage-plugin-assistants-common`](packages/assistants-common) | Shared browser-safe types |
+| Package                                                                            | Role                                  |
+| ---------------------------------------------------------------------------------- | ------------------------------------- |
+| [`@drewswiredin/backstage-plugin-assistants`](packages/assistants)                 | Frontend plugin (new frontend system) |
+| [`@drewswiredin/backstage-plugin-assistants-backend`](packages/assistants-backend) | Backend plugin                        |
+| [`@drewswiredin/backstage-plugin-assistants-common`](packages/assistants-common)   | Shared browser-safe types             |
 
 Install + wiring: [frontend README](packages/assistants/README.md). Full
 configuration reference: [backend README](packages/assistants-backend/README.md).
 
-## Publishing to the marketplace
+## Contributing and security
 
-Ready-to-use listing metadata lives in [`docs/marketplace/`](docs/marketplace): an
-entry for the [backstage.io plugin directory](https://backstage.io/plugins) (submit
-as a PR to `backstage/backstage`) and a `Plugin` entity for the in-product Backstage
-**Extensions** / Marketplace catalog. Screenshots for both come from
-[`docs/images/`](docs/images). The packages carry the `backstage` role metadata and
-`backstage` / `backstage-plugin` keywords for npm/ecosystem discovery.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
+[SECURITY.md](SECURITY.md) for how to report a vulnerability.
 
 ## License
 
-Apache-2.0
+Apache-2.0. The frontend vendors MIT-licensed code from assistant-ui; see
+[packages/assistants/THIRD_PARTY_NOTICES.md](packages/assistants/THIRD_PARTY_NOTICES.md).
