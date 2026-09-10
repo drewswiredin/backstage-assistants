@@ -383,7 +383,7 @@ assistants:
       options: {}                       <span class="c"># passthrough, spread verbatim into the factory</span>
       models:                           <span class="c"># list of objects; ids namespaced as openai:&lt;name&gt;</span>
         - { name: gpt-5.5, contextWindow: 400000, reasoning: true }  <span class="c"># contextWindow drives the gauge; reasoning adds the effort picker</span>
-        - { name: gpt-4o-mini, maxOutputTokens: 16384 }              <span class="c"># output ceiling, for models the provider misjudges</span>
+        - { name: my-custom-deployment, maxOutputTokens: 16384 }              <span class="c"># output ceiling, for models the provider misjudges</span>
 
   <span class="c"># ---- external MCP servers (optional) ----</span>
   mcp:
@@ -740,10 +740,11 @@ assistants:
               CRUD and rebuilds an <b>in-memory snapshot</b> write-through on
               every write; the hot path (router iteration,
               <code>assistants.get</code>) reads the snapshot synchronously. A
-              lazy ~60s refresh is insurance under the single-replica
-              assumption. The snapshot is where derived-at-read lives, and it
-              <b>tolerates on read</b> — unknown tools/models are skipped rather
-              than fatal.
+              lazy ~60s refresh is insurance under the single-replica assumption
+              (one backend replica, or session affinity for
+              <code>/api/assistants/*</code>). The snapshot is where
+              derived-at-read lives, and it <b>tolerates on read</b> — unknown
+              tools/models are skipped rather than fatal.
             </li>
             <li>
               <b>Permissions</b> — two Backstage permissions defined in

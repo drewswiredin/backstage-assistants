@@ -362,8 +362,9 @@
         <p class="note">
           <b>Also load-bearing:</b>
           <code>@backstage/plugin-signals-{react,node}</code> for real-time push
-          (working / unread, §7), <code>knex</code> for the SQL schema over
-          <code>coreServices.database</code>, and
+          (working / unread, §7; optional — the client polls the same snapshot
+          when the app has no Signals), <code>knex</code> for the SQL schema
+          over <code>coreServices.database</code>, and
           <code>@material-ui/core</code> v4 throughout so the chat matches
           Backstage's component theme. The plugin itself is the thin glue
           between these packages; the capabilities are the libraries'.
@@ -400,7 +401,7 @@ flowchart TB
   subgraph BE["Backend plugin · packages/assistants-backend"]
     direction TB
     ROUTER["Router<br/>GET /status · POST /chat · POST /title (OpenAPI)<br/>GET /chat/resume/:threadId (SSE) · POST /chat/cancel/:threadId<br/>/threads (REST, all agents · access-filtered) · GET /threads/status (+ tokens)<br/>manage/assistants · capabilities (assistant.manage)"]
-    GATE{"Identity + permissions + access<br/>httpAuth · userInfo · assistant.use / assistant.manage · access policy"}
+    GATE{"Identity + permissions + access<br/>httpAuth · userInfo · assistant.use / assistant.manage · access policy<br/>thread ownership — 404 before any side effect"}
     CONFIG["readConfig()<br/>providers · mcp · platform guards<br/>requireApproval (safety floor)<br/>secrets only — no assistant content"]
     STORE[("AssistantStore (Knex)<br/>+ in-memory snapshot · write-through")]
     ASM["Tool assembly<br/>allowedTools → Actions ∩ user · MCP servers"]
@@ -427,7 +428,7 @@ flowchart TB
   end
 
   DB[("Plugin database<br/>threads · messages · assistants")]
-  SIG["Backstage Signals<br/>real-time push (per user)"]
+  SIG["Backstage Signals (optional)<br/>real-time push (per user) · client polls without it"]
 
   RUNTIME ==>|"POST /chat · resume"| ROUTER
   RUNTIME <==>|"threads + history"| ROUTER
@@ -519,6 +520,7 @@ sequenceDiagram
   U->>R: POST /chat { assistantId, modelId, threadId, messages }
   R->>G: resolve user (httpAuth/userInfo) + check access policy
   G-->>R: identity + groups — deny by default
+  R->>D: threadId? resolve owner-scoped — 404 before any side effect
   R->>A: allowedTools → actions.list(credentials) ∩ allowlist + MCP tools
   A-->>L: tools — Actions (as user) · MCP (as configured)
   R->>D: persist the user's message — durable immediately
@@ -909,7 +911,11 @@ flowchart TB
               </tr>
               <tr>
                 <td class="k">created_at · updated_at</td>
-                <td>timestamps</td>
+                <td>
+                  ISO 8601 strings on every driver — the store converts pg
+                  <code>Date</code>s with <code>toISOString</code>, so ordering
+                  and the unread compare never see a driver-specific format
+                </td>
               </tr>
               <tr>
                 <td class="k">last_read_at</td>
@@ -945,7 +951,10 @@ flowchart TB
               </tr>
               <tr>
                 <td class="k">content_json</td>
-                <td>the assistant-ui message, stored verbatim</td>
+                <td>
+                  the assistant-ui message, stored verbatim —
+                  <code>TEXT</code> (<code>LONGTEXT</code> on MySQL)
+                </td>
               </tr>
               <tr>
                 <td class="k">sort_order</td>
@@ -953,7 +962,7 @@ flowchart TB
               </tr>
               <tr>
                 <td class="k">created_at</td>
-                <td>timestamp</td>
+                <td>ISO 8601 string</td>
               </tr>
             </table>
           </div>
@@ -979,12 +988,14 @@ flowchart TB
             <tr>
               <td class="k">definition_json</td>
               <td>
-                <code>TEXT</code> — <code>JSON.stringify</code>, portable across
-                SQLite/Postgres (<b>not</b> pg <code>jsonb</code>). Holds title
-                · description? · color? · prompt · access {allowAuthenticated,
-                users[], groups[]} · allowedTools[] · models[] (allowlist; empty
-                = full pool) · defaultModel (nullable; null = platform default)
-                · ui? (placeholder + suggestions)
+                <code>TEXT</code> (<code>LONGTEXT</code> on MySQL) —
+                <code>JSON.stringify</code>, portable across
+                SQLite/Postgres/MySQL (<b>not</b> pg <code>jsonb</code>). Holds
+                title · description? · color? · prompt · access
+                {allowAuthenticated, users[], groups[]} · allowedTools[] ·
+                models[] (allowlist; empty = full pool) · defaultModel
+                (nullable; null = platform default) · ui? (placeholder +
+                suggestions)
               </td>
             </tr>
             <tr>
@@ -1066,8 +1077,9 @@ flowchart TB
           Parallel background conversations across assistants. Every indicator
           is a pure derivation of one server snapshot (<code
             >GET /threads/status</code
-          >); Signals just invalidate it. An in-memory, thread-keyed resumable
-          stream lets you rejoin a generation you stepped away from.
+          >); Signals just invalidate it (a 10 s poll does the same without
+          Signals). An in-memory, thread-keyed resumable stream lets you rejoin
+          a generation you stepped away from.
         </p>
         <div class="cols">
           <div class="frame">
@@ -1145,25 +1157,24 @@ flowchart TB
           <code>assistants:threads</code> channel; the client simply
           <i>refetches</i> the snapshot (debounced) — plus on tab-visible, never
           on window focus, so indicators stay live while the tab is
-          backgrounded. <i>working</i> is the backend's in-flight set;
-          <i>unread</i> is server-authoritative in the DB (<code
-            >updated_at</code
-          >
-          vs <code>last_read_at</code>). <b>Access-filtered:</b> the snapshot
-          only includes agents the caller can access — remove an agent or revoke
-          access and its conversations and unread vanish. <br /><b
-            >Live resume, keyed by thread.</b
-          >
-          Each <code>/chat</code> turn buffers its SSE under the
-          <i>thread id</i>. On entering a thread the client checks the server
+          backgrounded. Without Signals the client refetches on a 10 s interval
+          instead; every indicator derives identically. <i>working</i> is the
+          backend's in-flight set; <i>unread</i> is server-authoritative in the
+          DB (<code>updated_at</code> vs <code>last_read_at</code>).
+          <b>Access-filtered:</b> the snapshot only includes agents the caller
+          can access — remove an agent or revoke access and its conversations
+          and unread vanish. <br /><b>Live resume, keyed by thread.</b> Each
+          <code>/chat</code> turn buffers its SSE under the <i>thread id</i>. On
+          entering a thread the client checks the server
           <code>working</code> flag and, if a turn is in flight, rejoins via
           <code>GET /chat/resume/:threadId</code> — replaying buffered + live
           chunks — with no fragile per-turn id to capture. Because the user
           message is persisted at turn start, re-entry always shows the
           conversation even mid-flight. The buffer is held for ~60&nbsp;s after
           the turn completes, then dropped — a later re-entry simply loads the
-          durable turn from the DB. In-memory buffer ⇒ single backend replica;
-          the completed turn is durable in the DB regardless. <br /><b
+          durable turn from the DB. In-memory buffer ⇒ one backend replica, or
+          session affinity for <code>/api/assistants/*</code>; the completed
+          turn is durable in the DB regardless. <br /><b
             >Context-usage gauge.</b
           >
           The same <code>GET /threads/status</code> snapshot carries each
@@ -1275,8 +1286,10 @@ flowchart TB
           connect and listing bounded by that server's
           <code>connectTimeoutMs</code> (default 8s, per-server → global →
           built-in), so one black-holed server can't stall the cycle; the task's
-          own timeout is derived from the slowest configured ceiling.
-          <code>GET /status</code> reads the cache <i>synchronously</i> —
+          own timeout is derived from the slowest configured ceiling. The pool
+          is per process and the task runs with <code>local</code> scope, so
+          every replica maintains its own. <code>GET /status</code> reads the
+          cache <i>synchronously</i> —
           <b>zero MCP connections on the request path</b> — so clicking the
           plugin is instant regardless of how many MCP servers are configured or
           whether one is slow (its tools fill in on the next warm cycle).
