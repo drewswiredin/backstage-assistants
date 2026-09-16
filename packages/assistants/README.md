@@ -42,20 +42,14 @@ yarn --cwd packages/app add @drewswiredin/backstage-plugin-assistants
 yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backend
 ```
 
-The `-common` package is pulled in transitively.
+The `-common` package is pulled in transitively. On release day, pin the
+version (`yarn add @drewswiredin/backstage-plugin-assistants@<version>`);
+Yarn's package-age gate otherwise resolves to the previous release for three
+days.
 
-On release day, pin the version:
-`yarn add @drewswiredin/backstage-plugin-assistants@<version>`; Yarn's
-package-age gate otherwise resolves to the previous release for three days.
+## Wire up
 
-### Dependency versions
-
-The `@assistant-ui/*` set, `assistant-cloud`, and the AI SDK (`ai`,
-`@ai-sdk/react`) are declared as caret ranges matching what upstream declares
-for itself, so a consumer resolves a single copy of each. Upstream moves the
-family in lockstep; bump them as a group.
-
-## Wire up the frontend
+### Frontend
 
 Add the plugin to your app's features. Its "Assistants" nav item is registered
 automatically; no extra nav code is needed. (`/alpha` is Backstage's export
@@ -76,10 +70,72 @@ export default createApp({
 
 The page mounts at `/assistants`.
 
-> Using a custom `NavContentBlueprint` to lay out your sidebar? The plugin's nav
-> entry has the id `page:assistants`; `take()` it to place it yourself.
+### Backend
 
-### Hide the nav item from users without access
+```ts
+// packages/backend/src/index.ts
+backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
+```
+
+### app-config
+
+Add an `assistants` block to `app-config.yaml`. It holds the platform surface
+only: providers, MCP servers, and the approval gate. A minimal working example,
+using OpenRouter and the built-in catalog/TechDocs read tools, plus the
+`backend.actions.pluginSources` entry that exposes those tools to assistants:
+
+```yaml
+assistants:
+  defaultModel: openrouter:anthropic/claude-sonnet-5
+  builtinActions: true # registers the built-in catalog/TechDocs read tools
+  providers:
+    openrouter:
+      type: openai-compatible
+      apiKey: ${OPENROUTER_API_KEY}
+      baseUrl: https://openrouter.ai/api/v1
+      models:
+        - name: anthropic/claude-sonnet-5
+          contextWindow: 1000000
+
+backend:
+  actions:
+    pluginSources:
+      - assistants # plus catalog / scaffolder etc. for their actions
+```
+
+Without `assistants` in `backend.actions.pluginSources`, an assistant's tools
+resolve to an empty list.
+
+Set the key in your environment (never commit it):
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+See the
+[backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
+for everything else: model providers, MCP servers, the approval gate, and
+permissions. Per-assistant settings (prompt, access, tools, models) are not
+config; they are managed in the in-app editor. Tool availability depends on
+which action-providing plugins are installed in your backend; the built-in
+read tools are provided by `builtinActions`.
+
+## First run
+
+On first start the backend seeds one assistant, open to every signed-in user,
+with the three built-in read tools. Open `/assistants` and talk to it.
+
+Users with the `assistant.manage` permission see a gear in the chat sidebar
+that opens the editor to create, edit, and delete assistants. Under
+create-app's default allow-all permission policy every signed-in user holds
+both `assistant.use` and `assistant.manage`; grant them to the right users in
+your permission policy, as described in the
+[backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend#grant-assistantuse-and-assistantmanage).
+
+## Customize the sidebar
+
+The plugin's nav entry has the id `page:assistants`; in a custom
+`NavContentBlueprint`, `take()` it to place it yourself.
 
 The auto-registered nav entry is not permission-gated: a user without
 `assistant.use` still sees it and lands on a "You are not permitted to use
@@ -128,9 +184,7 @@ export const SidebarContent = NavContentBlueprint.make({
 });
 ```
 
-See the
-[backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend#permissions)
-for granting `assistant.use` / `assistant.manage` via a permission policy.
+## Reference
 
 ### Root entry exports
 
@@ -144,73 +198,20 @@ root exports what a host app needs to integrate with it:
 | `AssistantsNavIcon`                                             | Nav-rail icon with a live working/unread status dot, for a custom sidebar.         |
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types) | The client interface and its row/patch shapes.                                     |
 
-> **Forms and scaffolder pickers.** Assistants can show an inline form (the
-> `render_form` tool) built from Backstage scaffolder field extensions (owner,
-> entity, and repo pickers, plus any custom field), resolved at runtime from the
-> app. With `@backstage/plugin-scaffolder` registered the pickers populate from
-> the catalog; without it, forms render with plain inputs.
+### Forms and scaffolder pickers
 
-## Wire up the backend
+Assistants can show an inline form (the `render_form` tool) built from
+Backstage scaffolder field extensions (owner, entity, and repo pickers, plus
+any custom field), resolved at runtime from the app. With
+`@backstage/plugin-scaffolder` registered the pickers populate from the
+catalog; without it, forms render with plain inputs.
 
-```ts
-// packages/backend/src/index.ts
-backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
-```
+### Dependency versions
 
-## Configure
-
-Add an `assistants` block to `app-config.yaml`. It holds the platform surface
-only: providers, MCP servers, and the approval gate. A minimal working example,
-using OpenRouter and the built-in catalog/TechDocs read tools, plus the
-`backend.actions.pluginSources` entry that exposes those tools to assistants:
-
-```yaml
-assistants:
-  defaultModel: openrouter:anthropic/claude-sonnet-5
-  builtinActions: true # registers the built-in catalog/TechDocs read tools
-  providers:
-    openrouter:
-      type: openai-compatible
-      apiKey: ${OPENROUTER_API_KEY}
-      baseUrl: https://openrouter.ai/api/v1
-      models:
-        - name: anthropic/claude-sonnet-5
-          contextWindow: 1000000
-
-backend:
-  actions:
-    pluginSources:
-      - assistants # plus catalog / scaffolder etc. for their actions
-```
-
-Without `assistants` in `backend.actions.pluginSources`, an assistant's tools
-resolve to an empty list.
-
-Set the key in your environment (never commit it):
-
-```bash
-export OPENROUTER_API_KEY=sk-or-...
-```
-
-On first start the backend seeds one assistant, open to every signed-in user,
-with the three built-in read tools. Open `/assistants` and talk to it. To add
-or edit assistants, use the gear in the sidebar (requires `assistant.manage`).
-
-See the
-[backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
-for the full configuration reference: model providers, MCP servers, and the
-approval gate. Per-assistant settings (prompt, access, tools, models) are not
-config; they are managed in the in-app editor. Tool availability depends on
-which action-providing plugins are installed in your backend; the built-in read
-tools are provided by `builtinActions`.
-
-## Manage assistants
-
-Users with the `assistant.manage` permission see a gear in the chat sidebar that
-opens the editor to create, edit, and delete assistants. Under create-app's
-default allow-all permission policy every signed-in user holds both
-`assistant.use` and `assistant.manage`; grant them to the right users in your
-permission policy.
+The `@assistant-ui/*` set, `assistant-cloud`, and the AI SDK (`ai`,
+`@ai-sdk/react`) are declared as caret ranges matching what upstream declares
+for itself, so a consumer resolves a single copy of each. Upstream moves the
+family in lockstep; bump them as a group.
 
 ## License
 
