@@ -1,11 +1,58 @@
 # AI Assistants for Backstage
 
-Configurable, in-portal AI assistants for Backstage whose tools are your
-Backstage actions, run as the signed-in user. Create and manage assistants in an
-in-app admin editor (stored in the plugin database), give each its own tools,
-models, and prompt, and chat with them in a collapsible, multi-conversation
-panel. Platform config — model providers, MCP servers, and the safety/approval
-floor — lives in `app-config.yaml`.
+[![npm](https://img.shields.io/npm/v/@drewswiredin/backstage-plugin-assistants)](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants)
+[![CI](https://img.shields.io/github/actions/workflow/status/drewswiredin/backstage-assistants/ci.yml?branch=main&label=CI)](https://github.com/drewswiredin/backstage-assistants/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+AI Assistants for your developer portal.
+Every answer comes from your catalog and docs. Every action runs as the user.
+
+People ask questions in a side panel of your Backstage app. Assistants answer
+from the catalog and TechDocs through the tools you give them, and can run
+Backstage actions (look up entities, search docs, run a scaffolder template,
+call an MCP server) with the permissions of the person asking. Platform admins
+create assistants in-app with a prompt, models, tools, and audience, and connect
+any model provider in app-config.
+
+> Requires the new frontend system (`createApp` from
+> `@backstage/frontend-defaults`) on Backstage 1.54 or later, and Node 22.12 or
+> later. It does not mount in a legacy `packages/app` built on
+> `@backstage/app-defaults`.
+
+![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
+
+![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
+
+## What users get
+
+- **Grounded answers.** Ask "who owns payments-api?" or "how do we onboard a
+  service?" and get an answer sourced from the catalog and TechDocs, not the
+  model's memory.
+- **Actions as the user.** Let an assistant act on Backstage: look up entities,
+  search docs, run a scaffolder template, or call an MCP server, as the user,
+  with their permissions.
+- **Approval gate.** Require an Allow / Deny in the conversation before the
+  actions you choose run; nothing is gated by default and nothing runs behind
+  the user's back.
+- **Conversations that keep going.** Keep several conversations going across
+  several assistants; leave the page mid-reply and come back to the finished
+  answer.
+- **Forms in the conversation.** Fill in a form the assistant shows in the
+  conversation, using your scaffolder's owner, entity, and repo pickers,
+  instead of answering questions one at a time.
+- **A full chat surface.** Read rendered Markdown and Mermaid, attach files,
+  pick the model per conversation, and set reasoning effort on models that
+  support it.
+
+## What admins get
+
+- **In-app editor.** Create, edit, and delete assistants in-app; changes are
+  live on save.
+- **Permissions.** Two Backstage permissions (`assistant.use`,
+  `assistant.manage`) plus a per-assistant audience; works with your permission
+  policy or the RBAC plugin.
+- **Providers and storage.** Providers: OpenAI, Anthropic, Azure OpenAI, or any
+  OpenAI-compatible endpoint. Database: SQLite, Postgres, or MySQL.
 
 ## Requirements
 
@@ -14,60 +61,12 @@ floor — lives in `app-config.yaml`.
   (`@backstage/backend-defaults`).
 - Node 22.12 or later.
 - React 18 and `react-router-dom` ^6.30.2 in the app.
-- A plugin database: SQLite or Postgres (MySQL is supported).
-- A model provider and API key — OpenAI, Anthropic, Azure OpenAI / AI Foundry,
+- A plugin database: SQLite, Postgres, or MySQL.
+- A model provider and API key: OpenAI, Anthropic, Azure OpenAI / AI Foundry,
   or any OpenAI-compatible endpoint such as [OpenRouter](https://openrouter.ai).
 - Recommended: `@backstage/plugin-signals` in the app and
-  `@backstage/plugin-signals-backend` in the backend. The frontend uses signals
+  `@backstage/plugin-signals-backend` in the backend. The frontend uses Signals
   for live status when the app has them and polls when it does not.
-
-## Screenshots
-
-![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
-
-![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
-
-## Features
-
-- **Multiple assistants** — created and edited in an in-app admin editor (stored
-  in the plugin database), each with its own allowed tools, allowed models,
-  system prompt, access policy, and color.
-- **In-app admin editor** — users with the `assistant.manage` permission create,
-  edit, and delete assistants from a gear in the chat sidebar; definitions
-  persist in the plugin database, no redeploy to add or change an assistant.
-- **Permission-gated** — two Backstage permissions govern the plugin:
-  `assistant.use` (who may use it) and `assistant.manage` (who may run the
-  editor), enforced server-side and honored by your permission policy (see the
-  [backend README](packages/assistants-backend/README.md#permissions) for how to
-  wire one up).
-- **Concurrent conversations** — many streaming conversations across many
-  assistants at once; switch between conversations and assistants without
-  interrupting a reply in flight.
-- **Actions as tools, run as the requesting user** — every registered Backstage
-  action is available to an assistant and executes with the caller's own
-  credentials, so Backstage permissions apply unchanged. External MCP servers
-  can be added as tools too.
-- **Tool approval** — any tool can require an explicit Allow / Deny in the chat
-  before it runs; with per-tool "always allow" and one-click batch approval.
-- **Server-side conversations + live resume** — persisted per user; a reply
-  keeps running if you navigate away and rejoins the stream when you return.
-- **Notifications** — working (reply in flight) and unread indicators, per
-  conversation and per assistant.
-- **Generative UI** — an assistant can render an interactive form inline
-  (reusing Backstage scaffolder field pickers) to collect structured input.
-- **Polished chat UI** — streaming, Markdown + Mermaid, message branching,
-  per-conversation model selection, a context-usage gauge, and per-assistant
-  color (hex, from config).
-
-## Approach
-
-Glue, not build: [assistant-ui](https://www.assistant-ui.com/) (chat UI +
-runtime), the [Vercel AI SDK](https://sdk.vercel.ai/) (model + tool loop), and
-Backstage (identity, the Actions registry, database, signals), wired with thin
-glue. The design lives in [docs/PRINCIPLES.md](docs/PRINCIPLES.md) and two
-diagrams, [docs/architecture.html](docs/architecture.html) and
-[docs/config-flow.html](docs/config-flow.html) (HTML source; download and open
-locally).
 
 ## Packages
 
@@ -83,9 +82,13 @@ configuration reference: [backend README](packages/assistants-backend/README.md)
 ## Contributing and security
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
-[SECURITY.md](SECURITY.md) for how to report a vulnerability.
+[SECURITY.md](SECURITY.md) for how to report a vulnerability. The design lives
+in [docs/PRINCIPLES.md](docs/PRINCIPLES.md) and two diagrams,
+[docs/architecture.html](docs/architecture.html) and
+[docs/config-flow.html](docs/config-flow.html) (HTML source; download and open
+locally).
 
 ## License
 
-Apache-2.0. The frontend vendors MIT-licensed code from assistant-ui; see
+Apache-2.0. Includes MIT-licensed components from assistant-ui; see
 [packages/assistants/THIRD_PARTY_NOTICES.md](packages/assistants/THIRD_PARTY_NOTICES.md).

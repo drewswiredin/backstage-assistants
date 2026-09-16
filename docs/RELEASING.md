@@ -66,8 +66,8 @@ git tag assistants-v<Z>
 git push --follow-tags
 ```
 
-One tag per published package; skip the tag for a package that did not
-publish.
+One tag per published package, from the next release on; skip the tag for a
+package that did not publish.
 
 ## 6. Consumer check
 

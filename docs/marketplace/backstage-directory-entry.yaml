@@ -1,6 +1,6 @@
 # backstage/backstage: microsite/data/plugins/assistants.yaml
 title: AI Assistants
-description: AI chat assistants in a collapsible side panel; their tools are your Backstage actions, run as the signed-in user. Created and managed in an in-app editor.
+description: AI assistants for your developer portal. Answers come from your catalog and docs; actions run as the user. Create and manage assistants in-app.
 author: Andrew Holder
 authorUrl: https://github.com/drewswiredin
 category: Machine Learning

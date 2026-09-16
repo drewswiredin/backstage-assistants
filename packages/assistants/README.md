@@ -1,17 +1,16 @@
 # @drewswiredin/backstage-plugin-assistants
 
-AI Assistants for Backstage — a polished, configurable chat experience for your
-developer portal. Create one or more assistants in the in-app admin editor (each
-with its own prompt, tools, models, access policy, and color; stored in the
-plugin database); users chat with them in a collapsible, multi-conversation UI
-with streaming responses, tool calls, Markdown/Mermaid rendering,
-per-conversation model selection, and background (concurrent) conversations
-with unread indicators.
+AI Assistants for your developer portal.
+Every answer comes from your catalog and docs. Every action runs as the user.
 
-This is the **frontend** plugin (new frontend system only). It pairs with:
+This is the frontend plugin of AI Assistants for Backstage, for the new
+frontend system: a collapsible, multi-conversation chat panel at `/assistants`
+and the in-app editor where admins create assistants. It pairs with:
 
-- [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend) — the backend (required)
-- [`@drewswiredin/backstage-plugin-assistants-common`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-common) — shared types and permissions (installed transitively)
+- [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend),
+  the backend (required)
+- [`@drewswiredin/backstage-plugin-assistants-common`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-common),
+  shared types and permissions (installed transitively)
 
 ![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
 
@@ -24,13 +23,12 @@ This is the **frontend** plugin (new frontend system only). It pairs with:
   (`@backstage/backend-defaults`).
 - Node 22.12 or later.
 - React 18 and `react-router-dom` ^6.30.2 (peer dependencies).
-- A plugin database for the backend: SQLite or Postgres (MySQL is supported).
-- A model provider and API key — OpenAI, Anthropic, Azure OpenAI / AI Foundry,
+- A plugin database for the backend: SQLite, Postgres, or MySQL.
+- A model provider and API key: OpenAI, Anthropic, Azure OpenAI / AI Foundry,
   or any OpenAI-compatible endpoint such as [OpenRouter](https://openrouter.ai).
-- Recommended: `@backstage/plugin-signals` in the app (with
-  `@backstage/plugin-signals-backend` in the backend). Working and unread
-  indicators arrive over signals when the app has them; without them the
-  plugin polls.
+- Recommended: `@backstage/plugin-signals` in the app and
+  `@backstage/plugin-signals-backend` in the backend. The frontend uses Signals
+  for live status when the app has them and polls when it does not.
 
 ## Install
 
@@ -46,10 +44,9 @@ yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backen
 
 The `-common` package is pulled in transitively.
 
-Yarn's package-age gate (`npmMinimalAgeGate`, 3 days in a create-app) resolves
-a same-day release to the previous version; pin an exact version
-(`yarn add <pkg>@<version>`) or set `npmMinimalAgeGate` in `.yarnrc.yml` to
-take it immediately.
+On release day, pin the version:
+`yarn add @drewswiredin/backstage-plugin-assistants@<version>`; Yarn's
+package-age gate otherwise resolves to the previous release for three days.
 
 ### Dependency versions
 
@@ -60,8 +57,9 @@ family in lockstep; bump them as a group.
 
 ## Wire up the frontend
 
-Add the plugin to your app's features. Its **"Assistants" nav item is registered
-automatically** — no extra nav code needed.
+Add the plugin to your app's features. Its "Assistants" nav item is registered
+automatically; no extra nav code is needed. (`/alpha` is Backstage's export
+convention for new-frontend-system plugins, not a stability marker.)
 
 ```ts
 // packages/app/src/App.tsx
@@ -79,7 +77,7 @@ export default createApp({
 The page mounts at `/assistants`.
 
 > Using a custom `NavContentBlueprint` to lay out your sidebar? The plugin's nav
-> entry has the id `page:assistants` — `take()` it to place it yourself.
+> entry has the id `page:assistants`; `take()` it to place it yourself.
 
 ### Hide the nav item from users without access
 
@@ -146,13 +144,11 @@ root exports what a host app needs to integrate with it:
 | `AssistantsNavIcon`                                             | Nav-rail icon with a live working/unread status dot, for a custom sidebar.         |
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types) | The client interface and its row/patch shapes.                                     |
 
-> **Interactive forms & scaffolder pickers (optional).** Assistants can render
-> inline RJSF forms (the `render_form` tool) for human-in-the-loop input. Those
-> forms reuse Backstage **scaffolder field extensions** (owner / entity / repo
-> pickers, plus any custom field), resolved at runtime from the app. If
-> `@backstage/plugin-scaffolder` is registered (it is under feature discovery /
-> `app.packages: all`), those pickers populate from the catalog; without it,
-> forms still render with plain inputs. No extra wiring is required.
+> **Forms and scaffolder pickers.** Assistants can show an inline form (the
+> `render_form` tool) built from Backstage scaffolder field extensions (owner,
+> entity, and repo pickers, plus any custom field), resolved at runtime from the
+> app. With `@backstage/plugin-scaffolder` registered the pickers populate from
+> the catalog; without it, forms render with plain inputs.
 
 ## Wire up the backend
 
@@ -163,9 +159,10 @@ backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
 
 ## Configure
 
-Add an `assistants` block to `app-config.yaml` — this is the platform/safety
-surface only (providers, the safety floor). Minimal working example, using
-OpenRouter and the built-in catalog/TechDocs read tools:
+Add an `assistants` block to `app-config.yaml`. It holds the platform surface
+only: providers, MCP servers, and the approval gate. A minimal working example,
+using OpenRouter and the built-in catalog/TechDocs read tools, plus the
+`backend.actions.pluginSources` entry that exposes those tools to assistants:
 
 ```yaml
 assistants:
@@ -179,11 +176,15 @@ assistants:
       models:
         - name: anthropic/claude-sonnet-5
           contextWindow: 1000000
+
+backend:
+  actions:
+    pluginSources:
+      - assistants # plus catalog / scaffolder etc. for their actions
 ```
 
-Assistants themselves are **not** configured here — sign in as an admin and use
-the gear in the chat sidebar to create one (it seeds open to all signed-in users
-with the built-in read tools).
+Without `assistants` in `backend.actions.pluginSources`, an assistant's tools
+resolve to an empty list.
 
 Set the key in your environment (never commit it):
 
@@ -191,34 +192,27 @@ Set the key in your environment (never commit it):
 export OPENROUTER_API_KEY=sk-or-...
 ```
 
-Also add `assistants` to the backend actions service so the tools are exposed
-(otherwise an assistant's tools resolve to empty):
-
-```yaml
-backend:
-  actions:
-    pluginSources:
-      - assistants # plus catalog / scaffolder etc. for their actions
-```
+On first start the backend seeds one assistant, open to every signed-in user,
+with the three built-in read tools. Open `/assistants` and talk to it. To add
+or edit assistants, use the gear in the sidebar (requires `assistant.manage`).
 
 See the
 [backend README](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend)
-for the full configuration reference — the **platform** settings (model
-providers, MCP servers, and the approval floor). Per-assistant settings
-(prompt, access, tools, models) are not config; they're managed in the in-app
-editor. Tool/action availability depends on which action-providing plugins are
-installed in your backend; the built-in read tools are provided by
-`builtinActions`.
+for the full configuration reference: model providers, MCP servers, and the
+approval gate. Per-assistant settings (prompt, access, tools, models) are not
+config; they are managed in the in-app editor. Tool availability depends on
+which action-providing plugins are installed in your backend; the built-in read
+tools are provided by `builtinActions`.
 
 ## Manage assistants
 
 Users with the `assistant.manage` permission see a gear in the chat sidebar that
-opens the editor — create, edit, and delete assistants there. Under create-app's
+opens the editor to create, edit, and delete assistants. Under create-app's
 default allow-all permission policy every signed-in user holds both
 `assistant.use` and `assistant.manage`; grant them to the right users in your
 permission policy.
 
 ## License
 
-Apache-2.0. Vendored MIT-licensed code from assistant-ui is listed in
+Apache-2.0. Includes MIT-licensed components from assistant-ui, listed in
 `THIRD_PARTY_NOTICES.md`, shipped with this package.

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes go to the latest minor of each package:
+Security fixes go to the latest release of each package:
 
 | Package                                             | Supported     |
 | --------------------------------------------------- | ------------- |

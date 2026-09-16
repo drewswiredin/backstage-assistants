@@ -1,7 +1,7 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants-backend",
   "version": "0.16.1",
-  "description": "Backend plugin — AI Assistants for Backstage.",
+  "description": "Backend for AI Assistants for Backstage: streams replies and runs Backstage actions as the user.",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"

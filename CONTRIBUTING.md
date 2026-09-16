@@ -2,7 +2,8 @@
 
 ## Setup
 
-Node 22 and Yarn 4 (the repo pins `yarn@4.4.1` via `packageManager`).
+Node 22.12 or later and Yarn 4 (the repo pins `yarn@4.4.1` via
+`packageManager`).
 
 ```bash
 yarn install

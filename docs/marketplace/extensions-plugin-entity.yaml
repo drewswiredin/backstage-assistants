@@ -9,7 +9,7 @@ metadata:
   namespace: drewswiredin
   name: assistants
   title: AI Assistants
-  description: AI chat assistants in a Backstage side panel whose tools are your Backstage actions, run as the signed-in user.
+  description: AI Assistants for your developer portal. Every answer comes from your catalog and docs. Every action runs as the user.
   tags:
     - ai
     - chatbot
@@ -30,11 +30,11 @@ spec:
   categories:
     - AI Assistant
   highlights:
-    - Assistants are created and managed in-app; no redeploy to add or change one
-    - Tools are Backstage actions, run as the signed-in user with their permissions
-    - Connect MCP servers to give assistants external tools
-    - Approval gate before any tool runs (Allow / Deny)
-    - Rendered Markdown and Mermaid, plus interactive forms in the chat
+    - Answers from your catalog, TechDocs, and any Backstage action, as the signed-in user
+    - Every action runs with the asker's Backstage permissions; assistants never escalate
+    - Require an Allow / Deny in the conversation for the actions you choose, such as running templates
+    - Add MCP servers to give assistants tools outside Backstage
+    - 'Create and edit assistants in-app: prompt, models, tools, and who can use them'
   icon: data:image/svg+xml;base64,
     PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAy
     NCIgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2Ij4KICA8IS0tIFJlbWl4IEljb24gInJvYm90LTItbGlu
@@ -56,7 +56,7 @@ spec:
   description: |
     AI chat assistants in a collapsible Backstage side panel. An assistant's tools are Backstage actions
     and MCP server tools, executed as the signed-in user, so every call carries that user's identity and
-    permissions. Each tool call is gated behind an Allow / Deny prompt in the chat.
+    permissions. Tools you list in config are gated behind an Allow / Deny prompt in the conversation before they run.
 
     Admins create and manage assistants in an in-app editor: prompt, model, tools, and who can use it.
     Definitions live in the plugin database, so adding or changing an assistant is a save, not a deploy.

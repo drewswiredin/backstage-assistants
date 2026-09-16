@@ -1,11 +1,11 @@
 # Example assistant operating instructions
 
-Ready-to-use **system prompts** to copy into an assistant and tailor.
+System prompts to copy into an assistant and tailor.
 
-- `general-assistant.md` — read-only catalog/TechDocs helper (scope, guardrails,
+- `general-assistant.md`: read-only catalog/TechDocs helper (scope, guardrails,
   search strategy, Markdown/Mermaid formatting rules).
-- `devops-assistant.md` — adds write/scaffolding tools with a confirm-before-acting
-  policy.
+- `devops-assistant.md`: adds write/scaffolding tools with a
+  confirm-before-acting policy.
 
 ## Use them
 
