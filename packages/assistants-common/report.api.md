@@ -105,19 +105,6 @@ export interface StatusResponse {
 }
 
 // @public
-export interface TitleRequest {
-  assistantId: AssistantId;
-  messages: unknown[];
-  modelId: ModelId;
-  reasoningLevel?: ReasoningLevel;
-}
-
-// @public
-export interface TitleResponse {
-  title: string;
-}
-
-// @public
 export interface ToolSummary {
   description?: string;
   name: string;

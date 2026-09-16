@@ -25,9 +25,8 @@ import { toIsoTimestamp } from './timestamps';
  * tolerant: a row that fails to parse is skipped, never throwing on the hot path.
  *
  * Derived-at-read values (effective models / default model, `hasModelAllowlist`)
- * are NOT stored. They depend on the platform model pool + default, which are
- * supplied via {@link AssistantStore.setPlatformDefaults} (or the constructor)
- * and applied by {@link AssistantStore.summaryFor}.
+ * are NOT stored. They depend on the platform model pool + default, which the
+ * constructor takes and {@link AssistantStore.summaryFor} applies.
  */
 
 /** Snapshot refresh interval — the single-replica safety net. */
@@ -74,16 +73,6 @@ export class AssistantStore {
   ) {
     this.pool = platformDefaults?.pool ?? [];
     this.platformDefault = platformDefaults?.defaultModel ?? '';
-  }
-
-  /**
-   * Provide (or update) the platform model pool + default used to derive
-   * effective models / default model in {@link summaryFor}. Call after config is
-   * read if not supplied to the constructor.
-   */
-  setPlatformDefaults(pool: ModelOption[], defaultModel: ModelId): void {
-    this.pool = pool;
-    this.platformDefault = defaultModel;
   }
 
   /** Run the plugin's migrations (idempotent). Called once at plugin init. */

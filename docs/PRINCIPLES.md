@@ -16,4 +16,4 @@ How we build `backstage-assistants`. We work off these principles plus two livin
 
 7. **The config↔DB seam.** Secrets, safety policy, and platform settings live in config — deploy-time, git-controlled, not weakenable at runtime. Editable content and assignment (assistant definitions) live in the DB, managed in-app. Safety gates (approval) and admin membership stay in config precisely because runtime editing must not be able to weaken them.
 
-8. **Live source of truth, tolerate drift.** Enumerate capabilities live (the registry + MCP `listTools`). Validate only _new_ choices; grandfather and surface drift — don't silently drop it or block on it. Don't gate on config that can drift out of sync (cf. the removed per-model vision gate).
+8. **Live source of truth, tolerate drift.** Enumerate capabilities live (the registry + MCP `listTools`). Validate only _new_ choices; grandfather and surface drift — don't silently drop it or block on it. Don't gate on config that can drift out of sync.

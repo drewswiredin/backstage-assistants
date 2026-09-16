@@ -2,8 +2,8 @@ import { createPermission } from '@backstage/plugin-permission-common';
 
 /**
  * Permission to use the assistants plugin — load the chat surface and converse
- * with the assistants you can access. Gates `GET /status`, `POST /chat`,
- * `POST /title`, and the conversation (`/threads`) routes on the backend, and
+ * with the assistants you can access. Gates `GET /status`, `POST /chat`, and
+ * the conversation (`/threads`) routes on the backend, and
  * the chat page on the frontend.
  *
  * Which assistants a holder actually sees is a separate, per-assistant decision

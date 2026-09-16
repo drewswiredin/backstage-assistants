@@ -274,7 +274,7 @@ flowchart LR
     direction TB
     G["global<br/>defaultModel · maxSteps · toolResultMaxChars<br/>requestBodyLimit · builtinActions"]
     %% no global ui block — composer placeholder + suggestions are per-assistant (DB)
-    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options<br/>models: [{ name · contextWindow? }]"]
+    PROV["providers.{id}<br/>type · apiKey* · baseUrl · options<br/>models: [{ name · contextWindow? · reasoning? · maxOutputTokens? }]"]
     MCP["mcp.connectTimeoutMs (global default)<br/>mcp.servers.{id}<br/>transport · url · headers* / command · args · env*<br/>connectTimeoutMs (per-server override)<br/>requireApproval[] (per-server floor)"]
     APR["requireApproval[]<br/>global action floor"]
   end
@@ -319,7 +319,7 @@ flowchart LR
   SPLIT -.->|"backend-only: prompt · access · apiKey · headers · env"| CHAT
   STATUS --> PICK --> APPLY
   PICK -.->|"gear (assistant.manage)"| EDIT
-  APPLY -.->|"{ assistantId, modelId, threadId, messages }"| CHAT
+  APPLY -.->|"{ assistantId, modelId, threadId, reasoningLevel?, messages }"| CHAT
 
   classDef src fill:#eef2f7,stroke:#5b6675,color:#1f2933;
   classDef be fill:#e7f3f2,stroke:#0b6b6b,color:#10312f;
@@ -372,12 +372,12 @@ assistants:
   defaultModel: openai:gpt-5.5          <span class="c"># required — resolves a null per-assistant default</span>
   maxSteps: 10                          <span class="c"># max tool-call steps per turn (default 10)</span>
   toolResultMaxChars: 30000             <span class="c"># cap one tool result; head+tail truncate (default 30000, 0 = off)</span>
-  requestBodyLimit: 10mb                <span class="c"># Express body limit for /chat + /title (default 10mb)</span>
+  requestBodyLimit: 10mb                <span class="c"># Express body limit for /chat (default 10mb)</span>
   builtinActions: true                  <span class="c"># register this plugin's 3 read-only Actions (default false)</span>
 
   providers:
     openai:
-      type: openai                      <span class="c"># selects the @ai-sdk/* factory</span>
+      type: openai                      <span class="c"># openai | anthropic | azure | openai-compatible — selects the @ai-sdk/* factory</span>
       apiKey: <span class="s">${OPENAI_API_KEY}</span>          <span class="c"># * secret — backend only</span>
       baseUrl: https://api.openai.com/v1
       options: {}                       <span class="c"># passthrough, spread verbatim into the factory</span>
@@ -439,10 +439,11 @@ assistants:
           <span class="tag secret">backend</span>; assistant definitions are
           served from the <span class="tag db">DB</span> (full defs via the
           admin-gated <code>/manage/assistants</code>; browser-safe summaries
-          via <code>/status</code>). The browser sends back only
+          via <code>/status</code>). The browser sends back
           <code
             >{ assistantId, modelId, threadId, reasoningLevel?, messages }</code
-          >.
+          >; the transport also carries its own <code>id</code>,
+          <code>trigger</code>, and <code>messageId</code>.
         </p>
         <div class="frame">
           <table>
@@ -517,8 +518,8 @@ assistants:
               <td class="k">requestBodyLimit</td>
               <td><span class="tag secret">backend</span></td>
               <td>
-                Express body-parser limit for <code>/chat</code> +
-                <code>/title</code> (default <code>10mb</code>)
+                Express body-parser limit for <code>/chat</code> (default
+                <code>10mb</code>)
               </td>
             </tr>
             <tr>
@@ -539,9 +540,9 @@ assistants:
                 <span class="tag secret">backend</span>
               </td>
               <td>
-                access gate — <code>/status</code> filter, <code>/chat</code> +
-                <code>/title</code>, and <code>/threads</code> list/status
-                filter + <code>POST /threads</code>
+                access gate — <code>/status</code> filter, <code>/chat</code>,
+                and <code>/threads</code> list/status filter +
+                <code>POST /threads</code>
               </td>
             </tr>
             <tr>
@@ -750,7 +751,7 @@ assistants:
               <b>Permissions</b> — two Backstage permissions defined in
               <code>-common</code> gate the plugin:
               <code>assistant.use</code> (the user-facing routes
-              <code>/status</code> · <code>/chat</code> · <code>/title</code> ·
+              <code>/status</code> · <code>/chat</code> ·
               <code>/threads</code> and the chat surface) and
               <code>assistant.manage</code> (<code>/manage/*</code> ·
               <code>/capabilities</code> and the editor gear). Registered with
@@ -817,13 +818,13 @@ assistants:
             <li>
               <b>Access is the boundary</b> — every conversation is scoped to
               its owner (<code>user_ref</code>) AND filtered to
-              currently-accessible agents: <code>/threads</code> +
-              <code>/threads/status</code> only return chats for agents the
-              caller can access, and <code>POST /threads</code> is gated — so
-              removing an agent (or revoking access) removes its conversations
-              and its unread. Threads that reference a deleted assistant orphan
-              and are filtered out on read; recreate the assistant via the admin
-              UI.
+              currently-accessible assistants: <code>/threads</code> +
+              <code>/threads/status</code> only return conversations for
+              assistants the caller can access, and <code>POST /threads</code>
+              is gated — so removing an assistant (or revoking access) removes
+              its conversations and its unread. Threads that reference a deleted
+              assistant orphan and are filtered out on read; recreate the
+              assistant via the admin UI.
             </li>
             <li>
               <b>Runtime guards</b> — global, backend-only:

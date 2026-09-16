@@ -184,37 +184,6 @@ export interface StatusResponse {
 }
 
 /**
- * Request body for `POST /title` (and `POST /chat`). Tools/actions are never
- * accepted from the client — they are resolved server-side per turn.
- *
- * @public
- */
-export interface TitleRequest {
-  /** Id of the assistant to converse with. */
-  assistantId: AssistantId;
-  /** The `provider:model` id to use for this turn. */
-  modelId: ModelId;
-  /**
-   * How hard the model should think on this turn. Only meaningful for a model
-   * flagged {@link ModelOption.reasoning}; otherwise ignored server-side and the
-   * provider's default applies.
-   */
-  reasoningLevel?: ReasoningLevel;
-  /** The conversation as a non-empty array of UI messages. */
-  messages: unknown[];
-}
-
-/**
- * Response returned by `POST /title`.
- *
- * @public
- */
-export interface TitleResponse {
-  /** The generated (or fallback) conversation title. */
-  title: string;
-}
-
-/**
  * Access policy for an assistant — who may converse with it.
  *
  * Evaluated server-side with the ownership-ref check (`userEntityRef` /

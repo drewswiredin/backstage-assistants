@@ -5,7 +5,7 @@
 // ******************************************************************
 
 /**
- * Request body shared by `POST /chat` and `POST /title` (the latter is retained for API completeness — the shipped client titles conversations server-side in `/chat`). Tools/actions are never accepted from the client — they are resolved server-side per turn.
+ * Request body for `POST /chat`. Tools/actions are never accepted from the client — they are resolved server-side per turn.
  * @public
  */
 export interface ChatRequest {
@@ -22,7 +22,7 @@ export interface ChatRequest {
    */
   reasoningLevel?: ChatRequestReasoningLevelEnum;
   /**
-   * The conversation (thread) this turn belongs to. Sent by `/chat` so the backend can persist the completed turn server-side. Optional; omitted by `/title` and by the first turn of a not-yet-created thread.
+   * The conversation (thread) this turn belongs to, so the backend can persist the completed turn server-side. Optional; omitted by the first turn of a not-yet-created thread.
    */
   threadId?: string;
   /**

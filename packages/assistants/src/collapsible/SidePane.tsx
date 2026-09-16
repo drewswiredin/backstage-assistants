@@ -71,7 +71,7 @@ export interface SidePaneProps {
   /** Switch assistant (drives `?assistant=<id>`). */
   onSelectAssistant: (id: string) => void;
   /** Per-assistant rollup status (working/unread/read) for the rail dots. */
-  agentStatus?: (assistantId: string) => ConvStatus;
+  assistantStatus?: (assistantId: string) => ConvStatus;
   conversations: ThreadSummary[];
   activeId: string | null;
   onNew: () => void;
@@ -99,7 +99,7 @@ export function SidePane(props: SidePaneProps) {
     assistants,
     activeAssistantId,
     onSelectAssistant,
-    agentStatus,
+    assistantStatus,
     conversations,
     activeId,
     onNew,
@@ -132,7 +132,7 @@ export function SidePane(props: SidePaneProps) {
           assistants={assistants}
           activeId={activeAssistantId}
           onSelect={onSelectAssistant}
-          agentStatus={agentStatus}
+          assistantStatus={assistantStatus}
         />
 
         <div className={classes.divider} />

@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Anthropic tool-argument normalisation applies to providers of `type: anthropic`, whatever their configured id.
+- `POST /title` is removed; conversations are titled automatically on their first turn.
+- The `x-resumable-stream-id` response header is gone; resume is keyed by thread id.
 - Backstage dependency ranges track the 1.54 release line.
 - Timestamps are written as ISO-8601 strings on Postgres.
 - The MCP maintenance task is registered with local scope, one per process.

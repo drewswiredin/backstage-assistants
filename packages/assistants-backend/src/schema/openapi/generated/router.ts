@@ -176,7 +176,7 @@ export const spec = {
       },
       "ChatRequest": {
         "type": "object",
-        "description": "Request body shared by `POST /chat` and `POST /title` (the latter is retained for API completeness — the shipped client titles conversations server-side in `/chat`). Tools/actions are never accepted from the client — they are resolved server-side per turn.",
+        "description": "Request body for `POST /chat`. Tools/actions are never accepted from the client — they are resolved server-side per turn.",
         "required": [
           "assistantId",
           "modelId",
@@ -206,7 +206,7 @@ export const spec = {
           "threadId": {
             "type": "string",
             "minLength": 1,
-            "description": "The conversation (thread) this turn belongs to. Sent by `/chat` so the backend can persist the completed turn server-side. Optional; omitted by `/title` and by the first turn of a not-yet-created thread."
+            "description": "The conversation (thread) this turn belongs to, so the backend can persist the completed turn server-side. Optional; omitted by the first turn of a not-yet-created thread."
           },
           "messages": {
             "type": "array",
@@ -215,19 +215,6 @@ export const spec = {
             "items": {
               "type": "object"
             }
-          }
-        }
-      },
-      "TitleResponse": {
-        "type": "object",
-        "description": "Response returned by `POST /title`.",
-        "required": [
-          "title"
-        ],
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "The generated (or fallback) conversation title."
           }
         }
       },
@@ -303,43 +290,6 @@ export const spec = {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StatusResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/ErrorResponse"
-          }
-        },
-        "security": [
-          {},
-          {
-            "JWT": []
-          }
-        ]
-      }
-    },
-    "/title": {
-      "post": {
-        "operationId": "PostTitle",
-        "description": "Generate a short conversation title from the opening messages. Best-effort: generation failures fall back to a default title with 200.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The generated (or fallback) title.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TitleResponse"
                 }
               }
             }

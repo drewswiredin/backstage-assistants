@@ -69,8 +69,9 @@ export interface RouterOptions {
   actions: ActionsService;
   /**
    * Platform/safety config: the model pool + resolver, MCP server connections,
-   * runtime limits, the management allowlist, and the global approval set.
-   * Assistant DEFINITIONS no longer live here — they come from {@link assistantStore}.
+   * runtime limits, and the global approval set. Assistant DEFINITIONS live in
+   * {@link assistantStore}; who may manage them is the `assistant.manage`
+   * permission, not config.
    */
   assistants: AssistantsConfig;
   /**
@@ -89,8 +90,8 @@ export interface RouterOptions {
 /**
  * Resolves an assistant's accessibility for a resolved
  * {@link @backstage/backend-plugin-api#BackstageUserInfo}. Shared by `/status`
- * (filtering the assistant list) and `/chat` + `/title` (enforcing per-turn
- * access) so all routes apply identical semantics. Delegates to
+ * (filtering the assistant list) and `/chat` (enforcing per-turn access) so all
+ * routes apply identical semantics. Delegates to
  * {@link isPolicyAccessible} (the same ownership-ref check, default-deny):
  *
  * - `allowAuthenticated` grants any signed-in user.
@@ -148,7 +149,7 @@ function buildTitleExcerpt(messages: TitleMessage[]): string {
     .join('\n');
 }
 
-/** System prompt for conversation title generation (shared by `/title` and auto-titling). */
+/** System prompt for auto-titling a conversation's first completed turn. */
 const TITLE_SYSTEM_PROMPT =
   'Generate a short conversation title (4-6 words, no quotes, no trailing ' +
   'punctuation) describing what the conversation is about. Reply with ONLY ' +
@@ -168,7 +169,9 @@ const TITLE_SYSTEM_PROMPT =
  * not normalize, and there is no sign it ever will, so this is a permanent
  * guard rather than a temporary patch.
  *
- * Scope: gated to the `anthropic` provider only — it must not run for others.
+ * Scope: runs only when the model's provider is configured with
+ * `type: anthropic` (see {@link AssistantsConfig.resolveProviderType}) — never
+ * keyed on the provider id, which is a free label.
  */
 function sanitizeAnthropicToolArgs(messages: ModelMessage[]): ModelMessage[] {
   const coerce = (value: unknown): unknown => {
@@ -272,16 +275,15 @@ function inlineTextFileAttachments(messages: unknown[]): unknown[] {
 /**
  * Builds the Express router for the AI Assistants backend plugin.
  *
- * This mounts `GET /status`, `POST /chat`, and `POST /title`. `/chat` resolves
- * the assistant's tool allowlist from the Backstage Actions registry per
- * request.
- *
- * Request validation for `/status` and `/title` is delegated to the typed
- * OpenAPI router ({@link createOpenApiRouter}, generated from
- * `src/schema/openapi.yaml`). `/chat` is a hand-written streaming
- * route whose body is validated against the same `ChatRequest` schema by the
- * router; its RESPONSE is a UI message stream piped via
- * `pipeUIMessageStreamToResponse` and is intentionally NOT response-validated.
+ * This mounts `GET /status` and `POST /chat` on the typed OpenAPI router
+ * ({@link createOpenApiRouter}, generated from `src/schema/openapi.yaml`), plus
+ * plain Express sub-routers for the stream controls (`/chat/resume/:threadId`,
+ * `/chat/cancel/:threadId`), the `/threads` conversation store, and the
+ * `/manage` admin endpoints. `/chat` resolves the assistant's tool allowlist
+ * from the Backstage Actions registry per request; its body is validated
+ * against the `ChatRequest` schema by the OpenAPI router, while its RESPONSE
+ * is a UI message stream piped via `pipeUIMessageStreamToResponse` and is
+ * intentionally NOT response-validated.
  *
  * @public
  */
@@ -301,7 +303,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   /**
    * Enforce the `assistant.use` permission for the caller — the plugin-access
-   * gate on every user-facing route (`/status`, `/chat`, `/title`, `/threads`).
+   * gate on every user-facing route (`/status`, `/chat`, `/threads`).
    * Throws NotAllowedError (403) when denied. Which assistants the caller then
    * sees is the separate per-assistant {@link isAssistantAccessible} filter.
    */
@@ -391,10 +393,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   router.post('/chat', (req, res, next) => {
     handleChat(req, res).catch(next);
-  });
-
-  router.post('/title', (req, res, next) => {
-    handleTitle(req, res).catch(next);
   });
 
   // Reconnect to an in-flight (or just-finished) /chat stream and replay it.
@@ -841,9 +839,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     );
 
     // 8. Anthropic-only tool-args sanitizer (see sanitizeAnthropicToolArgs).
-    //    Gated to the `anthropic` provider; must not run for other providers.
-    const provider = modelId.split(':')[0];
-    if (provider === 'anthropic') {
+    //    Keyed on the provider's configured TYPE, not its id.
+    if (assistants.resolveProviderType(modelId) === 'anthropic') {
       modelMessages = sanitizeAnthropicToolArgs(modelMessages);
     }
 
@@ -1107,90 +1104,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       },
       headers: {
         'Cache-Control': 'no-cache, no-transform',
-        // AssistantChatTransport reads this to learn the resume id to store.
-        'x-resumable-stream-id': resumableId,
       },
     });
   }
 
-  /**
-   * `POST /title` — generate a short conversation title from the opening
-   * messages. Auth, assistant resolution, and access enforcement mirror `/chat`
-   * exactly. Title generation itself is best-effort: any generation error is
-   * logged and a `{ title: 'New Chat' }` fallback is returned with a 200 so
-   * titling can never break the chat UX.
-   */
-  async function handleTitle(
-    req: express.Request,
-    res: express.Response,
-  ): Promise<void> {
-    // 1. Header user token only — rejects service and cookie credentials.
-    //    Missing/invalid token throws AuthenticationError (401).
-    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
-    await requireUse(credentials);
-
-    // 2. The request body shape is validated by the OpenAPI router (see
-    //    `handleChat`); only the business checks below remain.
-    const { assistantId, modelId, messages } = req.body as {
-      assistantId: string;
-      modelId: string;
-      messages: unknown[];
-    };
-
-    // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
-    //    per-turn access decision reflects edits/deletes immediately, even on a
-    //    replica that didn't serve the write; unknown → InputError (400).
-    const assistant = await assistantStore.getById(assistantId);
-    if (!assistant) {
-      throw new InputError(`Unknown assistantId '${assistantId}'`);
-    }
-
-    // 4. Access check via userInfo + the assistant's policy; denied → 403.
-    const user = await userInfo.getUserInfo(credentials);
-    if (!isAssistantAccessible(assistant, user)) {
-      throw new NotAllowedError(
-        `User is not permitted to use assistant '${assistantId}'`,
-      );
-    }
-
-    // 5. Resolve the model; unknown or out-of-allowlist modelId → 400. An empty
-    //    allowlist means the full platform pool — defer to the store's derived
-    //    effective model list.
-    if (!assistantStore.effectiveModels(assistant).includes(modelId)) {
-      throw new InputError(
-        `Model '${modelId}' is not available for assistant '${assistantId}'`,
-      );
-    }
-    const model = assistants.resolveModel(modelId);
-
-    // 6. Build a compact excerpt from the opening messages.
-    const excerpt = buildTitleExcerpt(messages as TitleMessage[]);
-
-    // 7. Generate the title. Best-effort: on any error, log and fall back to
-    //    'New Chat' (200) so titling never breaks the UX.
-    try {
-      const result = await generateText({
-        model,
-        instructions: TITLE_SYSTEM_PROMPT,
-        prompt: excerpt,
-        maxRetries: 1,
-      });
-
-      const title = result.text.trim().replace(/["']+/g, '').slice(0, 80);
-      res.json({ title: title || 'New Chat' });
-    } catch (error) {
-      logger.warn('title generation failed', {
-        assistantId,
-        modelId,
-        error: String(error),
-      });
-      res.json({ title: 'New Chat' });
-    }
-  }
-
   // ---- Thread persistence routes (server-side conversation storage) --------
   // A plain Express sub-router. These are REST endpoints intentionally OUTSIDE
-  // the OpenAPI JSON contract (which covers only /status + /title); they back
+  // the OpenAPI JSON contract (which covers only /status + /chat); they back
   // assistant-ui's remote thread-list + history adapters. Every route is scoped
   // to the calling user — there is no path to another user's threads or
   // messages. Message rows are written ONLY by /chat (onFinish), never here.
@@ -1202,9 +1122,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   }
 
   // Resolve the caller plus the set of assistant ids they may CURRENTLY access.
-  // Thread lists/status are filtered to this set so a conversation for an agent
-  // the user can no longer use (removed from config, or access revoked) never
-  // surfaces — no orphaned rows, no unread dots for an unavailable agent.
+  // Thread lists/status are filtered to this set so a conversation for an
+  // assistant the user can no longer use (deleted, or access revoked) never
+  // surfaces — no orphaned rows, no unread dots for an unavailable assistant.
   async function resolveAccess(
     req: express.Request,
   ): Promise<{ userRef: string; accessibleIds: Set<string> }> {
@@ -1221,9 +1141,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   const threads = express.Router();
   threads.use(express.json({ limit: '1mb' }));
 
-  // List this user's threads — ALL of them by default (single multi-agent
-  // runtime), or one assistant's if `assistantId` is given. Filtered to agents
-  // the caller can currently access.
+  // List this user's threads — ALL of them by default (one runtime spans every
+  // assistant), or one assistant's if `assistantId` is given. Filtered to the
+  // assistants the caller can currently access.
   threads.get('/', (req, res, next) => {
     (async () => {
       const { userRef, accessibleIds } = await resolveAccess(req);
@@ -1262,8 +1182,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   // Per-conversation status across ALL of the user's assistants — the single
-  // source the client derives every indicator from (conversation dots, agent
-  // rollups, nav). `unread` is durable (DB); `working` is the live in-flight set.
+  // source the client derives every indicator from (conversation dots,
+  // assistant rollups, nav). `unread` is durable (DB); `working` is the live
+  // in-flight set.
   // MUST precede `/:id` so 'status' isn't matched as a thread id.
   threads.get('/status', (req, res, next) => {
     (async () => {

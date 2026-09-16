@@ -7,6 +7,7 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `TitleRequest` and `TitleResponse` are removed with the `POST /title` route.
 - Backstage dependency ranges track the 1.54 release line.
 - `engines.node` is `>=22.12`.
 

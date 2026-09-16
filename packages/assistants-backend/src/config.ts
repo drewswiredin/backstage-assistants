@@ -26,7 +26,14 @@ const SUPPORTED_PROVIDER_TYPES = [
   'azure',
   'openai-compatible',
 ] as const;
-type SupportedProviderType = (typeof SUPPORTED_PROVIDER_TYPES)[number];
+/**
+ * The `type` discriminator of a configured provider — the AI-SDK package that
+ * backs it. Distinct from the provider ID, which is a free label that only
+ * namespaces model ids.
+ *
+ * @public
+ */
+export type SupportedProviderType = (typeof SUPPORTED_PROVIDER_TYPES)[number];
 
 function isSupportedProviderType(type: string): type is SupportedProviderType {
   return (SUPPORTED_PROVIDER_TYPES as readonly string[]).includes(type);
@@ -150,7 +157,7 @@ export interface AssistantsConfig {
    * disables truncation. Default `30000`.
    */
   toolResultMaxChars: number;
-  /** Express body-parser size limit for `/chat` and `/title` (default `'10mb'`). */
+  /** Express body-parser size limit for `/chat` (default `'10mb'`). */
   requestBodyLimit: string;
   /**
    * The global approval floor as a flat set of tool ids: the top-level
@@ -161,6 +168,13 @@ export interface AssistantsConfig {
   requireApproval: Set<string>;
   /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
   resolveModel: (modelId: string) => LanguageModel;
+  /**
+   * The configured `type` of the provider a `provider:model` id belongs to, or
+   * undefined for an id outside the pool. Provider-specific behaviour keys on
+   * this, never on the provider id: `claude` with `type: anthropic` is
+   * Anthropic; `anthropic` with `type: openai-compatible` is not.
+   */
+  resolveProviderType: (modelId: string) => SupportedProviderType | undefined;
   /**
    * The configured output-token ceiling for a model, or undefined to leave the
    * provider's own default in place. Only needed when a provider guesses badly
@@ -294,6 +308,8 @@ export function readConfig(config: Config): AssistantsConfig {
   // --- Providers + models -------------------------------------------------
   const providersConfig = root.getConfig('providers');
   const providerIds = providersConfig.keys();
+  /** Provider type per `provider:model` id in the pool. */
+  const providerTypeByModelId = new Map<string, SupportedProviderType>();
   /** Provider type per reasoning-capable `provider:model` id. */
   const reasoningTypeByModelId = new Map<string, SupportedProviderType>();
   /** Configured output-token ceiling per `provider:model` id. */
@@ -326,6 +342,7 @@ export function readConfig(config: Config): AssistantsConfig {
       const id = `${providerId}:${name}`;
       const contextWindow = modelConfig.getOptionalNumber('contextWindow');
       const reasoning = modelConfig.getOptionalBoolean('reasoning') ?? false;
+      providerTypeByModelId.set(id, type);
       if (reasoning) {
         reasoningTypeByModelId.set(id, type);
       }
@@ -478,6 +495,8 @@ export function readConfig(config: Config): AssistantsConfig {
     requireApproval,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),
+    resolveProviderType: (modelId: string) =>
+      providerTypeByModelId.get(modelId),
     resolveMaxOutputTokens: (modelId: string) =>
       maxOutputTokensByModelId.get(modelId),
     resolveReasoning: (modelId: string, level: ReasoningLevel) => {

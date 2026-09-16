@@ -37,7 +37,10 @@ interface ServerThread {
 
 /** Server metadata carried through `RemoteThreadMetadata.custom` to the UI. */
 export interface ThreadCustomMetadata {
-  /** Owning assistant — lets one runtime span all agents (UI filters by it). */
+  /**
+   * Owning assistant. One runtime spans every assistant; the UI filters by
+   * it.
+   */
   assistantId: string;
   unread: boolean;
   pinned: boolean;
@@ -86,10 +89,10 @@ export function createThreadListAdapter(
 
   return {
     async list() {
-      // ALL the user's threads across agents (the server filters to ones the
-      // caller can currently access); the UI filters by the active agent. One
-      // runtime spans the whole tab, so switching agent/conversation never
-      // mounts/unmounts a runtime.
+      // ALL the user's threads across assistants (the server filters to ones
+      // the caller can currently access); the UI filters by the active
+      // assistant. One runtime spans the whole tab, so switching assistant or
+      // conversation never mounts/unmounts a runtime.
       const data = await api.requestJson<{ threads: ServerThread[] }>(
         `/threads`,
       );
@@ -97,7 +100,7 @@ export function createThreadListAdapter(
     },
 
     async initialize(_threadId) {
-      // A new thread is created under whichever agent is active right now.
+      // A new thread is created under whichever assistant is active right now.
       const thread = await api.requestJson<ServerThread>(`/threads`, {
         method: 'POST',
         body: JSON.stringify({ assistantId: getActiveAssistantId() }),

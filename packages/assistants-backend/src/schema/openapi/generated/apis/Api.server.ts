@@ -6,7 +6,6 @@
 // ******************************************************************
 import { ChatRequest } from '../models/ChatRequest.model';
 import { StatusResponse } from '../models/StatusResponse.model';
-import { TitleResponse } from '../models/TitleResponse.model';
 
 /**
  * @public
@@ -21,18 +20,9 @@ export type PostChat = {
   body: ChatRequest;
   response: string | Error;
 };
-/**
- * @public
- */
-export type PostTitle = {
-  body: ChatRequest;
-  response: TitleResponse | Error;
-};
 
 export type EndpointMap = {
   '#get|/status': GetStatus;
 
   '#post|/chat': PostChat;
-
-  '#post|/title': PostTitle;
 };

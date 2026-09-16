@@ -211,8 +211,8 @@ function parseDefinitionBody(
     }
     // The UI block is browser-cosmetic; pass it through structurally (the
     // shared UiOptions shape is enforced by the editor, lenient here). Omit an
-    // empty object so /status doesn't carry a redundant `ui: {}` (absent = use
-    // the global UI defaults).
+    // empty object so /status doesn't carry a redundant `ui: {}` (absent =
+    // the chat surface's built-in composer placeholder and no starter chips).
     if (Object.keys(b.ui).length > 0) {
       def.ui = b.ui as AssistantDefinition['ui'];
     }

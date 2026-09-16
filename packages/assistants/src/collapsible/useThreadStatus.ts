@@ -10,7 +10,7 @@
  * pure derivation:
  *   - `working` (in-flight) shows ALWAYS, even for the focused conversation
  *   - `unread` shows until you FOCUS the conversation (focusing marks it read)
- *   - rollups (agent, nav, tab): `working` wins over `unread`
+ *   - rollups (assistant, nav, tab): `working` wins over `unread`
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApiHolder } from '@backstage/core-plugin-api';
@@ -35,7 +35,7 @@ export interface ThreadStatusStore {
   /** Status of one conversation (by server thread id). */
   statusOf: (remoteId: string | undefined) => ConvStatus;
   /** Rollup for an assistant: working if any conv working, else unread if any unread. */
-  agentStatus: (assistantId: string) => ConvStatus;
+  assistantStatus: (assistantId: string) => ConvStatus;
   /** Global rollup across every conversation (working wins, then unread). */
   overallStatus: ConvStatus;
   /** True while a turn is in flight for this conversation. */
@@ -128,7 +128,7 @@ export function useThreadStatus(
     [rows],
   );
 
-  const agentStatus = useCallback(
+  const assistantStatus = useCallback(
     (assistantId: string): ConvStatus => {
       let unread = false;
       for (const r of rows) {
@@ -150,5 +150,5 @@ export function useThreadStatus(
     return unread ? 'unread' : 'read';
   }, [rows, focusedId]);
 
-  return { statusOf, agentStatus, overallStatus, isWorking, usageOf, tick };
+  return { statusOf, assistantStatus, overallStatus, isWorking, usageOf, tick };
 }

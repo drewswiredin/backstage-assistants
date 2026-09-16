@@ -281,7 +281,8 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
   },
-  // Bare-agent empty state (no conversation selected; new chats are "+"-only).
+  // Bare-assistant empty state (no conversation selected; new chats are "+"
+  // only).
   emptyState: {
     display: 'flex',
     flexDirection: 'column',
@@ -357,7 +358,7 @@ export function CollapsiblePage() {
 
   // `useAsyncRetry` so the admin editor can refetch `/status` after a
   // create/rename/delete: `retry()` re-runs `getStatus`, re-rendering the rail
-  // (and the active-assistant fallback handles a now-deleted active agent).
+  // (and the active-assistant fallback handles a now-deleted active assistant).
   const status = useAsyncRetry(() => api.getStatus(), [api]);
 
   if (canUse.loading || status.loading) {
@@ -384,9 +385,9 @@ export function CollapsiblePage() {
       />
     );
   }
-  // The active agent is UI state, NOT a remount key: one runtime carries every
-  // conversation across all agents (see ChatRuntime). `?assistant=` only seeds
-  // the initially-focused agent.
+  // The active assistant is UI state, NOT a remount key: one runtime carries
+  // every conversation across all assistants (see ChatRuntime). `?assistant=`
+  // only seeds the initially-focused assistant.
   const initialAssistantId =
     assistants.find(a => a.id === requestedAssistant)?.id ?? assistants[0].id;
   return (
@@ -398,7 +399,7 @@ export function CollapsiblePage() {
   );
 }
 
-/** The id of an agent's most-recently-updated conversation, or undefined if none. */
+/** The id of an assistant's most-recently-updated conversation, if any. */
 function mostRecentThreadFor(
   assistantId: string,
   threadList: ThreadListState,
@@ -471,10 +472,11 @@ function ChatRuntime({
   initialAssistantId: string;
   refreshStatus: () => void;
 }) {
-  // ONE runtime for the whole tab carrying every conversation across all agents.
-  // The active agent is a live ref the adapter/runtime read when creating or
-  // tagging a new thread — so switching agent or conversation never mounts or
-  // unmounts a runtime (no remount churn, no stream loss).
+  // ONE runtime for the whole tab carrying every conversation across all
+  // assistants. The active assistant is a live ref the adapter/runtime read
+  // when creating or tagging a new thread — so switching assistant or
+  // conversation never mounts or unmounts a runtime (no remount churn, no
+  // stream loss).
   const activeAssistantIdRef = useRef<string>(initialAssistantId);
   // Drives the transport body; updated by the model picker + on thread switch.
   const modelIdRef = useRef<ModelId>(status.defaultModel);
@@ -550,9 +552,9 @@ function ChatChrome({
   const signals = useApiHolder().get(signalApiRef);
   const [, setSearchParams] = useSearchParams();
 
-  // Active agent: UI state, with a ref mirror so the adapter/runtime can tag a
-  // brand-new thread synchronously (before React re-renders). The active
-  // conversation always belongs to this agent (the list is filtered by it).
+  // Active assistant: UI state, with a ref mirror so the adapter/runtime can
+  // tag a brand-new thread synchronously (before React re-renders). The active
+  // conversation always belongs to this assistant (the list is filtered by it).
   const [activeAssistantId, setActiveAssistantIdState] =
     useState(initialAssistantId);
   const setActiveAssistantId = useCallback(
@@ -585,28 +587,30 @@ function ChatChrome({
   const activeItem = threadList.threadItems[activeId];
   const activeRemoteId = activeItem?.remoteId;
   const activeTitle = activeItem?.title ?? '';
-  // A bare agent with no conversation: the blank, uninitialized draft slot. New
-  // chats are created only via "+", so we show an empty state here (no composer)
-  // instead of a chat box — removing the ambiguous "type to start" path.
+  // A bare assistant with no conversation: the blank, uninitialized draft slot.
+  // New chats are created only via "+", so we show an empty state here (no
+  // composer) instead of a chat box — removing the ambiguous "type to start"
+  // path.
   const isBlankDraft = activeId === threadList.newThreadId && !activeRemoteId;
 
   // Single source of truth for read/working/unread + token usage, derived from
   // server + signals.
-  const { statusOf, agentStatus, usageOf, overallStatus, tick } =
+  const { statusOf, assistantStatus, usageOf, overallStatus, tick } =
     useThreadStatus(api, activeRemoteId);
 
-  // On first load for this agent (the component is keyed by assistant.id), land
-  // on the agent's MOST RECENT conversation. The runtime defaults the main thread
-  // to a blank "new thread"; we switch off it to the latest existing conversation
-  // so selecting an agent shows a conversation, never a bare agent. An agent with
-  // no conversations stays on the unpersisted draft (the only no-"+" empty state).
-  // A new conversation is created ONLY via "+", never by typing.
+  // On first load for this assistant (the component is keyed by assistant.id),
+  // land on the assistant's MOST RECENT conversation. The runtime defaults the
+  // main thread to a blank "new thread"; we switch off it to the latest
+  // existing conversation so selecting an assistant shows a conversation, never
+  // a bare assistant. An assistant with no conversations stays on the
+  // unpersisted draft (the only no-"+" empty state). A new conversation is
+  // created ONLY via "+", never by typing.
   const didSelectInitial = useRef(false);
   useEffect(() => {
     if (didSelectInitial.current || threadList.isLoading) return;
     didSelectInitial.current = true;
-    // Land on the active agent's most-recent conversation; if it has none, stay
-    // on the blank draft (never empty). Don't override a user pick.
+    // Land on the active assistant's most-recent conversation; if it has none,
+    // stay on the blank draft (never empty). Don't override a user pick.
     if (activeId !== threadList.newThreadId) return;
     const mostRecent = mostRecentThreadFor(
       activeAssistantIdRef.current,
@@ -621,9 +625,9 @@ function ChatChrome({
       threadList.threadIds
         .filter(id => {
           // The conversation you're viewing always shows; other blank drafts
-          // don't; the rest are filtered to the active agent. A just-sent thread
-          // has no assistantId metadata until the next reload, but it's the
-          // active thread, so it stays visible via the first clause.
+          // don't; the rest are filtered to the active assistant. A just-sent
+          // thread has no assistantId metadata until the next reload, but it's
+          // the active thread, so it stays visible via the first clause.
           if (id === activeId) return true;
           if (id === threadList.newThreadId) return false;
           const aid = (
@@ -785,7 +789,7 @@ function ChatChrome({
       if (id === activeAssistantId) return;
       setActiveAssistantId(id);
       setSearchParams({ assistant: id }); // deep-link / survive refresh
-      // Land on that agent's most-recent conversation, else a fresh draft.
+      // Land on that assistant's most-recent conversation, else a fresh draft.
       const mostRecent = mostRecentThreadFor(id, threadList);
       if (mostRecent) void runtime.threads.switchToThread(mostRecent);
       else void runtime.threads.switchToNewThread();
@@ -835,8 +839,9 @@ function ChatChrome({
         await runtime.threads.getItemById(id).delete();
         await runtime.threads.reload();
         if (!wasActive) return; // deleting a background chat doesn't move you
-        // Land somewhere valid: the agent's most-recent remaining chat, else the
-        // empty state (same as a first visit). No conversation is auto-created.
+        // Land somewhere valid: the assistant's most-recent remaining chat,
+        // else the empty state (same as a first visit). No conversation is
+        // auto-created.
         const remaining = mostRecentThreadFor(
           activeAssistantIdRef.current,
           runtime.threads.getState(),
@@ -1034,7 +1039,7 @@ function ChatChrome({
                       aria-label={a.title}
                       onClick={() => handleSelectAssistant(a.id)}
                     >
-                      <StatusDot status={agentStatus(a.id)}>
+                      <StatusDot status={assistantStatus(a.id)}>
                         <AssistantAvatar color={a.color} size={24} />
                       </StatusDot>
                     </IconButton>
@@ -1105,7 +1110,7 @@ function ChatChrome({
                 assistants={status.assistants}
                 activeAssistantId={assistant.id}
                 onSelectAssistant={handleSelectAssistant}
-                agentStatus={agentStatus}
+                assistantStatus={assistantStatus}
                 conversations={conversations}
                 activeId={activeId}
                 onNew={handleNew}

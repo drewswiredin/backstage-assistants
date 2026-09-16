@@ -70,8 +70,8 @@ export const AssistantsList: FC<{
   activeId: string;
   onSelect: (id: string) => void;
   /** Per-assistant rollup status (working/unread/read) for the rail dots. */
-  agentStatus?: (assistantId: string) => ConvStatus;
-}> = ({ assistants, activeId, onSelect, agentStatus }) => {
+  assistantStatus?: (assistantId: string) => ConvStatus;
+}> = ({ assistants, activeId, onSelect, assistantStatus }) => {
   const classes = useStyles();
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -96,7 +96,7 @@ export const AssistantsList: FC<{
             onClick={() => onSelect(a.id)}
           >
             <ListItemIcon className={classes.icon}>
-              <StatusDot status={agentStatus?.(a.id) ?? 'read'}>
+              <StatusDot status={assistantStatus?.(a.id) ?? 'read'}>
                 <AssistantAvatar color={a.color} size={22} />
               </StatusDot>
             </ListItemIcon>

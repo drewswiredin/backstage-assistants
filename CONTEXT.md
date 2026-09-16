@@ -33,15 +33,15 @@ What the model actually receives for a request, resolved per turn from the Assis
 The two independent authorization checks (Backstage action tools). (1) The Assistant **Allowlist** — the `allowedTools` entries that name Backstage actions. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every Backstage action runs as the user. MCP tools in `allowedTools` bypass this user gate — they run as the configured shared server credential, not the caller.
 
 **Approval gate**:
-A GLOBAL config floor of tool ids that must be confirmed — an explicit Allow/Deny in chat — before they run: the top-level `assistants.requireApproval` (action ids) ∪ each per-server `mcp.servers.*.requireApproval` (tool names). The per-turn approval set = this floor ∩ the Assistant's `allowedTools`. Feeds the AI SDK's `toolApproval` map so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Not per-Assistant; config-only, so runtime assistant-editing can never weaken it. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
+A GLOBAL config floor of tool ids that must be confirmed — an explicit Allow/Deny in chat — before they run: the top-level `assistants.requireApproval` (action ids) ∪ each per-server `mcp.servers.*.requireApproval` (tool names). The per-turn approval set = this floor ∩ the Assistant's `allowedTools`. Feeds the AI SDK's `toolApproval` map so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Not per-Assistant; config-only, so runtime assistant-editing can never weaken it. "Approval floor" names the same config list. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
 _Avoid_: treating it as authorization (it is a checkpoint, not a permission), or as a per-Assistant setting
 
 **Interactive form** (`render_form`):
-A client-side tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No server `execute`: the model composes the form (JSON Schema + uiSchema), the surface renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. The in-plugin generative UI, distinct from the broader **gen-ui library**.
+A client-side tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No server `execute`: the model composes the form (JSON Schema + uiSchema), the surface renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. The in-plugin generative UI.
 _Avoid_: a bespoke form widget — it reuses scaffolder's fields
 
 **Conversation**:
-A single chat session with one Assistant — its ordered messages. The user-facing term. Owned by exactly one Assistant; ownership is immutable (a conversation can never move to another Assistant). Persists server-side in the plugin's own database, scoped to the owning user, and reaches the browser only through assistant-ui's remote thread-list + history adapters — the frontend is a pure view, holding no conversation state of its own. Lists are siloed per Assistant — no unified cross-Assistant view.
+A single chat session with one Assistant — its ordered messages. The user-facing term. Owned by exactly one Assistant; ownership is immutable (a conversation can never move to another Assistant). Persists server-side in the plugin's own database, scoped to the owning user, and reaches the browser only through assistant-ui's remote thread-list + history adapters — the frontend is a pure view that never persists message content; the server is the single writer and the only durable copy. Lists are siloed per Assistant — no unified cross-Assistant view.
 _Avoid_: Chat, Session (as a noun for stored history)
 
 **Thread**:
@@ -58,17 +58,17 @@ A `<providerId>:<model>` string (e.g. `myAzure:gpt-4o`, `openrouter:anthropic/cl
 The union of every Provider's `models[]`. The global set of selectable models; an Assistant's `models[]` allowlist is a subset of it.
 
 **Conversation surface**:
-The inner chat component — message list, composer, tool-call rendering, approval Allow/Deny, and generative UI (interactive RJSF forms). It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its **own** surface in-repo (seeded from the assistant-ui registry template); gen-ui owns a parallel one. They are kept swappable by the **surface seam**, not a shared dependency. Distinct from the **chrome**.
+The inner chat component — message list, composer, tool-call rendering, approval Allow/Deny, and generative UI (interactive RJSF forms). It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its surface in-repo (seeded from the assistant-ui registry template), plugged in at the **surface seam**. Distinct from the **chrome**.
 _Avoid_: chat window (ambiguous — say "surface" for the replaceable unit, "chrome" for the frame)
 
 **Surface seam**:
-The single component boundary at which a conversation surface plugs in: a BYO-runtime `ConversationSurface: FC<ConversationSurfaceProps>` rendered inside the host's `AssistantRuntimeProvider`. The host owns runtime/transport/auth/chrome; the surface owns only presentation and reads the ambient runtime. Props are a thin, forward-compatible presentational bag (`composerPlaceholder`, `suggestions`, `welcome`, `className`). Routed through a `surface/` indirection module so swapping the plugin's in-repo surface for gen-ui's is one import. This is assistant-ui's native runtime/surface split — not a custom abstraction.
+The single component boundary at which a conversation surface plugs in: a BYO-runtime `ConversationSurface: FC<ConversationSurfaceProps>` rendered inside the host's `AssistantRuntimeProvider`. The host owns runtime/transport/auth/chrome; the surface owns only presentation and reads the ambient runtime. Props are a thin, forward-compatible presentational bag (`composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, `className`). Routed through a `surface/` indirection module so swapping the surface is one import. This is assistant-ui's native runtime/surface split — not a custom abstraction.
 
 **Chrome**:
-The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model picker. Owned by the `backstage-assistants` plugin, not the gen-ui library.
+The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model and effort pickers, the manage gear (`assistant.manage`). Owned by the `backstage-assistants` plugin.
 
-**gen-ui library** (`@drewswiredin/gen-ui`):
-The standalone, publishable library that owns _its_ Conversation surface + generative-UI machinery (iframe artifacts, OpenUI, mermaid, trusted-component allowlist). BYO-runtime core + a minimal OpenAI-compatible/OpenRouter wrapper. Agent-agnostic — no Mastra. Consumed by its own demo app. **Not a dependency of the plugin**: the two share only a copy-paste starting point and the **surface seam**, so a matured gen-ui can drop in via one import without ever being a build-time coupling.
+**Rail**:
+The assistant list on the left of the panel — one entry per accessible Assistant, with its working / unread rollup. Picking one selects that Assistant's conversations.
 
 **Access policy**:
 The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`), stored on the definition in the DB. Deny by default. It filters _which_ Assistants a user sees — distinct from the plugin **Permission**s (whether they may use the plugin at all) and from the per-tool Backstage checks at execution.
@@ -77,3 +77,15 @@ _Avoid_: calling it a permission (it is content/assignment, not a Backstage perm
 **Permission**:
 A Backstage permission gating plugin access. Two, defined in `-common`: `assistant.use` (use the plugin — load the surface, chat) and `assistant.manage` (run the admin editor — create / edit / delete definitions). Authorized server-side on every route and gated client-side with `usePermission`; registered with `coreServices.permissionsRegistry` so permission UIs (e.g. the RBAC role editor) discover them; governed by the host app's permission policy. Distinct from the per-Assistant **Access policy** (which Assistants you see) and the per-tool Backstage checks at tool execution.
 _Avoid_: an `assistants.admins` config allowlist (management is the `assistant.manage` permission, not config)
+
+**Snapshot**:
+The AssistantStore's in-memory copy of every assistant definition — write-through on the replica that served the edit, lazily refreshed every 60 s elsewhere. Read synchronously by `/status` and `/threads*`; `/chat` reads the DB row instead, so a turn never runs against a stale definition.
+
+**Resumable buffer**:
+A per-process SSE buffer keyed by thread id, holding a turn's stream while it runs and for 60 s after it completes. `GET /chat/resume/:threadId` replays it; one backend replica or session affinity for `/api/assistants/*`.
+
+**Delta-validation**:
+The editor's save rule: only _new_ additions are validated against live capabilities; pre-existing entries are grandfathered, surfaced as stale (RED gone / AMBER unverifiable), and pruned only on demand. Save is never blocked by stale entries.
+
+**Seed-once**:
+First init inserts one open Assistant (`allowAuthenticated: true`, the three built-in read-only tools, the platform-default model) and a marker row in `assistants_meta`. The marker means it is never resurrected once deleted or edited.

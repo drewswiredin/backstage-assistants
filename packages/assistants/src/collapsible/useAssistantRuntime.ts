@@ -10,8 +10,9 @@
  *   - If the server reports a turn is in flight for this thread (the `working`
  *     status), we rejoin its live stream by the thread id — GET /chat/resume/:id,
  *     which the backend buffers per thread. No fragile per-turn id is captured.
- * So a remount (switching conversation/agent, route change, reload) recovers the
- * same way every time, and a backgrounded tab simply keeps streaming.
+ * So a remount (switching conversation/assistant, route change, reload)
+ * recovers the same way every time, and a backgrounded tab simply keeps
+ * streaming.
  */
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useChat } from '@ai-sdk/react';
@@ -50,7 +51,7 @@ function awaitingHumanInput(message: {
 interface RuntimeHookOptions {
   api: AssistantsApi;
   baseUrl: string;
-  /** The active agent — tags a brand-new thread before it has server metadata. */
+  /** The active assistant — tags a new thread before it has server metadata. */
   getActiveAssistantId: () => AssistantId;
   /** The currently selected model id (kept in a ref so the transport reads it live). */
   modelIdRef: RefObject<ModelId>;
@@ -66,8 +67,8 @@ interface RuntimeHookOptions {
  * expects. `AssistantChatTransport` builds the body (with the thread's `id` and
  * `messages`); we add `assistantId` + `modelId` (+ `reasoningLevel` when the
  * chosen model offers one) and copy `id -> threadId`. `getAssistantId` is read
- * per request so each thread targets its OWN agent (one runtime spans all
- * agents).
+ * per request so each thread targets its OWN assistant (one runtime spans all
+ * assistants).
  */
 function createInjectingFetch(
   baseFetch: typeof fetch,
@@ -142,9 +143,9 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     const remoteIdRef = useRef<string | undefined>(remoteId);
     remoteIdRef.current = remoteId;
 
-    // This thread's agent: its own metadata once known, else the active agent
-    // (a brand-new draft). Read live by the transport so /chat always targets
-    // the right assistant even though one runtime spans every agent.
+    // This thread's assistant: its own metadata once known, else the active
+    // assistant (a brand-new draft). Read live by the transport so /chat always
+    // targets the right assistant even though one runtime spans every one.
     const assistantIdRef = useRef<AssistantId>(
       threadAssistantId ?? getActiveAssistantId(),
     );
@@ -163,9 +164,11 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
           ),
           resumable: {
             // Reconnect by the THREAD id — the backend buffers the in-flight SSE
-            // per thread. We don't capture/store a per-turn id: getStreamId just
+            // per thread. No per-turn id is captured or stored: getStreamId
             // yields the thread id so resumeStream() targets /chat/resume/:id;
             // WHETHER to resume is decided by the server `working` flag below.
+            // `ResumableClientStorage` requires setStreamId/clear; with nothing
+            // stored they are no-ops (the backend sends no stream-id header).
             storage: {
               getStreamId: () => remoteIdRef.current ?? null,
               setStreamId: () => {},

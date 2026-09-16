@@ -184,10 +184,10 @@ const modelName = (id: string) => id.split(/[:/]/).pop() || id;
 
 /**
  * Assistant detail modal: a centered, profile-style identity (avatar + name +
- * description, with an agent-color accent bar and avatar halo) over technical
- * lists of the assistant's Tools (monospace name + description, full text on
- * hover) and Models (monospace, default marked). All data comes from the
- * browser-safe {@link AssistantSummary}.
+ * description, with an assistant-color accent bar and avatar halo) over
+ * technical lists of the assistant's Tools (monospace name + description, full
+ * text on hover) and Models (monospace, default marked). All data comes from
+ * the browser-safe {@link AssistantSummary}.
  *
  * @public
  */

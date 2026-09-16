@@ -109,6 +109,30 @@ describe('readConfig', () => {
       /defaultModel/,
     );
   });
+
+  it('resolves a provider type from the configured type, not the id', () => {
+    const cfg = read({
+      providers: {
+        claude: {
+          type: 'anthropic',
+          apiKey: 'sk-ant-test',
+          models: [{ name: 'claude-sonnet-4' }],
+        },
+        anthropic: {
+          type: 'openai-compatible',
+          apiKey: 'sk-test',
+          baseUrl: 'http://llm.local/v1',
+          models: [{ name: 'llama-3' }],
+        },
+      },
+      defaultModel: 'claude:claude-sonnet-4',
+    });
+    expect(cfg.resolveProviderType('claude:claude-sonnet-4')).toBe('anthropic');
+    expect(cfg.resolveProviderType('anthropic:llama-3')).toBe(
+      'openai-compatible',
+    );
+    expect(cfg.resolveProviderType('anthropic:nope')).toBeUndefined();
+  });
 });
 
 describe('effectiveApprovalSet', () => {
