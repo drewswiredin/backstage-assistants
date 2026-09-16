@@ -128,7 +128,7 @@ export function splitAllowedTools(
 /**
  * Per-tool allowlist semantics: explicit names only — `[]` allows nothing,
  * there is no wildcard, and a tool added to a server later is never
- * auto-granted (the trust model in architecture §5).
+ * auto-granted (the trust model in docs/architecture.md, Authorization).
  */
 function isToolAllowed(allowlist: string[], name: string): boolean {
   return allowlist.includes(name);

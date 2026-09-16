@@ -83,10 +83,8 @@ configuration reference: [backend README](packages/assistants-backend/README.md)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
 [SECURITY.md](SECURITY.md) for how to report a vulnerability. The design lives
-in [docs/PRINCIPLES.md](docs/PRINCIPLES.md) and two diagrams,
-[docs/architecture.html](docs/architecture.html) and
-[docs/config-flow.html](docs/config-flow.html) (HTML source; download and open
-locally).
+in [docs/PRINCIPLES.md](docs/PRINCIPLES.md) and
+[docs/architecture.md](docs/architecture.md).
 
 ## License
 

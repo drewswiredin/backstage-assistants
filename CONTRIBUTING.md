@@ -41,8 +41,8 @@ git commit -s
 
 ## Design documents
 
-The design lives in `docs/architecture.html`, `docs/config-flow.html`,
-`docs/PRINCIPLES.md`, and `CONTEXT.md`. A change that alters the design updates
+The design lives in `docs/architecture.md`, `docs/PRINCIPLES.md`, and
+`CONTEXT.md`. A change that alters the design updates
 them in the same commit as the code. Docs describe the current design in the
 present tense; they carry no change narration or migration notes.
 

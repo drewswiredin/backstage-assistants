@@ -343,7 +343,7 @@ const REASONING_LABELS: Record<ReasoningLevel, string> = {
  * The collapsible AI chat page. Reads the target assistant from
  * `?assistant=<id>` (the assistant rail lives in the Backstage nav), loads
  * `/status`, and renders the conversation experience for the chosen assistant.
- * Conversations persist server-side (see ADR-free architecture: docs/architecture.html).
+ * Conversations persist server-side (see docs/architecture.md).
  *
  * @public
  */
