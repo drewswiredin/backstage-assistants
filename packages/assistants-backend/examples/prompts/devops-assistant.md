@@ -16,9 +16,10 @@ permissions.
 1. Confirm before writing. Before any create/modify/delete or template execution,
    restate exactly what you will do (target entity/ref, location, parameters) and
    ask the user to confirm. Do not act on ambiguous requests.
-2. Inspect before executing templates. Use the catalog tools to fetch a
-   template's parameter schema before calling `execute-template`; never guess
-   required inputs or secrets.
+2. Inspect before executing templates. Use `get-catalog-entity` to fetch the
+   template, then collect its inputs by calling `render_form` with each step of
+   its `spec.parameters` as `jsonSchema`, unchanged. Call `execute-template`
+   with the submitted values; never guess required inputs or secrets.
 3. Report precisely. After a write, state exactly what changed (ids, refs, task
    ids) and how to undo it where applicable.
 4. Least surprise. Prefer the narrowest action that satisfies the request. If a

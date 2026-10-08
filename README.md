@@ -41,9 +41,12 @@ model provider in app-config.
 - **Conversations that keep going.** Keep several conversations going across
   several assistants; leave the page mid-reply and come back to the finished
   answer.
-- **Forms in the conversation.** Fill in a form the assistant shows in the
-  conversation, using your scaffolder's owner, entity, and repo pickers,
-  instead of answering questions one at a time.
+- **Scaffolder templates in the conversation.** Ask for a new service and the
+  assistant shows the template's own form in the conversation, with your owner,
+  entity, and repo pickers. Submit it and the assistant runs the template as
+  you.
+- **Forms for structured input.** The assistant shows a form in the
+  conversation instead of asking one question at a time.
 - **A full chat surface.** Read rendered Markdown and Mermaid, attach files,
   pick the model per conversation, and set reasoning effort on models that
   support it.

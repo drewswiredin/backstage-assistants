@@ -19,6 +19,7 @@ Pairs with the frontend plugin
 - [Add an MCP server](#add-an-mcp-server)
 - [Require approval before a tool runs](#require-approval-before-a-tool-runs)
 - [Forms and downloads in the conversation](#forms-and-downloads-in-the-conversation)
+- [Run a scaffolder template from the conversation](#run-a-scaffolder-template-from-the-conversation)
 - [Grant assistant.use and assistant.manage](#grant-assistantuse-and-assistantmanage)
 - [Run in production](#run-in-production)
 - [Troubleshooting](#troubleshooting)
@@ -364,6 +365,24 @@ so the model can reuse a scaffolder template's parameter block verbatim.
 `download_file` hands a generated file back as a download chip in the
 conversation. Both pause the turn the way the approval gate does and survive a
 page reload.
+
+## Run a scaffolder template from the conversation
+
+Give an assistant `get-catalog-entity` and `execute-template` (with `catalog`
+and `scaffolder` in `backend.actions.pluginSources`) and it can run your
+templates end to end:
+
+1. `get-catalog-entity` reads the template entity, whose `spec.parameters` is
+   the template's form.
+2. `render_form` shows each parameter step in the conversation, with the
+   template's own pickers and validation.
+3. `execute-template` runs the template with the submitted values, as the
+   user, and returns the task id.
+
+`dry-run-template` and `list-scaffolder-tasks` are available from the same
+module for a preview or a status check. Put `execute-template` in
+[`requireApproval`](#require-approval-before-a-tool-runs) so the run waits for
+an Allow after the form.
 
 ## Grant assistant.use and assistant.manage
 

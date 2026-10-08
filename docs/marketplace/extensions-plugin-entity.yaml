@@ -32,6 +32,7 @@ spec:
   highlights:
     - Answers from your catalog, TechDocs, and any Backstage action, as the signed-in user
     - Backstage actions run with the asker's own permissions, never more
+    - Run scaffolder templates from the conversation, through the template's own form and pickers
     - Require an Allow / Deny in the conversation for the actions you choose, such as running templates
     - Add MCP servers to give assistants tools outside Backstage, each under one credential you configure
     - 'Create and edit assistants in-app: prompt, models, tools, and who can use them'

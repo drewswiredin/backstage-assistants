@@ -206,6 +206,11 @@ any custom field), resolved at runtime from the app. With
 `@backstage/plugin-scaffolder` registered the pickers populate from the
 catalog; without it, forms render with plain inputs.
 
+A scaffolder template's parameters render as-is, `ui:field` and `ui:options`
+included, so an assistant can show a template's own form in the conversation and
+run the template with the submitted values. The backend README covers
+[the actions that flow needs](https://github.com/drewswiredin/backstage-assistants/tree/main/packages/assistants-backend#run-a-scaffolder-template-from-the-conversation).
+
 ### Dependency versions
 
 The `@assistant-ui/*` set, `assistant-cloud`, and the AI SDK (`ai`,
