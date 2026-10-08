@@ -128,7 +128,7 @@ function loadScaffolderFields(holder: ApiHolder): Promise<FieldRegistry> {
  */
 export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
   toolName: 'render_form',
-  render: function RenderForm({ args, result, addResult }) {
+  render: function RenderForm({ args, result, addResult, status }) {
     const classes = useStyles();
     const holder = useApiHolder();
     const [fields, setFields] = useState<FieldRegistry | undefined>(undefined);
@@ -144,10 +144,16 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
     }, [holder]);
 
     const rawSchema = args?.jsonSchema;
-    // Wait for BOTH a complete schema (args stream in token by token, and a
-    // partial schema would throw) AND the field registry — a `ui:field` picker
-    // would error if its component isn't registered yet.
+    // Wait for BOTH the complete args AND the field registry — a `ui:field`
+    // picker would error if its component isn't registered yet. A tool call with
+    // no result carries its message's status, so `running` means the args are
+    // still streaming in. Mounting then would hand each picker a half-written
+    // spec, and pickers read `ui:options` once, on mount: EntityPicker fetches
+    // with whatever `catalogFilter` it first sees, so a picker mounted before
+    // its filter streamed in lists every entity until a reload.
+    const argsComplete = status?.type !== 'running';
     const ready =
+      argsComplete &&
       !!rawSchema &&
       typeof rawSchema === 'object' &&
       Object.keys(rawSchema).length > 0;

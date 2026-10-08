@@ -3,6 +3,15 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.1 - 2026-10-08
+
+### Fixed
+
+- An inline form mounts once its tool-call arguments finish streaming. A
+  scaffolder picker reads `ui:options` once, on mount, so an `EntityPicker`
+  mounted mid-stream listed every entity instead of its `catalogFilter`
+  until the page was reloaded.
+
 ## 0.15.0 - 2026-10-08
 
 ### Changed
