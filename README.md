@@ -45,11 +45,13 @@ model provider in app-config.
   assistant shows the template's own form in the conversation, with your owner,
   entity, and repo pickers. Submit it and the assistant runs the template as
   you.
-- **Forms for structured input.** The assistant shows a form in the
-  conversation instead of asking one question at a time.
-- **A full chat surface.** Read rendered Markdown and Mermaid, attach files,
-  pick the model per conversation, and set reasoning effort on models that
-  support it.
+- **Generative UI in the chat pane.** Replies are more than text. The
+  assistant shows a form, with your scaffolder pickers, instead of asking one
+  question at a time; draws Mermaid diagrams you can open fullscreen to pan and
+  zoom; and hands back generated files as download chips, with a preview for
+  images. Markdown renders in full, tables and code included.
+- **A full chat surface.** Attach files, pick the model per conversation, and
+  set reasoning effort on models that support it.
 
 ## What admins get
 

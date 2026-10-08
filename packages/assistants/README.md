@@ -5,7 +5,10 @@ Every answer comes from your catalog and docs. Every Backstage action runs as th
 
 This is the frontend plugin of AI Assistants for Backstage, for the new
 frontend system: a collapsible, multi-conversation chat panel at `/assistants`
-and the in-app editor where admins create assistants. It pairs with:
+and the in-app editor where admins create assistants. The panel renders
+generative UI: forms built from your scaffolder field extensions, Mermaid
+diagrams with fullscreen pan and zoom, download chips for generated files, and
+Allow / Deny cards for gated tools. It pairs with:
 
 - [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend),
   the backend (required)
@@ -198,7 +201,20 @@ root exports what a host app needs to integrate with it:
 | `AssistantsNavIcon`                                             | Nav-rail icon with a live working/unread status dot, for a custom sidebar.         |
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types) | The client interface and its row/patch shapes.                                     |
 
-### Forms and scaffolder pickers
+### Generative UI
+
+Two client-side tools render components in the conversation. Both are always
+available and need no config:
+
+- `render_form`: an inline form; the submitted values become the tool result.
+- `download_file`: a download chip for a file the assistant generates, with a
+  fullscreen preview for images.
+
+Mermaid code blocks render as diagrams themed to the Backstage light or dark
+mode, with a fullscreen pan-and-zoom view. Markdown renders with GitHub
+Flavored Markdown, so tables, task lists, and strikethrough come through.
+
+#### Forms and scaffolder pickers
 
 Assistants can show an inline form (the `render_form` tool) built from
 Backstage scaffolder field extensions (owner, entity, and repo pickers, plus
