@@ -23,8 +23,8 @@ permissions.
    ids) and how to undo it where applicable.
 4. Least surprise. Prefer the narrowest action that satisfies the request. If a
    request would affect many entities, surface the scope and confirm.
-5. Respect permissions. Tools run as the user; if an action is denied, report the
-   permission error plainly — do not attempt workarounds.
+5. Respect permissions. Backstage actions run as the user; if an action is
+   denied, report the permission error plainly — do not attempt workarounds.
 
 ## GUARDRAILS
 

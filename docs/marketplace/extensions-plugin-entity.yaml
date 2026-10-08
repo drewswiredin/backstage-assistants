@@ -9,7 +9,7 @@ metadata:
   namespace: drewswiredin
   name: assistants
   title: AI Assistants
-  description: AI Assistants for your developer portal. Every answer comes from your catalog and docs. Every action runs as the user.
+  description: AI Assistants for your developer portal. Every answer comes from your catalog and docs. Every Backstage action runs as the user.
   tags:
     - ai
     - chatbot
@@ -31,9 +31,9 @@ spec:
     - AI Assistant
   highlights:
     - Answers from your catalog, TechDocs, and any Backstage action, as the signed-in user
-    - Every action runs with the asker's Backstage permissions; assistants never escalate
+    - Backstage actions run with the asker's own permissions, never more
     - Require an Allow / Deny in the conversation for the actions you choose, such as running templates
-    - Add MCP servers to give assistants tools outside Backstage
+    - Add MCP servers to give assistants tools outside Backstage, each under one credential you configure
     - 'Create and edit assistants in-app: prompt, models, tools, and who can use them'
   icon: data:image/svg+xml;base64,
     PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAy
@@ -55,8 +55,9 @@ spec:
     NCAxNC4xNzE2IDE0LjUgMTUgMTQuNVoiLz4KPC9zdmc+Cg==
   description: |
     AI chat assistants in a collapsible Backstage side panel. An assistant's tools are Backstage actions
-    and MCP server tools, executed as the signed-in user, so every call carries that user's identity and
-    permissions. Tools you list in config are gated behind an Allow / Deny prompt in the conversation before they run.
+    and MCP server tools. Backstage actions run as the signed-in user, so every call carries that user's
+    identity and permissions. MCP tools run under the credential configured for their server, shared by all
+    users. Tools you list in config are gated behind an Allow / Deny prompt in the conversation before they run.
 
     Admins create and manage assistants in an in-app editor: prompt, model, tools, and who can use it.
     Definitions live in the plugin database, so adding or changing an assistant is a save, not a deploy.

@@ -342,15 +342,16 @@ it. Names match action ids or namespaced `<server>__<tool>` MCP tools; a name
 not in the assistant's tool set is logged and ignored.
 
 What the user sees: the reply stops at the tool call and shows an approval
-card. Allow runs the tool under the same run-as-user identity; Always allow
-also skips the prompt for that tool for the rest of the conversation; Deny
+card. Allow runs the tool as it would run ungated: a Backstage action with the
+user's credentials, an MCP tool with its server's configured credential. Always
+allow also skips the prompt for that tool for the rest of the conversation; Deny
 returns an `execution-denied` result to the model. Several gated calls of the
 same tool in one step collapse into one card. The pause is enforced in code,
 not requested of the model. A turn waiting on the user survives navigation and
 a page reload.
 
 The gate is a confirmation checkpoint, orthogonal to authorization: Backstage's
-per-user permissions still apply when an approved action invokes.
+per-user permissions still apply when an approved Backstage action invokes.
 
 ## Forms and downloads in the conversation
 
@@ -567,7 +568,9 @@ the enforced checkpoint: a listed tool never runs without an explicit Allow in
 the conversation, whatever the model was told. The gate defaults to empty, so
 list every write-capable action (`register-entity`, `unregister-entity`,
 `execute-template`, and any MCP tool that mutates) there. Backstage permissions
-still apply to each approved action, since it runs as the calling user.
+still apply to each approved Backstage action, since it runs as the calling
+user. An approved MCP tool runs with its server's configured credential, so
+Backstage permissions do not limit it.
 
 ## Reference
 

@@ -1,7 +1,7 @@
 # @drewswiredin/backstage-plugin-assistants
 
 AI Assistants for your developer portal.
-Every answer comes from your catalog and docs. Every action runs as the user.
+Every answer comes from your catalog and docs. Every Backstage action runs as the user.
 
 This is the frontend plugin of AI Assistants for Backstage, for the new
 frontend system: a collapsible, multi-conversation chat panel at `/assistants`

@@ -5,14 +5,15 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 AI Assistants for your developer portal.
-Every answer comes from your catalog and docs. Every action runs as the user.
+Every answer comes from your catalog and docs. Every Backstage action runs as the user.
 
 People ask questions in a side panel of your Backstage app. Assistants answer
 from the catalog and TechDocs through the tools you give them, and can run
-Backstage actions (look up entities, search docs, run a scaffolder template,
-call an MCP server) with the permissions of the person asking. Platform admins
-create assistants in-app with a prompt, models, tools, and audience, and connect
-any model provider in app-config.
+Backstage actions (look up entities, search docs, run a scaffolder template)
+with the permissions of the person asking. They can also call MCP servers, which
+run under the credential you configure for each server. Platform admins create
+assistants in-app with a prompt, models, tools, and audience, and connect any
+model provider in app-config.
 
 > Requires the new frontend system (`createApp` from
 > `@backstage/frontend-defaults`) on Backstage 1.54 or later, and Node 22.12 or
@@ -28,9 +29,12 @@ any model provider in app-config.
 - **Grounded answers.** Ask "who owns payments-api?" or "how do we onboard a
   service?" and get an answer sourced from the catalog and TechDocs, not the
   model's memory.
-- **Actions as the user.** Let an assistant act on Backstage: look up entities,
-  search docs, run a scaffolder template, or call an MCP server, as the user,
-  with their permissions.
+- **Backstage actions as the user.** Let an assistant act on Backstage: look up
+  entities, search docs, or run a scaffolder template, as the user, with their
+  permissions.
+- **MCP servers.** Give an assistant tools outside Backstage. Each server runs
+  under the one credential you configure for it, shared by everyone who uses
+  the assistant.
 - **Approval gate.** Require an Allow / Deny in the conversation before the
   actions you choose run; nothing is gated by default and nothing runs behind
   the user's back.
