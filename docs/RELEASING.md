@@ -83,8 +83,12 @@ npm install react@18 react-dom@18 react-router-dom@6 \
   @drewswiredin/backstage-plugin-assistants-common@<X>
 node -e "require('@drewswiredin/backstage-plugin-assistants-backend')"
 printf "import '@drewswiredin/backstage-plugin-assistants/alpha';\n" > entry.mjs
-npx esbuild entry.mjs --bundle --platform=browser --outfile=/dev/null
+npx esbuild entry.mjs --bundle --platform=browser --outfile=/dev/null \
+  --loader:.svg=dataurl
 ```
+
+`--loader:.svg=dataurl` stands in for the app bundler's asset handling:
+`@backstage/core-components` imports `.svg` files.
 
 A missing-export error from `esbuild` means a mismatched `@assistant-ui/*` or
 AI SDK family; `yarn tsc` and `yarn add` do not catch that.
