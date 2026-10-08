@@ -3,7 +3,7 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.17.0 - 2026-10-08
 
 ### Changed
 
@@ -17,7 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `read-techdocs` validates the requested path.
 - JSON columns are `longtext` on MySQL.
 - `engines.node` is `>=22.12`.
-- `@drewswiredin/backstage-plugin-assistants-common` is a caret range.
+- `@drewswiredin/backstage-plugin-assistants-common` `^0.11.0`.
 
 ### Fixed
 

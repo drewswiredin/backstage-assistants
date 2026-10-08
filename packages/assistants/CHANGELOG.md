@@ -3,7 +3,7 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.15.0 - 2026-10-08
 
 ### Changed
 
@@ -15,6 +15,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `^6.30.2`.
 - `mermaid` `^11.16.1`; `@remixicon/react` `~4.8.0`.
 - `THIRD_PARTY_NOTICES.md` ships in the package.
+- `@drewswiredin/backstage-plugin-assistants-common` `^0.11.0`.
 
 ### Removed
 

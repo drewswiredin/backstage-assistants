@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants",
-  "version": "0.14.2",
+  "version": "0.15.0",
   "description": "AI Assistants for your developer portal. Every answer comes from your catalog and docs. Every action runs as the user.",
   "license": "Apache-2.0",
   "engines": {
@@ -67,7 +67,7 @@
     "@backstage/plugin-scaffolder-react": "^2.0.3",
     "@backstage/plugin-signals-react": "^0.0.25",
     "@backstage/types": "^1.2.2",
-    "@drewswiredin/backstage-plugin-assistants-common": "^0.10.0",
+    "@drewswiredin/backstage-plugin-assistants-common": "^0.11.0",
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "4.0.0-alpha.61",
