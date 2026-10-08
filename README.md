@@ -20,9 +20,29 @@ model provider in app-config.
 > later. It does not mount in a legacy `packages/app` built on
 > `@backstage/app-defaults`.
 
-![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
+**A grounded answer.** The assistant answers from the catalog and TechDocs, with
+a Mermaid diagram and a Markdown table.
 
-![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
+![A grounded answer with a Mermaid diagram and a table](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
+
+**A scaffolder form in the conversation.** The template's own parameters, with
+its pickers, rendered inline.
+
+![A scaffolder template form in the conversation](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/scaffolder-form.png)
+
+**Tool approval.** `execute-template` waits for Allow / Deny before it runs.
+
+![An approval card for execute-template](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/tool-approval.png)
+
+**Creating an assistant.** Prompt, starter suggestions, models, and who can use
+it.
+
+![The assistant editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
+
+**Assigning tools.** Backstage actions run as the user; MCP tools run under
+their server's configured credential.
+
+![Tool assignment in the assistant editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor-tools.png)
 
 ## What users get
 
