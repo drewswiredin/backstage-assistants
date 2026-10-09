@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.1 - 2026-10-09
+
+### Changed
+
+- `search-techdocs` describes what it returns, how to page, and that its locations feed `read-techdocs`.
+- `read-techdocs` names `search-techdocs` as the source of its `location`.
+
 ## 0.17.0 - 2026-10-08
 
 ### Changed

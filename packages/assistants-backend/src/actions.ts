@@ -152,7 +152,10 @@ function registerSearchTechDocsAction({
     title: 'Search TechDocs',
     attributes: { destructive: false, readOnly: true, idempotent: true },
     description:
-      'Searches the Backstage TechDocs internal documentation for the organization.',
+      "Full-text search across all TechDocs pages in the organization's Backstage. " +
+      'Returns matching pages with their title, a text excerpt and a location path. ' +
+      "Pass a result's location to read-techdocs to read the full page. " +
+      'Responses are paginated; pass nextPageCursor as pageCursor for more.',
     schema: {
       input: z =>
         z.object({
@@ -265,7 +268,7 @@ function registerReadTechDocsAction({
     attributes: { destructive: false, readOnly: true, idempotent: true },
     description: `Reads a specific page of Backstage TechDocs technical documentation and returns the content.
 
-The location parameter can be found in TechDocs search results.
+Use the location from search-techdocs results.
 
 Alternatively the path to the root documentation page of a Backstage entity can be constructed as follows:
 
