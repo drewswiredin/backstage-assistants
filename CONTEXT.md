@@ -47,6 +47,10 @@ _Avoid_: Chat, Session (as a noun for stored history)
 **Thread**:
 assistant-ui's internal name for a Conversation. Use "Thread" only when referring to assistant-ui runtime APIs (thread-list runtime, `ThreadPrimitive`); use "Conversation" everywhere user-facing.
 
+**Knowledge index**:
+The optional `-backend-module-semantic-search` module's store: every TechDocs section and catalog entity, chunked and embedded into the plugin's Postgres database (pgvector, `pg_trgm`, full-text), refreshed by a scheduled task, and served to assistants as the `search-knowledge` action. Results are filtered to entities the caller can read. A rebuildable cache, not domain data.
+_Avoid_: RAG (as a user-facing name), vector store
+
 **Provider**:
 A configured connection to an LLM backend (`assistants.providers.{id}`). Carries a `type` discriminator selecting the AI-SDK factory (`openai` | `anthropic` | `azure` | `openai-compatible`), `apiKey` (secret), a passthrough `options` bag spread verbatim into that factory, and `models[]`. The `id` is a free label that namespaces model ids. We wire the factory; we never implement a provider.
 _Avoid_: Adapter (we don't write one — the `@ai-sdk/*` package is the provider)

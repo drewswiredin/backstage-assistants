@@ -44,7 +44,7 @@ jobs:
           console.log(`${pkg.name}: manifest ok`);
           JS
           status=0
-          for pkg in packages/assistants packages/assistants-backend packages/assistants-common; do
+          for pkg in packages/assistants packages/assistants-backend packages/assistants-backend-module-semantic-search packages/assistants-common; do
             tmp=$(mktemp -d)
             tarball=$(cd "$pkg" && npm pack --json --pack-destination "$tmp" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
             echo "== $pkg -> $tarball"

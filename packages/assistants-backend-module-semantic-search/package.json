@@ -1,0 +1,76 @@
+{
+  "name": "@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search",
+  "version": "0.1.0",
+  "description": "Knowledge index for AI Assistants for Backstage: semantic, fuzzy, and keyword search over TechDocs and the catalog in Postgres.",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "backstage": {
+    "role": "backend-plugin-module",
+    "pluginId": "assistants",
+    "pluginPackage": "@drewswiredin/backstage-plugin-assistants-backend"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "sideEffects": false,
+  "main": "dist/index.cjs.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "package.json": [
+        "package.json"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "config.d.ts"
+  ],
+  "configSchema": "config.d.ts",
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "lint": "backstage-cli package lint",
+    "clean": "backstage-cli package clean",
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack",
+    "test": "backstage-cli package test"
+  },
+  "dependencies": {
+    "@ai-sdk/azure": "^4.0.24",
+    "@ai-sdk/openai": "^4.0.23",
+    "@backstage/backend-plugin-api": "^1.10.0",
+    "@backstage/catalog-client": "^1.16.1",
+    "@backstage/catalog-model": "^1.10.0",
+    "@backstage/config": "^1.3.8",
+    "@backstage/errors": "^1.3.1",
+    "ai": "^7.0.85",
+    "node-html-parser": "^7.1.0"
+  },
+  "devDependencies": {
+    "@backstage/cli": "^0.36.5"
+  },
+  "keywords": [
+    "backstage",
+    "backstage-plugin",
+    "backend-plugin-module",
+    "ai",
+    "rag",
+    "pgvector",
+    "techdocs"
+  ],
+  "author": "drewswiredin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drewswiredin/backstage-assistants.git",
+    "directory": "packages/assistants-backend-module-semantic-search"
+  },
+  "homepage": "https://github.com/drewswiredin/backstage-assistants#readme",
+  "bugs": "https://github.com/drewswiredin/backstage-assistants/issues"
+}

@@ -47,6 +47,7 @@
     "@backstage/plugin-signals-backend": "^0.3.18",
     "@backstage/plugin-techdocs-backend": "^2.2.4",
     "@drewswiredin/backstage-plugin-assistants-backend": "workspace:^",
+    "@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search": "workspace:^",
     "app": "link:../app",
     "better-sqlite3": "^12.0.0",
     "node-gyp": "^10.0.0",

@@ -69,7 +69,9 @@ function registerSearchCatalogAction({
     name: 'search-catalog',
     title: 'Search Catalog',
     attributes: { destructive: false, readOnly: true, idempotent: true },
-    description: `Search the Backstage catalog for entities. Results are ordered by relevance to the query.
+    description: `Search the Backstage catalog for entities by the words in their names and descriptions. Results are ordered by relevance to the query. Best for a known entity name or term, and for listing entities of particular kinds; a misspelled name or a different wording than the catalog uses may find nothing.
+
+Query with two or three distinctive words, not a full question: on some search backends every word must match. If nothing comes back, retry with fewer words or a different term.
 
 Responses are paginated. To get the next page, pass the "nextPageCursor" value as the "pageCursor" parameter to the tool again.
 
@@ -152,7 +154,11 @@ function registerSearchTechDocsAction({
     title: 'Search TechDocs',
     attributes: { destructive: false, readOnly: true, idempotent: true },
     description:
-      "Full-text search across all TechDocs pages in the organization's Backstage. " +
+      "Keyword search across all TechDocs pages in the organization's Backstage. " +
+      'Matches the words in the query, so it is best for exact terms: names, identifiers, commands, error messages. ' +
+      'A misspelling or a different wording than the docs use may find nothing. ' +
+      'Query with two or three distinctive words, not a full question: on some search backends every word must match. ' +
+      'If nothing comes back, retry with fewer words or a different term. ' +
       'Returns matching pages with their title, a text excerpt and a location path. ' +
       "Pass a result's location to read-techdocs to read the full page. " +
       'Responses are paginated; pass nextPageCursor as pageCursor for more.',

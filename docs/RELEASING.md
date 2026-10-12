@@ -1,20 +1,22 @@
 # Releasing
 
-Three packages publish from this repo:
+Four packages publish from this repo:
 
-| Directory                     | Package                                             |
-| ----------------------------- | --------------------------------------------------- |
-| `packages/assistants-common`  | `@drewswiredin/backstage-plugin-assistants-common`  |
-| `packages/assistants-backend` | `@drewswiredin/backstage-plugin-assistants-backend` |
-| `packages/assistants`         | `@drewswiredin/backstage-plugin-assistants`         |
+| Directory                                            | Package                                                                    |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| `packages/assistants-common`                         | `@drewswiredin/backstage-plugin-assistants-common`                         |
+| `packages/assistants-backend`                        | `@drewswiredin/backstage-plugin-assistants-backend`                        |
+| `packages/assistants`                                | `@drewswiredin/backstage-plugin-assistants`                                |
+| `packages/assistants-backend-module-semantic-search` | `@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search` |
 
 The frontend and backend depend on `-common` via a caret range, so bump
 `-common` first.
 
 ## 1. Version and changelog
 
-1. Bump `version` in the three `package.json` files that change, `-common`
-   first. When `-common` bumps, update the range the other two declare for it.
+1. Bump `version` in each `package.json` that changes, `-common`
+   first. When `-common` bumps, update the range the frontend and backend declare
+   for it.
 2. Move each package's `Unreleased` entries in its `CHANGELOG.md` under the new
    version and date.
 3. `yarn install` to refresh the lockfile.
@@ -48,7 +50,7 @@ npm publish ./drewswiredin-backstage-plugin-<p>-<version>.tgz --access public
 
 Publish the tarball, never the directory: publishing the directory leaves the
 registry document with the pre-`prepack` `./src` exports. Publish `-common`
-first, then the backend and frontend.
+first, then the backend, the semantic search module, and the frontend.
 
 Verify each:
 
@@ -59,10 +61,11 @@ npm view @drewswiredin/backstage-plugin-<p>@<version> exports main
 ## 5. Commit and tag
 
 ```bash
-git commit -s -m "chore(release): common X, backend Y, frontend Z"
+git commit -s -m "chore(release): common X, backend Y, frontend Z, semantic search S"
 git tag assistants-common-v<X>
 git tag assistants-backend-v<Y>
 git tag assistants-v<Z>
+git tag assistants-backend-module-semantic-search-v<S>
 git push --follow-tags
 ```
 
@@ -80,8 +83,10 @@ npm init -y
 npm install react@18 react-dom@18 react-router-dom@6 \
   @drewswiredin/backstage-plugin-assistants@<Z> \
   @drewswiredin/backstage-plugin-assistants-backend@<Y> \
-  @drewswiredin/backstage-plugin-assistants-common@<X>
+  @drewswiredin/backstage-plugin-assistants-common@<X> \
+  @drewswiredin/backstage-plugin-assistants-backend-module-semantic-search@<S>
 node -e "require('@drewswiredin/backstage-plugin-assistants-backend')"
+node -e "require('@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search')"
 printf "import '@drewswiredin/backstage-plugin-assistants/alpha';\n" > entry.mjs
 npx esbuild entry.mjs --bundle --platform=browser --outfile=/dev/null \
   --loader:.svg=dataurl

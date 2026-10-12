@@ -72,5 +72,10 @@ backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
 // AI Assistants plugin
 backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
+backend.add(
+  import(
+    '@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search'
+  ),
+);
 
 backend.start();

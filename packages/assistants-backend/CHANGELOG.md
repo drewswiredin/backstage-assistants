@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.2 - 2026-10-12
+
+### Changed
+
+- `search-catalog` and `search-techdocs` describe what they match well (exact names and terms) and what they miss (misspellings, different wording), so a model can choose between them and other search tools.
+- `search-catalog` and `search-techdocs` tell the model to query with two or three distinctive words and to retry with fewer or different words when nothing comes back.
+
 ## 0.17.1 - 2026-10-09
 
 ### Changed

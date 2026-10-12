@@ -228,6 +228,9 @@ credentials. `builtinActions: true` provides `search-catalog`,
 `query-catalog-entities`, `get-catalog-entity`, `register-entity`,
 `unregister-entity`, `execute-template`) come from the action-providing
 plugins (catalog, scaffolder, and TechDocs action modules).
+`search-knowledge`, which finds TechDocs and catalog content by meaning and
+near spelling, comes from the
+[semantic search module](../assistants-backend-module-semantic-search).
 
 > **Required:** Backstage's actions service only exposes actions from the plugin
 > sources you allow. Add `assistants` (and any other source whose actions you

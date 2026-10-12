@@ -14,6 +14,7 @@
 | `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react`         | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                               |
 | `@backstage/backend-plugin-api`, `backend-defaults`, `backend-openapi-utils` | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                       |
 | `coreServices.database` with `knex`                                          | The `threads`, `messages`, `assistants`, and `assistants_meta` tables on SQLite, Postgres, or MySQL                    |
+| `vector` (pgvector), `pg_trgm`, `ai` `embedMany`                             | The knowledge index module: hybrid semantic, fuzzy, and keyword retrieval in the plugin's Postgres database            |
 | `@backstage/plugin-signals-node`, `-react`                                   | Real-time working and unread indicators; the browser polls when the host has no Signals API                            |
 | `mermaid`, `remark-gfm`, `@material-ui/core` v4                              | Diagrams and GitHub-flavoured Markdown in replies; Backstage's component theme                                         |
 
@@ -30,6 +31,7 @@ flowchart LR
   LP["AI SDK loop\nrouter.ts"]
   ST["Stores\nassistants.ts, threads.ts"]
   MP["MCP pool\nmcp.ts"]
+  KI["Knowledge index\nmodule-semantic-search"]
   DB[("Database")]
   PV["LLM providers"]
   RT -->|"/chat /threads"| RO
@@ -42,6 +44,9 @@ flowchart LR
   LP -->|"tool calls"| MP
   TA -->|"cached tools"| MP
   ST --> DB
+  KI -->|"search-knowledge action"| TA
+  KI -->|"embeddings"| PV
+  KI --> DB
 ```
 
 | Node            | Module path                                                   | Owns                                                                          |
@@ -53,7 +58,8 @@ flowchart LR
 | AI SDK loop     | `packages/assistants-backend/src/router.ts`                   | `streamText`, the approval map, persistence on start and finish, signals      |
 | Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts` | `AssistantStore` with its snapshot; `ThreadService`, the only message writer  |
 | MCP pool        | `packages/assistants-backend/src/mcp.ts`                      | One client per server per process, the tool cache                             |
-| Database        | Backstage `backend.database`                                  | The four plugin tables                                                        |
+| Knowledge index | `packages/assistants-backend-module-semantic-search/src/`     | The index refresh task and the `search-knowledge` action                      |
+| Database        | Backstage `backend.database`                                  | The four plugin tables, plus the two knowledge index tables on Postgres       |
 | LLM providers   | `packages/assistants-backend/src/config.ts`                   | The AI SDK provider registry built from config                                |
 
 ## Routes
@@ -187,32 +193,35 @@ sequenceDiagram
 
 `assistant.manage` gates `/manage/*`, `/capabilities`, and the gear. Both permissions live in `-common`, are registered with `coreServices.permissionsRegistry`, and are granted by the host's permission policy. Hiding the nav entry is the host app's job.
 
-| Call                            | Runs as                                                                 |
-| ------------------------------- | ----------------------------------------------------------------------- |
-| `/chat`, `/threads*`, `/status` | The signed-in user's token                                              |
-| Backstage action `execute`      | The calling user's credentials, via `actions.invoke`                    |
-| Built-in actions                | On-behalf-of tokens for `search` and `techdocs`, minted from the caller |
-| MCP tool `execute`              | The server's static `headers` or `env`; one identity for every user     |
-| `/capabilities` action list     | The admin's credentials, so assignable can exceed runnable              |
+| Call                             | Runs as                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `/chat`, `/threads*`, `/status`  | The signed-in user's token                                              |
+| Backstage action `execute`       | The calling user's credentials, via `actions.invoke`                    |
+| Built-in actions                 | On-behalf-of tokens for `search` and `techdocs`, minted from the caller |
+| `search-knowledge` result filter | An on-behalf-of `catalog` token minted from the caller                  |
+| Knowledge index refresh task     | The plugin's service credentials for `catalog` and `techdocs`           |
+| MCP tool `execute`               | The server's static `headers` or `env`; one identity for every user     |
+| `/capabilities` action list      | The admin's credentials, so assignable can exceed runnable              |
 
 A low-privilege user chatting with an assistant wired to a powerful MCP server gets that server's full configured access. Choose MCP servers and their credential scope deliberately.
 
 ## State and lifetime
 
-| Store                           | Where          | Scope                         | Written by                                  | Lifetime                                            | Several replicas                        |
-| ------------------------------- | -------------- | ----------------------------- | ------------------------------------------- | --------------------------------------------------- | --------------------------------------- |
-| `threads`, `messages`           | DB             | Per `user_ref`                | `ThreadService` from `/chat` and `/threads` | Durable                                             | Shared                                  |
-| `assistants`, `assistants_meta` | DB             | Global                        | `AssistantStore` from `/manage`, seed-once  | Durable                                             | Shared                                  |
-| Assistant snapshot              | Process memory | Global                        | Write-through on the editing replica        | Lazy refresh after 60 s elsewhere                   | Stale up to 60 s; `/chat` reads the row |
-| Resumable buffer                | Process memory | Per thread, owner-checked     | `consumeSseStream` tee                      | 60 s after completion                               | Resume must hit the same process        |
-| In-flight set                   | Process memory | Per user, thread to assistant | `noteStarted`, `noteFinished`               | Cleared on finish, abort, or error                  | `working` is local to one process       |
-| Abort handles                   | Process memory | Per thread                    | `/chat`                                     | Cleared on finish, abort, or error                  | Cancel must hit the same process        |
-| MCP pool and tool cache         | Process memory | Per server                    | `maintainMcpConnections` every 2 min        | Until shutdown; 5 min freshness for `/capabilities` | Each replica keeps its own              |
-| Runtime messages                | Browser memory | Per tab                       | `useChat` stream, history adapter load      | Until unmount; never persisted                      | n/a                                     |
-| Thread status rows              | Browser memory | Per tab                       | `useThreadStatus` refetch                   | Until unmount                                       | n/a                                     |
-| `interruptedTurns` reasons      | Browser memory | Per message id                | `useChat.onFinish`                          | Cleared on reload; the DB flag takes over           | n/a                                     |
-| Model and effort refs           | React refs     | Per tab                       | Header pickers; PATCHed to the thread       | Until unmount                                       | n/a                                     |
-| Side pane collapsed             | `localStorage` | Per browser                   | The collapse control                        | Persistent                                          | n/a                                     |
+| Store                           | Where          | Scope                         | Written by                                            | Lifetime                                                    | Several replicas                        |
+| ------------------------------- | -------------- | ----------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------- |
+| `threads`, `messages`           | DB             | Per `user_ref`                | `ThreadService` from `/chat` and `/threads`           | Durable                                                     | Shared                                  |
+| `assistants`, `assistants_meta` | DB             | Global                        | `AssistantStore` from `/manage`, seed-once            | Durable                                                     | Shared                                  |
+| `assistants_knowledge_*`        | DB             | Global                        | The knowledge index refresh task, one replica per run | Rebuildable cache; rebuilt when the embedding model changes | Shared                                  |
+| Assistant snapshot              | Process memory | Global                        | Write-through on the editing replica                  | Lazy refresh after 60 s elsewhere                           | Stale up to 60 s; `/chat` reads the row |
+| Resumable buffer                | Process memory | Per thread, owner-checked     | `consumeSseStream` tee                                | 60 s after completion                                       | Resume must hit the same process        |
+| In-flight set                   | Process memory | Per user, thread to assistant | `noteStarted`, `noteFinished`                         | Cleared on finish, abort, or error                          | `working` is local to one process       |
+| Abort handles                   | Process memory | Per thread                    | `/chat`                                               | Cleared on finish, abort, or error                          | Cancel must hit the same process        |
+| MCP pool and tool cache         | Process memory | Per server                    | `maintainMcpConnections` every 2 min                  | Until shutdown; 5 min freshness for `/capabilities`         | Each replica keeps its own              |
+| Runtime messages                | Browser memory | Per tab                       | `useChat` stream, history adapter load                | Until unmount; never persisted                              | n/a                                     |
+| Thread status rows              | Browser memory | Per tab                       | `useThreadStatus` refetch                             | Until unmount                                               | n/a                                     |
+| `interruptedTurns` reasons      | Browser memory | Per message id                | `useChat.onFinish`                                    | Cleared on reload; the DB flag takes over                   | n/a                                     |
+| Model and effort refs           | React refs     | Per tab                       | Header pickers; PATCHed to the thread                 | Until unmount                                               | n/a                                     |
+| Side pane collapsed             | `localStorage` | Per browser                   | The collapse control                                  | Persistent                                                  | n/a                                     |
 
 The resumable buffer, the in-flight set, and the abort handles live in process memory. The plugin therefore runs on one backend replica or behind session affinity for `/api/assistants/*`; completed turns are durable regardless.
 
@@ -254,6 +263,23 @@ The resumable buffer, the in-flight set, and the abort handles live in process m
 
 `assistants_meta` holds the seed-once marker: `key = seeded`, `value` = the seed timestamp.
 
+`assistants_knowledge_chunks` (knowledge index module, Postgres only)
+
+| Column         | Notes                                                                         |
+| -------------- | ----------------------------------------------------------------------------- |
+| `id`           | SHA-256 of source, document key, and chunk position; stable across runs       |
+| `source`       | `techdocs` or `catalog`                                                       |
+| `entity_ref`   | The entity whose catalog read access gates the chunk                          |
+| `location`     | TechDocs page path for `read-techdocs`, or the entity ref                     |
+| `title`        | Heading path, `Site › Page › Section`                                         |
+| `content`      | Up to ~1600 characters                                                        |
+| `content_hash` | SHA-256 of the embedded text; unchanged hash = not re-embedded                |
+| `embedding`    | `vector(n)` for the configured model; HNSW cosine index up to 2000 dimensions |
+| `tsv`          | Generated `to_tsvector('english', title \|\| ' ' \|\| content)`; GIN index    |
+| `updated_at`   | Last upsert                                                                   |
+
+A GIN `gin_trgm_ops` index covers `title || ' ' || content`. `assistants_knowledge_meta` holds the index signature, `key = embedding`, `value = <embeddingModel>#<dimensions>`; a different signature drops and recreates `assistants_knowledge_chunks`. Both tables are a rebuildable cache, created by the module rather than migrations.
+
 **Unread and recency.** `updated_at` moves only when a turn lands in `replaceMessages`. `unread = updated_at > last_read_at` when `last_read_at` is set. Rename, model, effort, pin, and archive edits touch only their own fields, so editing a conversation never marks it unread or reorders the list.
 
 Timestamps are ISO 8601 strings on every driver; `toIsoTimestamp` converts Postgres `Date` values so ordering and the unread compare see one format. Rows that fail to parse are skipped on read, and threads whose assistant is gone are filtered out of every list.
@@ -294,21 +320,22 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 
 ## Config and database seam
 
-| Field                                                | Owner  | Why                                           | Browser                         |
-| ---------------------------------------------------- | ------ | --------------------------------------------- | ------------------------------- |
-| `providers.*.apiKey`                                 | config | Secret                                        | no                              |
-| `providers.*` (`type`, `baseUrl`, `options`)         | config | Platform wiring                               | no                              |
-| `providers.*.models[].contextWindow`, `reasoning`    | config | Per-model facts the picker and gauge need     | yes                             |
-| `providers.*.models[].maxOutputTokens`               | config | Output ceiling passed to `streamText`         | no                              |
-| `mcp.servers.*.headers`, `env`                       | config | Secret                                        | no                              |
-| `mcp.servers.*` connection, `connectTimeoutMs`       | config | Platform wiring                               | no                              |
-| `requireApproval`, `mcp.servers.*.requireApproval`   | config | Safety floor; not weakenable at runtime       | badge only, via `/capabilities` |
-| `maxSteps`, `toolResultMaxChars`, `requestBodyLimit` | config | Runtime guards                                | no                              |
-| `defaultModel`, `builtinActions`                     | config | Platform default; opt-in built-in actions     | `defaultModel` only             |
-| `definition.prompt`, `access`                        | DB     | Editable content and assignment               | no; `/manage` only              |
-| `definition.allowedTools`                            | DB     | Editable assignment                           | as tool summaries               |
-| `definition.title`, `description`, `color`, `ui`     | DB     | Editable content                              | yes                             |
-| `definition.models`, `defaultModel`                  | DB     | Editable allowlist; empty means the full pool | yes                             |
+| Field                                                | Owner  | Why                                                            | Browser                         |
+| ---------------------------------------------------- | ------ | -------------------------------------------------------------- | ------------------------------- |
+| `providers.*.apiKey`                                 | config | Secret                                                         | no                              |
+| `providers.*` (`type`, `baseUrl`, `options`)         | config | Platform wiring                                                | no                              |
+| `providers.*.models[].contextWindow`, `reasoning`    | config | Per-model facts the picker and gauge need                      | yes                             |
+| `providers.*.models[].maxOutputTokens`               | config | Output ceiling passed to `streamText`                          | no                              |
+| `mcp.servers.*.headers`, `env`                       | config | Secret                                                         | no                              |
+| `mcp.servers.*` connection, `connectTimeoutMs`       | config | Platform wiring                                                | no                              |
+| `requireApproval`, `mcp.servers.*.requireApproval`   | config | Safety floor; not weakenable at runtime                        | badge only, via `/capabilities` |
+| `maxSteps`, `toolResultMaxChars`, `requestBodyLimit` | config | Runtime guards                                                 | no                              |
+| `defaultModel`, `builtinActions`                     | config | Platform default; opt-in built-in actions                      | `defaultModel` only             |
+| `semanticSearch.embeddingModel`, `schedule`          | config | Platform wiring; the model's provider key stays in `providers` | no                              |
+| `definition.prompt`, `access`                        | DB     | Editable content and assignment                                | no; `/manage` only              |
+| `definition.allowedTools`                            | DB     | Editable assignment                                            | as tool summaries               |
+| `definition.title`, `description`, `color`, `ui`     | DB     | Editable content                                               | yes                             |
+| `definition.models`, `defaultModel`                  | DB     | Editable allowlist; empty means the full pool                  | yes                             |
 
 `/status` returns the browser-safe half: assistant summaries, each assistant's effective tools, the model pool, and the platform default. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the prompt becomes `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
 
@@ -380,6 +407,8 @@ The composer gauge shows `last_tokens` against the chosen model's `contextWindow
 
 **MCP pool.** The plugin keeps one persistent client per configured server per process. A `coreServices.scheduler` task with local scope runs every 2 minutes with no initial delay. It connects what is not connected, re-lists tools into the cache, and drops a failed client so the next cycle reconnects; up to 5 servers refresh concurrently. Each connect and list is bounded by `connectTimeoutMs`, resolved per server, then global, then 8 s. The task's own timeout derives from the slowest server with a 60 s floor. `/status` reads the cache synchronously and opens nothing. `/capabilities` reuses a cache younger than 5 minutes and re-lists otherwise, reporting `reachable` and `error` per server. `/chat` builds tool definitions from the cache and calls through the pooled client; a server with no live client returns a "not currently connected" tool result. A tool call is bounded by the turn's abort signal and a 60 s ceiling.
 
+**Knowledge index.** With `assistants.semanticSearch` set, the database on Postgres, and the `vector` and `pg_trgm` extensions present, the module registers `search-knowledge` and a global-scope scheduler task (default every 30 minutes, 1 hour timeout, 15 s initial delay). A run embeds a probe to learn the model's dimensions and checks the signature, reads every published TechDocs site's MkDocs search index and every catalog entity except `Location` with the plugin's service credentials, chunks them, embeds only rows whose hash changed (batches of 96, two calls in flight), and deletes rows not seen, keeping those of entities whose site failed to load. `search-knowledge` embeds the query and up to three alternatives, then fuses by reciprocal rank (k = 60) one nearest-neighbour list per phrasing, one any-word full-text list, and one trigram list for query words absent from the index (word similarity ≥ 0.45). The top 40 candidates' entities are fetched with `getEntitiesByRefs` as the caller; chunks of entities the caller cannot read are dropped before the top `limit` are returned.
+
 **AssistantStore snapshot.** The store keeps every definition in memory and rebuilds it after each create, update, delete, and at init. Synchronous reads (`get`, `list`) serve `/status`, the access filters, and `/threads*`. When the snapshot is older than 60 s a read starts one shared background refresh and returns immediately. `/chat` and `/manage` read the database row instead. Derived values are computed at read: `hasModelAllowlist`, effective models, and the effective default. A malformed access blob normalises to deny; malformed arrays normalise to empty.
 
 **Resumable buffer.** `pipeUIMessageStreamToResponse` tees the SSE into `ResumableStreamRegistry` under the thread id, owned by the caller's `userEntityRef`. A subscriber receives the buffered chunks then the live tail; the pump only mutates state at `await` points, so no chunk is missed or duplicated. The entry is deleted 60 s after the stream completes.
@@ -394,3 +423,4 @@ The composer gauge shows `last_tokens` against the chosen model's `contextWindow
 - Anthropic tool-argument normalisation keys on provider `type`, never on the provider id.
 - Thread ownership is resolved before any side effect; a foreign thread is a plain 404.
 - `allowedTools` is explicit; an empty list yields no tools, and there is no wildcard.
+- A knowledge index result reaches the model only if the caller can read its entity in the catalog.
