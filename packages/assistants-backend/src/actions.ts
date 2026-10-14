@@ -69,7 +69,7 @@ function registerSearchCatalogAction({
     name: 'search-catalog',
     title: 'Search Catalog',
     attributes: { destructive: false, readOnly: true, idempotent: true },
-    description: `Search the Backstage catalog for entities by the words in their names and descriptions. Results are ordered by relevance to the query. Best for a known entity name or term, and for listing entities of particular kinds; a misspelled name or a different wording than the catalog uses may find nothing.
+    description: `Search the Backstage catalog for entities by the words in their names and descriptions. Results are ordered by relevance to the query. Best for a known entity name or term, and for listing entities of particular kinds; a misspelled name or a different wording than the catalog uses may find nothing. For questions or topics in the user's own words, use search-knowledge instead when it is available.
 
 Query with two or three distinctive words, not a full question: on some search backends every word must match. If nothing comes back, retry with fewer words or a different term.
 
@@ -156,6 +156,7 @@ function registerSearchTechDocsAction({
     description:
       "Keyword search across all TechDocs pages in the organization's Backstage. " +
       'Matches the words in the query, so it is best for exact terms: names, identifiers, commands, error messages. ' +
+      "For questions or topics in the user's own words, use search-knowledge instead when it is available; it matches by meaning. " +
       'A misspelling or a different wording than the docs use may find nothing. ' +
       'Query with two or three distinctive words, not a full question: on some search backends every word must match. ' +
       'If nothing comes back, retry with fewer words or a different term. ' +
@@ -274,7 +275,7 @@ function registerReadTechDocsAction({
     attributes: { destructive: false, readOnly: true, idempotent: true },
     description: `Reads a specific page of Backstage TechDocs technical documentation and returns the content.
 
-Use the location from search-techdocs results.
+Use the location from search-knowledge or search-techdocs results.
 
 Alternatively the path to the root documentation page of a Backstage entity can be constructed as follows:
 
