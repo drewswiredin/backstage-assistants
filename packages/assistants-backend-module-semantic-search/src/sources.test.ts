@@ -1,7 +1,7 @@
 import { catalogDocument, htmlToText, techDocsDocuments } from './sources';
 
 describe('techDocsDocuments', () => {
-  const root = '/docs/default/component/nexus/';
+  const root = '/docs/default/component/pylon/';
 
   it('maps sections to page locations with a heading path', () => {
     const docs = techDocsDocuments(
@@ -10,12 +10,12 @@ describe('techDocsDocuments', () => {
         {
           location: 'messaging/#dead-letter',
           title: 'Dead-letter handling',
-          text: '<p>Failed messages land in the <code>nexus-dlq</code> queue.</p>',
+          text: '<p>Failed messages land in the <code>pylon-dlq</code> queue.</p>',
         },
-        { location: '', title: 'Nexus', text: '<p>Overview &amp; goals</p>' },
+        { location: '', title: 'Pylon', text: '<p>Overview &amp; goals</p>' },
       ],
-      'component:default/nexus',
-      'Nexus',
+      'component:default/pylon',
+      'Pylon',
       root,
     );
 
@@ -23,17 +23,17 @@ describe('techDocsDocuments', () => {
       {
         source: 'techdocs',
         key: `${root}messaging/#dead-letter`,
-        entityRef: 'component:default/nexus',
+        entityRef: 'component:default/pylon',
         location: `${root}messaging/`,
-        title: 'Nexus › Messaging › Dead-letter handling',
-        text: 'Failed messages land in the nexus-dlq queue.',
+        title: 'Pylon › Messaging › Dead-letter handling',
+        text: 'Failed messages land in the pylon-dlq queue.',
       },
       {
         source: 'techdocs',
         key: root,
-        entityRef: 'component:default/nexus',
+        entityRef: 'component:default/pylon',
         location: root,
-        title: 'Nexus',
+        title: 'Pylon',
         text: 'Overview & goals',
       },
     ]);
@@ -47,8 +47,8 @@ describe('catalogDocument', () => {
         apiVersion: 'backstage.io/v1alpha1',
         kind: 'System',
         metadata: {
-          name: 'nexus',
-          title: 'Nexus',
+          name: 'pylon',
+          title: 'Pylon',
           description: 'Message bus for order events.',
           tags: ['messaging'],
         },
@@ -56,13 +56,13 @@ describe('catalogDocument', () => {
       }),
     ).toEqual({
       source: 'catalog',
-      key: 'system:default/nexus',
-      entityRef: 'system:default/nexus',
-      location: 'system:default/nexus',
-      title: 'Nexus',
+      key: 'system:default/pylon',
+      entityRef: 'system:default/pylon',
+      location: 'system:default/pylon',
+      title: 'Pylon',
       text: [
         'Message bus for order events.',
-        'System: system:default/nexus',
+        'System: system:default/pylon',
         'Owner: group:default/platform',
         'Tags: messaging',
       ].join('\n'),

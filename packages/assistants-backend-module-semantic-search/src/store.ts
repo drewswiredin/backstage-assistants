@@ -13,7 +13,7 @@ export const REQUIRED_EXTENSIONS = ['vector', 'pg_trgm'] as const;
 /** pgvector's HNSW index covers up to 2000 dimensions; larger vectors scan exactly. */
 const HNSW_MAX_DIMENSIONS = 2000;
 
-/** Below the `pg_trgm` default of 0.6 so one typo in a five-letter word ("nexis" → "nexus") still matches. */
+/** Below the `pg_trgm` default of 0.6 so one typo in a five-letter word ("pilon" → "pylon") still matches. */
 const FUZZY_THRESHOLD = 0.45;
 
 export interface StoredChunk {

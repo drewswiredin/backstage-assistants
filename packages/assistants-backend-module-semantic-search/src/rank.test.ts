@@ -4,10 +4,10 @@ describe('queryWords', () => {
   it('keeps distinct content words and drops stopwords and short words', () => {
     expect(
       queryWords([
-        'How do I retry dead-letter messages in Nexis?',
+        'How do I retry dead-letter messages in Pilon?',
         'retry DLQ',
       ]),
-    ).toEqual(['retry', 'dead-letter', 'messages', 'nexis', 'dlq']);
+    ).toEqual(['retry', 'dead-letter', 'messages', 'pilon', 'dlq']);
   });
 
   it('caps the word count', () => {

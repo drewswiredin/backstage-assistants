@@ -7,7 +7,7 @@ spelling, and by exact words:
 
 - "how do I fix errored-out messages" finds _Dead-letter handling › Replaying
   dead-lettered messages_.
-- "Nexis deployment" finds the _Nexus Gateway › Deployment runbook_.
+- "Pilon deployment" finds the _Pylon Gateway › Deployment runbook_.
 - "dlq-replay" finds the page that names the job.
 
 Results are filtered to entities the user can read in the catalog.

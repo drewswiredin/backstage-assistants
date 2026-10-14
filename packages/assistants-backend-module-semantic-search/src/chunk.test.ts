@@ -3,10 +3,10 @@ import type { SourceDocument } from './sources';
 
 const doc = (text: string): SourceDocument => ({
   source: 'techdocs',
-  key: '/docs/default/component/nexus/messaging/#retry',
-  entityRef: 'component:default/nexus',
-  location: '/docs/default/component/nexus/messaging/',
-  title: 'Nexus › Messaging › Retry',
+  key: '/docs/default/component/pylon/messaging/#retry',
+  entityRef: 'component:default/pylon',
+  location: '/docs/default/component/pylon/messaging/',
+  title: 'Pylon › Messaging › Retry',
   text,
 });
 
@@ -43,9 +43,9 @@ describe('chunkDocument', () => {
     expect(c.id).toBe(a.id);
     expect(c.hash).not.toBe(a.hash);
     expect(a).toMatchObject({
-      entityRef: 'component:default/nexus',
-      location: '/docs/default/component/nexus/messaging/',
-      title: 'Nexus › Messaging › Retry',
+      entityRef: 'component:default/pylon',
+      location: '/docs/default/component/pylon/messaging/',
+      title: 'Pylon › Messaging › Retry',
       content: 'Run the replay job.',
     });
   });

@@ -51,7 +51,7 @@ their server's configured credential.
   service?" and get an answer sourced from the catalog and TechDocs, not the
   model's memory. Add the [semantic search module](packages/assistants-backend-module-semantic-search)
   and it finds pages by meaning and tolerates misspellings: "fix errored
-  messages" finds the dead-letter runbook, "Nexis" finds Nexus.
+  messages" finds the dead-letter runbook, "Pilon" finds Pylon.
 - **Backstage actions as the user.** Let an assistant act on Backstage: look up
   entities, search docs, or run a scaffolder template, as the user, with their
   permissions.

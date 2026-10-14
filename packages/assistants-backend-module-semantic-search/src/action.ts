@@ -40,7 +40,7 @@ export function registerSearchKnowledgeAction({
     name: 'search-knowledge',
     title: 'Search Knowledge',
     attributes: { destructive: false, readOnly: true, idempotent: true },
-    description: `Search the organization's TechDocs and software catalog by meaning, not only by exact words. Best for questions in the user's own words: it finds a page even when the question is worded differently from it ("fix errored messages" finds "Retry dead-letter messages") and tolerates misspelled names ("Nexis" finds "Nexus"). It returns the most relevant sections, not every match, and cannot filter by entity kind.
+    description: `Search the organization's TechDocs and software catalog by meaning, not only by exact words. Best for questions in the user's own words: it finds a page even when the question is worded differently from it ("fix errored messages" finds "Retry dead-letter messages") and tolerates misspelled names ("Pilon" finds "Pylon"). It returns the most relevant sections, not every match, and cannot filter by entity kind.
 
 Pass the user's question as "query". Pass up to three "alternatives": other phrasings, synonyms, or the internal terms the docs might use.
 
