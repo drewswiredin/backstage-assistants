@@ -9,6 +9,7 @@ import {
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
+import { mcpToolName } from './mcp';
 import {
   ModelOption,
   ModelId,
@@ -103,7 +104,7 @@ export type McpTransport = 'http' | 'sse' | 'stdio';
 /**
  * A configured external MCP server. Remote transports (`http`/`sse`) use `url`
  * + `headers`; `stdio` spawns a local `command`.
- * Connected with a static credential (shared identity — not yet run-as-user).
+ * Connected with a static credential: one shared identity for every user.
  */
 export interface McpServerConfig {
   id: string;
@@ -467,7 +468,7 @@ export function readConfig(config: Config): AssistantsConfig {
 
       // Per-server approval floor, namespaced into the global set.
       for (const tool of sc.getOptionalStringArray('requireApproval') ?? []) {
-        requireApproval.add(`${serverId}__${tool}`);
+        requireApproval.add(mcpToolName(serverId, tool));
       }
     }
   }

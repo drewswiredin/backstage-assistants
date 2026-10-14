@@ -104,6 +104,22 @@ describe('readConfig', () => {
     ]);
   });
 
+  it('namespaces per-server approval entries the way tool names are', () => {
+    const cfg = read({
+      providers,
+      defaultModel: 'openai:gpt-4o',
+      mcp: {
+        servers: {
+          'team:tools': {
+            url: 'http://mcp.local/team',
+            requireApproval: ['deploy'],
+          },
+        },
+      },
+    });
+    expect([...cfg.requireApproval]).toEqual(['team_tools__deploy']);
+  });
+
   it('rejects a defaultModel outside the pool', () => {
     expect(() => read({ providers, defaultModel: 'openai:nope' })).toThrow(
       /defaultModel/,
