@@ -12,6 +12,13 @@ Four packages publish from this repo:
 The frontend and backend depend on `-common` via a caret range, so bump
 `-common` first.
 
+Releases are cut on `main`. Start by bringing it up to `dev`:
+
+```bash
+git checkout main
+git merge --ff-only dev
+```
+
 ## 1. Version and changelog
 
 1. Bump `version` in each `package.json` that changes, `-common`
@@ -66,7 +73,10 @@ git tag -a assistants-common-v<X> -m "assistants-common v<X>"
 git tag -a assistants-backend-v<Y> -m "assistants-backend v<Y>"
 git tag -a assistants-v<Z> -m "assistants v<Z>"
 git tag -a assistants-backend-module-semantic-search-v<S> -m "assistants-backend-module-semantic-search v<S>"
-git push --follow-tags
+git push --follow-tags origin main
+git checkout dev
+git merge --ff-only main
+git push origin dev
 ```
 
 Tags are annotated so `--follow-tags` pushes them. One tag per published
