@@ -95,7 +95,7 @@ const useStyles = makeStyles(theme => ({
       '--aui-primary-foreground':
         theme.palette.type === 'dark' ? '240 5.9% 10%' : '0 0% 98%',
     },
-    // Active composer border tinted to the agent color (set as --aui-composer-focus
+    // Active composer border tinted to the assistant color (set as --aui-composer-focus
     // on the host below); falls back to the theme primary if unset.
     '& .aui-composer-root:focus-within': {
       borderColor: 'var(--aui-composer-focus)',
@@ -453,7 +453,7 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   } = props;
   const classes = useStyles();
   const theme = useTheme();
-  // One mode-appropriate shade for every place the agent color appears here
+  // One mode-appropriate shade for every place the assistant color appears here
   // (chat bot avatar via context, welcome logo, composer focus border).
   const resolvedColor = resolveAssistantColor(
     assistantColor,

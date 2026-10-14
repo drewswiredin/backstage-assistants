@@ -64,33 +64,33 @@ flowchart LR
 
 ## Routes
 
-Every route accepts user tokens only. `/chat` and `/threads*` also apply the per-assistant access policy. Handlers live in `router.ts`; `/capabilities` and `/manage/*` live in `manage.ts`.
+Every route accepts user tokens only. `/chat` applies the per-assistant access policy, and `GET /threads`, `POST /threads`, and `/threads/status` filter or check by it; the per-thread routes and `/chat/resume` and `/chat/cancel` are scoped to the owning user. Handlers live in `router.ts`; `/capabilities` and `/manage/*` live in `manage.ts`.
 
-| Method | Path                     | Gate               | Reads                                                | Writes                                          | Signals                              |
-| ------ | ------------------------ | ------------------ | ---------------------------------------------------- | ----------------------------------------------- | ------------------------------------ |
-| GET    | `/status`                | `assistant.use`    | snapshot, `actions.list`, MCP tool cache             |                                                 |                                      |
-| POST   | `/chat`                  | `assistant.use`    | assistant row (DB), thread row, `actions.list`, pool | `messages`, `threads.updated_at`, title         | turn-started, turn-finished, updated |
-| GET    | `/chat/resume/:threadId` | `assistant.use`    | resumable buffer                                     |                                                 |                                      |
-| POST   | `/chat/cancel/:threadId` | `assistant.use`    | in-flight set, abort handle                          |                                                 | turn-finished                        |
-| GET    | `/threads`               | `assistant.use`    | snapshot (access filter), `threads`                  |                                                 |                                      |
-| POST   | `/threads`               | `assistant.use`    | snapshot (access check)                              | `threads` row                                   |                                      |
-| GET    | `/threads/status`        | `assistant.use`    | snapshot, `threads`, in-flight set                   |                                                 |                                      |
-| GET    | `/threads/:id`           | `assistant.use`    | `threads`                                            |                                                 |                                      |
-| PATCH  | `/threads/:id`           | `assistant.use`    | `threads`                                            | title, model, reasoning level, pinned, archived |                                      |
-| DELETE | `/threads/:id`           | `assistant.use`    | `threads`                                            | `threads` and `messages` rows                   |                                      |
-| POST   | `/threads/:id/read`      | `assistant.use`    | `threads`                                            | `last_read_at`                                  | read                                 |
-| GET    | `/threads/:id/messages`  | `assistant.use`    | `messages`                                           |                                                 |                                      |
-| GET    | `/capabilities`          | `assistant.manage` | `actions.list`, model pool, MCP pool                 |                                                 |                                      |
-| GET    | `/manage/assistants`     | `assistant.manage` | `assistants` (DB)                                    |                                                 |                                      |
-| POST   | `/manage/assistants`     | `assistant.manage` | capabilities                                         | `assistants` row, snapshot rebuild              |                                      |
-| PUT    | `/manage/assistants/:id` | `assistant.manage` | `assistants` row, capabilities                       | `assistants` row, snapshot rebuild              |                                      |
-| DELETE | `/manage/assistants/:id` | `assistant.manage` |                                                      | `assistants` row, snapshot rebuild              |                                      |
+| Method | Path                     | Gate               | Reads                                                                                                      | Writes                                                            | Signals                              |
+| ------ | ------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
+| GET    | `/status`                | `assistant.use`    | snapshot, `actions.list`, MCP tool cache                                                                   |                                                                   |                                      |
+| POST   | `/chat`                  | `assistant.use`    | assistant row (DB), thread row, `actions.list`, pool                                                       | `messages`, `threads` `updated_at`, `model`, `last_tokens`, title | turn-started, turn-finished, updated |
+| GET    | `/chat/resume/:threadId` | `assistant.use`    | resumable buffer                                                                                           |                                                                   |                                      |
+| POST   | `/chat/cancel/:threadId` | `assistant.use`    | in-flight set, abort handle                                                                                |                                                                   | turn-finished                        |
+| GET    | `/threads`               | `assistant.use`    | snapshot (access filter), `threads`; optional `?assistantId=`; unarchived, pinned first, then `updated_at` |                                                                   |                                      |
+| POST   | `/threads`               | `assistant.use`    | snapshot (access check)                                                                                    | `threads` row                                                     |                                      |
+| GET    | `/threads/status`        | `assistant.use`    | snapshot, `threads`, in-flight set                                                                         |                                                                   |                                      |
+| GET    | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  |                                                                   |                                      |
+| PATCH  | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  | title, model, reasoning level, pinned, archived                   |                                      |
+| DELETE | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  | `threads` and `messages` rows                                     |                                      |
+| POST   | `/threads/:id/read`      | `assistant.use`    | `threads`                                                                                                  | `last_read_at`                                                    | read                                 |
+| GET    | `/threads/:id/messages`  | `assistant.use`    | `messages`                                                                                                 |                                                                   |                                      |
+| GET    | `/capabilities`          | `assistant.manage` | `actions.list`, model pool, MCP pool                                                                       |                                                                   |                                      |
+| GET    | `/manage/assistants`     | `assistant.manage` | `assistants` (DB)                                                                                          |                                                                   |                                      |
+| POST   | `/manage/assistants`     | `assistant.manage` | capabilities                                                                                               | `assistants` row, snapshot rebuild                                |                                      |
+| PUT    | `/manage/assistants/:id` | `assistant.manage` | `assistants` row, capabilities                                                                             | `assistants` row, snapshot rebuild                                |                                      |
+| DELETE | `/manage/assistants/:id` | `assistant.manage` |                                                                                                            | `assistants` row, snapshot rebuild                                |                                      |
 
-`/status` and `/chat` sit on the typed OpenAPI router (`src/schema/openapi.yaml`); the `/chat` body limit is `requestBodyLimit`, default `10mb`. The other routes are plain Express sub-routers with `1mb` bodies.
+`/status` and `/chat` sit on the typed OpenAPI router (`src/schema/openapi.yaml`); the other routes are plain Express sub-routers. The OpenAPI router's JSON parser runs ahead of every route, so `requestBodyLimit` (default `10mb`, sized for `/chat` attachments) is the body limit for all of them. `PATCH /threads/:id` rejects unknown fields; `POST /threads` answers 201; `/chat/cancel` always answers 204; `/chat/resume` answers 204 for an unknown, foreign, or expired stream.
 
 ## Chat turn
 
-The browser sends `{ assistantId, modelId, threadId, reasoningLevel?, messages }`. The server persists the user message before streaming, so the conversation is durable the instant it is sent.
+The browser sends `{ assistantId, modelId, threadId?, reasoningLevel?, messages }`. The server persists the user message before streaming, so the conversation is durable the instant it is sent. A turn without `threadId` streams but is neither persisted, signalled, nor resumable.
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +103,8 @@ sequenceDiagram
   participant D as Database
   B->>R: POST /chat
   R->>R: assistant.use check
-  R->>D: read assistant row
+  R->>D: read assistant row, unknown 400
+  R->>R: access policy? else 403
   R->>D: thread owned? else 404
   R->>R: modelId in allowlist? else 400
   R->>R: assemble tools
@@ -121,9 +122,9 @@ sequenceDiagram
   R-->>B: turn-finished signal
 ```
 
-Tool assembly splits `allowedTools` into bare action ids and `<serverId>__<tool>` entries. Action ids are intersected with `actions.list({ credentials })`; unknown names are logged and skipped. MCP entries come from the pool cache and run as the server's configured credential. `render_form` and `download_file` are always added. Non-image file parts are inlined as `<attachment>` text before the model call. `reasoningLevel` (`low`, `medium`, `high`, `max`) is translated per provider type in `config.ts`.
+Tool assembly splits `allowedTools` into bare action ids and `<serverId>__<tool>` entries; the server segment is the server id with characters outside `[A-Za-z0-9_-]` replaced by `_`. Action ids are intersected with `actions.list({ credentials })`; unknown names are logged and skipped. MCP entries come from the pool cache and run as the server's configured credential. `render_form` and `download_file` are always added. Non-image file parts are inlined as `<attachment>` text before the model call. `reasoningLevel` (`low`, `medium`, `high`, `max`) is translated per provider type in `config.ts`.
 
-The loop runs `streamText` with `stopWhen: stepCountIs(maxSteps)` (default 10) and one `AbortController` per thread. Usage from the last `finish-step` rides the assistant message as `metadata.usage`, and `replaceMessages` stores the total in `threads.last_tokens`. Errors stream as a readable error part with the real reason, capped at 300 characters.
+The loop runs `streamText` with `stopWhen: stepCountIs(maxSteps)` (default 10) and one `AbortController` per thread. Usage from the last `finish-step` rides the assistant message as `metadata.usage`, and `replaceMessages` stores the total in `threads.last_tokens`. Usage falls back to the turn's total when no step reported any. Errors stream as a readable error part with the real reason, capped at 300 characters. A failed or denied tool call returns a `{ _error: true, message }` result rather than throwing, so the loop continues; every tool result, error or not, is truncated to `toolResultMaxChars` (default 30000, `0` disables), keeping the head and tail around an elision marker.
 
 **Auto-title.** After a turn lands, `onFinish` runs `generateText` off the critical path when the title is still `New Chat`. The result is cut to 80 characters, saved with `updateThread`, and announced with an `updated` signal.
 
@@ -148,11 +149,11 @@ sequenceDiagram
 
 Stop aborts only this turn's controller, checked against the caller's in-flight set. A dropped connection does not abort: `consumeStream` drives the turn to completion and `onFinish` persists it. On entering a conversation the runtime hook checks the `working` flag and calls `resumeStream()`, which targets `/chat/resume/:threadId` with the thread id as the stream id. The buffer stays 60 s after completion; after that the route answers 204 and the durable turn loads from the database.
 
-| End state    | Persisted                                        | Surface shows                                                              |
-| ------------ | ------------------------------------------------ | -------------------------------------------------------------------------- |
-| Stopped      | Partial reply, stamped `metadata.canceled: true` | "Request interrupted", live via `interruptedTurns`, durable via the flag   |
-| Errored      | The user message from turn start                 | The streamed error part with the reason                                    |
-| Disconnected | The full turn, written when the server finishes  | "Connection lost" in the tab that dropped; resume or reload shows the turn |
+| End state    | Persisted                                             | Surface shows                                                              |
+| ------------ | ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| Stopped      | Partial reply, stamped `metadata.canceled: true`      | "Request interrupted", live via `interruptedTurns`, durable via the flag   |
+| Errored      | The turn up to the error, including any partial reply | The streamed error part with the reason                                    |
+| Disconnected | The full turn, written when the server finishes       | "Connection lost" in the tab that dropped; resume or reload shows the turn |
 
 A clean close with no `finishReason`, outside a form or approval pause, is labelled as disconnected.
 
@@ -184,12 +185,12 @@ sequenceDiagram
 
 ## Authorization
 
-| Order | Layer                       | Where                                                 | Rule                                                                                                                                                                                 |
-| ----- | --------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `assistant.use` permission  | Every user-facing route; the page via `usePermission` | Denied callers get 403 and never load the surface                                                                                                                                    |
-| 2     | Per-assistant access policy | `/status` filter, `/chat`, `/threads*`                | `allowAuthenticated`, or `users` contains the caller, or `groups` meets `ownershipEntityRefs`; deny by default. The API defaults a missing policy to deny; the editor pre-fills open |
-| 3     | Tool selection              | Tool assembly                                         | Backstage actions: `allowedTools` ∩ `actions.list(credentials)`, with per-resource checks at `invoke`. MCP tools: added directly, run as the server credential                       |
-| 4     | Approval gate               | `toolApproval` in the loop                            | Floor ∩ `allowedTools`; a human checkpoint, not a permission                                                                                                                         |
+| Order | Layer                       | Where                                                          | Rule                                                                                                                                                                                 |
+| ----- | --------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | `assistant.use` permission  | Every user-facing route; the page via `usePermission`          | Denied callers get 403 and never load the surface                                                                                                                                    |
+| 2     | Per-assistant access policy | `/status` filter, `/chat`, `/threads` list, create, and status | `allowAuthenticated`, or `users` contains the caller, or `groups` meets `ownershipEntityRefs`; deny by default. The API defaults a missing policy to deny; the editor pre-fills open |
+| 3     | Tool selection              | Tool assembly                                                  | Backstage actions: `allowedTools` ∩ `actions.list(credentials)`, with per-resource checks at `invoke`. MCP tools: added directly, run as the server credential                       |
+| 4     | Approval gate               | `toolApproval` in the loop                                     | Floor ∩ `allowedTools`; a human checkpoint, not a permission                                                                                                                         |
 
 `assistant.manage` gates `/manage/*`, `/capabilities`, and the gear. Both permissions live in `-common`, are registered with `coreServices.permissionsRegistry`, and are granted by the host's permission policy. Hiding the nav entry is the host app's job.
 
@@ -222,6 +223,9 @@ A low-privilege user chatting with an assistant wired to a powerful MCP server g
 | `interruptedTurns` reasons      | Browser memory | Per message id                | `useChat.onFinish`                                    | Cleared on reload; the DB flag takes over                   | n/a                                     |
 | Model and effort refs           | React refs     | Per tab                       | Header pickers; PATCHed to the thread                 | Until unmount                                               | n/a                                     |
 | Side pane collapsed             | `localStorage` | Per browser                   | The collapse control                                  | Persistent                                                  | n/a                                     |
+| Active assistant                | URL            | Per tab                       | `?assistant=<id>`, rewritten on each switch           | Survives reload                                             | n/a                                     |
+| Nav icon status rows            | Browser memory | Per tab                       | `AssistantsNavIcon`'s own `useThreadStatus`           | Until unmount                                               | n/a                                     |
+| Scaffolder field registry       | Module memory  | Per tab                       | `render_form`'s first `loadFormFields()`              | Until reload                                                | n/a                                     |
 
 The resumable buffer, the in-flight set, and the abort handles live in process memory. The plugin therefore runs on one backend replica or behind session affinity for `/api/assistants/*`; completed turns are durable regardless.
 
@@ -280,9 +284,9 @@ The resumable buffer, the in-flight set, and the abort handles live in process m
 
 A GIN `gin_trgm_ops` index covers `title || ' ' || content`. `assistants_knowledge_meta` holds the index signature, `key = embedding`, `value = <embeddingModel>#<dimensions>`; a different signature drops and recreates `assistants_knowledge_chunks`. Both tables are a rebuildable cache, created by the module rather than migrations.
 
-**Unread and recency.** `updated_at` moves only when a turn lands in `replaceMessages`. `unread = updated_at > last_read_at` when `last_read_at` is set. Rename, model, effort, pin, and archive edits touch only their own fields, so editing a conversation never marks it unread or reorders the list.
+**Unread and recency.** `updated_at` moves only in `replaceMessages`: when a turn starts and when it lands. A new thread starts read: `last_read_at` is its creation time. `unread = updated_at > last_read_at` when `last_read_at` is set. Rename, model, effort, pin, and archive edits touch only their own fields, so editing a conversation never marks it unread or reorders the list.
 
-Timestamps are ISO 8601 strings on every driver; `toIsoTimestamp` converts Postgres `Date` values so ordering and the unread compare see one format. Rows that fail to parse are skipped on read, and threads whose assistant is gone are filtered out of every list.
+Timestamps are ISO 8601 strings on every driver; `toIsoTimestamp` converts Postgres `Date` values so ordering and the unread compare see one format. Assistant rows that fail to parse are skipped on read. Threads whose assistant is gone are filtered out of every list but stay in the database with their messages. `messages.thread_id` cascades on delete.
 
 ## Frontend runtime
 
@@ -297,7 +301,16 @@ flowchart TB
   RH["Per-thread runtime hook\ncollapsible/useAssistantRuntime.ts"]
   CS["ConversationSurface\ncollapsible/surface/"]
   API["AssistantsApi\napi/AssistantsApi.ts"]
+  DD["AssistantDetailDialog\ncollapsible/AssistantDetailDialog.tsx"]
+  TS["useThreadStatus, StatusDot\ncollapsible/"]
+  CT["RenderFormTool, DownloadFileTool\ncollapsible/surface/"]
+  NI["AssistantsNavIcon\nAssistantsNavIcon.tsx"]
   CP --> SP
+  CP --> DD
+  CP --> TS
+  NI --> TS
+  CS --> CT
+  TS --> API
   CP --> HP
   CP --> AD
   CP --> RP
@@ -308,13 +321,13 @@ flowchart TB
   RL --> API
 ```
 
-One runtime carries every conversation across all assistants; switching assistant or conversation never remounts it, so in-flight streams keep running. The thread-list adapter lists every thread over `/threads`; the page filters by the active assistant. New conversations are created only with the "+" control; a bare assistant shows an empty state. Deleting the active conversation lands on the assistant's most recent remaining one. The `SidePane` holds the rail, the conversation list, and the gear.
+One runtime carries every conversation across all assistants; switching assistant or conversation never remounts it, so in-flight streams keep running. The thread-list adapter lists every thread over `/threads`; the page filters by the active assistant. New conversations are created only by the "+" control or the empty state's New chat button; typing never creates one. Deleting the active conversation lands on the assistant's most recent remaining one. Expanded, `SidePane` holds the assistant list, the conversation list, and the gear; collapsed, `CollapsiblePage` renders a 56 px rail with the same controls as icons. `?assistant=<id>` selects the initial assistant and follows every switch.
 
-The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRuntime`. Its `AssistantChatTransport` wraps the authed fetch to inject `assistantId`, `modelId`, and `reasoningLevel`, and copies the transport's `id` to `threadId`. When the request signal aborts it posts `/chat/cancel/:threadId`. The history adapter is load-only over `/threads/:id/messages`; `append` is a no-op and `generateTitle` returns an empty stream.
+The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRuntime`. Its `AssistantChatTransport` wraps the authed fetch to inject `assistantId`, `modelId`, and `reasoningLevel`, and copies the transport's `id` to `threadId`. When the request signal aborts it posts `/chat/cancel/:threadId`. The history adapter is load-only over `/threads/:id/messages`, and its `append` is a no-op. The thread-list adapter's `generateTitle` returns an empty stream because the server writes titles.
 
 The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<ConversationSurfaceProps>`. The props are `composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, and `className`. The surface reads the ambient runtime and owns no transport, auth, or chrome. The composer's attachment adapter caps files at 7 MB.
 
-`AssistantAdminDialog` opens from the gear when `usePermission(assistantManagePermission)` allows. It loads `/manage/assistants` and `/capabilities`, edits one draft at a time, and refetches `/status` after each save.
+`AssistantAdminDialog` opens from the gear when `usePermission(assistantManagePermission)` allows. It loads `/manage/assistants` and `/capabilities` when it opens, edits one draft at a time, and refetches `/status` and the thread list after each save or delete.
 
 **Duplicate core.** The history adapter is passed directly into `useAISDKRuntime`, not published through `RuntimeAdapterProvider` context. A consumer tree with two copies of `@assistant-ui/core` has two React contexts, the lookup returns undefined, and every conversation reopens blank. The adapter is created only once `remoteId` exists, so `useExternalHistory` never latches before the id resolves.
 
@@ -328,6 +341,7 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 | `providers.*.models[].maxOutputTokens`               | config | Output ceiling passed to `streamText`                          | no                              |
 | `mcp.servers.*.headers`, `env`                       | config | Secret                                                         | no                              |
 | `mcp.servers.*` connection, `connectTimeoutMs`       | config | Platform wiring                                                | no                              |
+| `mcp.connectTimeoutMs`                               | config | Platform default for every server                              | no                              |
 | `requireApproval`, `mcp.servers.*.requireApproval`   | config | Safety floor; not weakenable at runtime                        | badge only, via `/capabilities` |
 | `maxSteps`, `toolResultMaxChars`, `requestBodyLimit` | config | Runtime guards                                                 | no                              |
 | `defaultModel`, `builtinActions`                     | config | Platform default; opt-in built-in actions                      | `defaultModel` only             |
@@ -339,7 +353,7 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 
 `/status` returns the browser-safe half: assistant summaries, each assistant's effective tools, the model pool, and the platform default. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the prompt becomes `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
 
-A provider's `type` is `openai`, `anthropic`, `azure`, or `openai-compatible`; it selects the AI SDK factory, and `options` is spread verbatim into it. A model id is `<providerId>:<model>`, resolved through the provider registry; the model segment may contain slashes. The pool is the union of every provider's `models[]`. The effective default is the stored one, else the platform default; with a restricted allowlist it is the stored one when listed, else the first entry.
+A provider's `type` is `openai`, `anthropic`, `azure`, or `openai-compatible`; it selects the AI SDK factory, and `options` is spread verbatim into it. `openai`, `azure`, and `openai-compatible` models run on the chat-completions API. An MCP server's `transport` is `http` (default), `sse`, or `stdio`; `connectTimeoutMs` must be positive. A model id is `<providerId>:<model>`, resolved through the provider registry; the model segment may contain slashes. The pool is the union of every provider's `models[]`. The effective default is the stored one, else the platform default; with a restricted allowlist it is the stored one when listed, else the first entry.
 
 Anthropic tool-argument normalisation runs when `resolveProviderType(modelId)` is `anthropic`, never on the provider id. A string or missing `input` on an assistant tool call is coerced to an object before the provider sees it.
 
@@ -374,7 +388,7 @@ sequenceDiagram
 | RED and AMBER              | RED: gone (action absent, model out of the pool, tool absent from a reachable server). AMBER: its server is unreachable |
 | Never auto-strip           | Save never removes stale entries; the admin prunes on demand                                                            |
 
-Structural validation is strict: `title` and `prompt` non-empty, arrays of strings, `defaultModel` a string or null. `access.users` and `access.groups` are not checked for existence; a dangling ref grants nobody.
+Structural validation is strict: `title` and `prompt` non-empty, arrays of strings, `defaultModel` a string or null, `description` and `color` strings (`''` unsets), `ui` an object (`{}` is dropped), `access` optional and deny when absent, with `allowAuthenticated` a boolean. A changed `defaultModel` must be live or in the assistant's `models`. Create ignores any incoming `id`; `PUT` on an unknown id answers 404. `access.users` and `access.groups` are not checked for existence; a dangling ref grants nobody.
 
 **Seed-once.** First init inserts one assistant titled `Assistant`: `allowAuthenticated: true`, `allowedTools` of `search-catalog`, `search-techdocs`, and `read-techdocs`, an empty model allowlist, and `defaultModel: null`. A `seeded` marker in `assistants_meta` is written in the same transaction and never cleared, so the default is never resurrected. The built-in tools are skipped at `/chat` when `builtinActions` is off.
 
@@ -397,17 +411,17 @@ The backend publishes on the per-user channel `assistants:threads`.
 | `updated`       | Thread metadata changed, such as an auto-title |
 | `read`          | The thread was marked read in some view        |
 
-Every indicator derives from one `GET /threads/status` snapshot. `working` comes from the in-flight set; `unread` is `updated_at > last_read_at` in the database. Rollups per assistant and for the nav icon: working beats unread. The focused conversation shows working but never unread, and focusing it posts `/threads/:id/read`. `StatusDot` renders amber pulsing for working, solid red for unread, nothing for read.
+Every indicator derives from one `GET /threads/status` snapshot. `working` comes from the in-flight set; `unread` is `updated_at > last_read_at` in the database. Rollups per assistant and for `AssistantsNavIcon`: working beats unread. `AssistantsNavIcon` runs its own status subscription; the auto-registered nav entry uses the plain plugin icon and shows no status. The focused conversation shows working but never unread, and focusing it posts `/threads/:id/read`. `StatusDot` renders amber pulsing for working, solid red for unread, nothing for read.
 
 The client refetches the snapshot 120 ms after any signal and on tab-visible, never on window focus. Without a Signals API it polls every 10 s. The thread list reloads 150 ms after an `updated` signal. Under polling the list reloads on each status tick, skipped on the first tick and while any turn runs, because a reload re-keys an in-flight thread.
 
-The composer gauge shows `last_tokens` against the chosen model's `contextWindow`; without one the readout has no limit. When the history exceeds the window the composer shows "Context exceeded for the chosen model". The model picker is never filtered.
+The composer gauge shows `last_tokens` against the chosen model's `contextWindow`; without one the readout has no limit. When the history exceeds the window the composer shows "Context exceeded for the chosen model". The model picker is never filtered by context window.
 
 ## Runtime services
 
-**MCP pool.** The plugin keeps one persistent client per configured server per process. A `coreServices.scheduler` task with local scope runs every 2 minutes with no initial delay. It connects what is not connected, re-lists tools into the cache, and drops a failed client so the next cycle reconnects; up to 5 servers refresh concurrently. Each connect and list is bounded by `connectTimeoutMs`, resolved per server, then global, then 8 s. The task's own timeout derives from the slowest server with a 60 s floor. `/status` reads the cache synchronously and opens nothing. `/capabilities` reuses a cache younger than 5 minutes and re-lists otherwise, reporting `reachable` and `error` per server. `/chat` builds tool definitions from the cache and calls through the pooled client; a server with no live client returns a "not currently connected" tool result. A tool call is bounded by the turn's abort signal and a 60 s ceiling.
+**MCP pool.** The plugin keeps one persistent client per configured server per process. A `coreServices.scheduler` task with local scope runs every 2 minutes with no initial delay. It connects what is not connected, re-lists tools into the cache, and drops a failed client so the next cycle reconnects; up to 5 servers refresh concurrently. Each connect and list is bounded by `connectTimeoutMs`, resolved per server, then global, then 8 s. The task's own timeout derives from the slowest server with a 60 s floor. `/status` reads the cache synchronously and opens nothing. `/capabilities` and `/manage` writes reuse a cache younger than 5 minutes and re-list otherwise, reporting `reachable` and `error` per server; a failed re-list keeps the last-known tools. `/chat` builds tool definitions from the cache and calls through the pooled client; a server with no live client returns a "not currently connected" tool result. A tool call is bounded by the turn's abort signal and a 60 s ceiling.
 
-**Knowledge index.** With `assistants.semanticSearch` set, the database on Postgres, and the `vector` and `pg_trgm` extensions present, the module registers `search-knowledge` and a global-scope scheduler task (default every 30 minutes, 1 hour timeout, 15 s initial delay). A run embeds a probe to learn the model's dimensions and checks the signature, reads every published TechDocs site's MkDocs search index and every catalog entity except `Location` with the plugin's service credentials, chunks them, embeds only rows whose hash changed (batches of 96, two calls in flight), and deletes rows not seen, keeping those of entities whose site failed to load. `search-knowledge` embeds the query and up to three alternatives, then fuses by reciprocal rank (k = 60) one nearest-neighbour list per phrasing, one any-word full-text list, and one trigram list for query words absent from the index (word similarity ≥ 0.45). The top 40 candidates' entities are fetched with `getEntitiesByRefs` as the caller; chunks of entities the caller cannot read are dropped before the top `limit` are returned.
+**Knowledge index.** With `assistants.semanticSearch` set, the database on Postgres, and the `vector` and `pg_trgm` extensions present, the module registers `search-knowledge` and a global-scope scheduler task (default every 30 minutes, 1 hour timeout, 15 s initial delay). A run embeds a probe to learn the model's dimensions and checks the signature, reads every published TechDocs site's MkDocs search index and every catalog entity except `Location` with the plugin's service credentials, chunks them, embeds only rows whose hash changed (batches of 96, one at a time), and deletes rows not seen, keeping those of entities whose site failed to load. `search-knowledge` embeds the query and up to three alternatives, then fuses by reciprocal rank (k = 60) one nearest-neighbour list per phrasing, one any-word full-text list, and one trigram list for query words absent from the index (word similarity ≥ 0.45). Each list takes 30 candidates; query words are at least three characters, stopwords dropped, at most eight. The top 40 candidates' entities are fetched with `getEntitiesByRefs` as the caller; chunks of entities the caller cannot read are dropped, results are deduplicated by location and title, and the top `limit` (default 8, at most 20) are returned with 1500-character excerpts. Before the first run completes the action answers with an error naming `search-techdocs` and `search-catalog`. At startup the module runs `CREATE EXTENSION IF NOT EXISTS` for both extensions and stays off, logging the statements, if either is still missing; TechDocs search indexes are fetched eight at a time, and a site that answers 404 contributes nothing.
 
 **AssistantStore snapshot.** The store keeps every definition in memory and rebuilds it after each create, update, delete, and at init. Synchronous reads (`get`, `list`) serve `/status`, the access filters, and `/threads*`. When the snapshot is older than 60 s a read starts one shared background refresh and returns immediately. `/chat` and `/manage` read the database row instead. Derived values are computed at read: `hasModelAllowlist`, effective models, and the effective default. A malformed access blob normalises to deny; malformed arrays normalise to empty.
 
@@ -417,10 +431,10 @@ The composer gauge shows `last_tokens` against the chosen model's `contextWindow
 
 - The server is the only writer of message rows; the browser never persists message content.
 - `New Chat` is the auto-title sentinel; a thread with any other title is never retitled.
-- `threads.updated_at` moves only when a turn lands.
+- `threads.updated_at` moves only when a turn starts or lands.
 - `/status` never opens an MCP connection and never returns a prompt or access policy.
 - Safety gates live outside the database: the approval floor and runtime guards in config, management in the host's permission policy.
 - Anthropic tool-argument normalisation keys on provider `type`, never on the provider id.
 - Thread ownership is resolved before any side effect; a foreign thread is a plain 404.
-- `allowedTools` is explicit; an empty list yields no tools, and there is no wildcard.
+- `allowedTools` is explicit; an empty list yields only `render_form` and `download_file`, and there is no wildcard.
 - A knowledge index result reaches the model only if the caller can read its entity in the catalog.

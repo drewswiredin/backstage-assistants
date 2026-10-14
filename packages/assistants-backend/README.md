@@ -84,7 +84,8 @@ export OPENROUTER_API_KEY=sk-or-...
 
 Tables are created by migrations at startup; there is nothing to run. On a
 healthy start the log shows `AI Assistants backend plugin initialized` with
-model, default-model and assistant counts.
+the model count, the default model id, the `builtinActions` flag, and the
+assistant count.
 
 The first start seeds one assistant, open to every signed-in user, with the
 three built-in read tools; open `/assistants` and talk to it. Assistants
@@ -135,17 +136,16 @@ anthropic:
 # ids: anthropic:claude-opus-5, anthropic:claude-sonnet-5
 ```
 
-Azure OpenAI / AI Foundry: `models` are your deployment names; point `baseUrl`
-at your endpoint and pass extra connection settings such as `apiVersion` via
-`options`:
+Azure OpenAI / AI Foundry: `models` are your deployment names. Point `baseUrl`
+at the resource's `/openai` path; requests use the `v1` API. For the older
+deployment-based URLs, set `options.useDeploymentBasedUrls: true` and a dated
+`options.apiVersion`:
 
 ```yaml
 azure:
   type: azure
   apiKey: ${AZURE_API_KEY}
-  baseUrl: https://<resource>.openai.azure.com # or your Foundry endpoint
-  options:
-    apiVersion: '2024-10-21'
+  baseUrl: https://<resource>.openai.azure.com/openai
   models:
     - name: my-gpt-5-5-deployment
       contextWindow: 400000
@@ -227,7 +227,10 @@ credentials. `builtinActions: true` provides `search-catalog`,
 `search-techdocs`, and `read-techdocs`. Additional actions (e.g.
 `query-catalog-entities`, `get-catalog-entity`, `register-entity`,
 `unregister-entity`, `execute-template`) come from the action-providing
-plugins (catalog, scaffolder, and TechDocs action modules).
+plugins (catalog, scaffolder, and TechDocs action modules). The built-in tools
+query the search backend (`software-catalog` and `techdocs` documents) and read
+TechDocs pages, so they need `@backstage/plugin-search-backend` with the
+catalog and TechDocs collators, and `@backstage/plugin-techdocs-backend`.
 `search-knowledge`, which finds TechDocs and catalog content by meaning and
 near spelling, comes from the
 [semantic search module](../assistants-backend-module-semantic-search).
@@ -305,8 +308,9 @@ assistants:
 A server's tools are assigned to an assistant individually in the editor; each
 selected tool becomes an `allowedTools` entry namespaced `<serverId>__<tool>`,
 and the detail modal shows only the selected tools. There is no per-assistant
-server allowlist in config. The editor shows each server's reachability and
-its last `error`, with a manual refresh.
+server allowlist in config. When the editor opens it shows each server's reachability and
+its last `error`, from a listing no older than 5 minutes. An MCP tool call is
+capped at 60 seconds and stops with the turn.
 
 Auth is a single static credential (the configured `headers`): one shared
 identity for all users, not run-as-user. Gate access with the assistant's
@@ -342,8 +346,10 @@ assistants:
 The gate is a config floor: the effective set for an assistant is this list
 intersected with its `allowedTools`, so a gated tool an assistant is not given
 is never hit, and there is no per-assistant approval field that could weaken
-it. Names match action ids or namespaced `<server>__<tool>` MCP tools; a name
-not in the assistant's tool set is logged and ignored.
+it. Names match action ids or namespaced `<server>__<tool>` MCP tools. A gated
+name the assistant is not given is ignored; a gated name it is given that does
+not resolve this turn (an action the caller cannot see, a server that is not
+connected) is logged.
 
 What the user sees: the reply stops at the tool call and shows an approval
 card. Allow runs the tool as it would run ungated: a Backstage action with the
@@ -365,8 +371,9 @@ multiple-choice input; the user fills and submits, and the values flow back as
 the tool result. Forms render Backstage scaffolder field extensions (owner,
 entity, and repo pickers, plus any custom field the host app has registered),
 so the model can reuse a scaffolder template's parameter block verbatim.
-`download_file` hands a generated file back as a download chip in the
-conversation. Both pause the turn the way the approval gate does and survive a
+`download_file` hands a generated text file (CSV, JSON, Markdown, code, SVG)
+back as a download chip in the conversation. `render_form` pauses the turn the
+way the approval gate does until the user submits or dismisses; both survive a
 page reload.
 
 ## Run a scaffolder template from the conversation
@@ -540,8 +547,12 @@ upgrading.
   (an `allowedTools` entry the actions service does not expose),
   `MCP server '<id>' tool listing failed: ...` (the last-known tool list stays
   in place), `requireApproval lists tool(s) not available to assistant '<id>':
-...` (a gated name the assistant is not given), and `auto-title failed` (the
-  conversation keeps its current title).
+...` (a gated tool the assistant has that did not resolve this turn),
+  `MCP server '<id>' not connected; '<tool>' skipped this turn`, and
+  `auto-title failed` (the conversation keeps its current title).
+- At info, per turn with a gate: `Approval gate active for assistant '<id>'`.
+- A provider failure reaches the conversation as `The assistant couldn't finish
+this turn: <reason>` and logs `chat stream error surfaced to client`.
 
 ## Troubleshooting
 
@@ -558,7 +569,8 @@ upgrading.
 
 ## Security
 
-Prompts and access policies are backend-only and never sent to the browser.
+Prompts and access policies never reach the chat surface; only the
+`assistant.manage` routes return them.
 `providers.*.apiKey` and every value under `mcp.servers.*.env` and
 `mcp.servers.*.headers` are secret: redacted in logs, API responses, and the
 DevTools config view. The browser receives only a projection over
@@ -580,7 +592,8 @@ What is stored: four tables in the plugin database: `assistants`
 attachments, assistant output, and tool results truncated at
 `toolResultMaxChars`, default 30000) persists in `messages.content_json` until
 the user deletes the conversation, which is a hard delete; nothing is retained
-after that. Provider API keys and MCP secrets live only in config.
+after that. Deleting an assistant leaves its users' conversations in `threads`
+and `messages`; they no longer appear in the UI. Provider API keys and MCP secrets live only in config.
 
 Untrusted content and prompt injection: everything a tool returns (TechDocs
 pages, catalog entity fields, MCP results) is untrusted input to the model,
@@ -598,40 +611,43 @@ Backstage permissions do not limit it.
 
 ### Configuration keys
 
-All keys sit under `assistants`.
+All keys sit under `assistants`. `assistants.semanticSearch` belongs to the
+[semantic search module](../assistants-backend-module-semantic-search#reference).
 
-| Key                                       | Default    | Description                                                                                                                                                  |
-| ----------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `defaultModel`                            | required   | Initial `<providerId>:<model>`; must exist in a provider.                                                                                                    |
-| `maxSteps`                                | `10`       | Max tool-call steps per turn.                                                                                                                                |
-| `builtinActions`                          | `false`    | Register built-in catalog/TechDocs read tools.                                                                                                               |
-| `toolResultMaxChars`                      | `30000`    | Max chars of a single tool result (head+tail truncation; `0` disables).                                                                                      |
-| `requireApproval`                         | `[]`       | Action ids gated by Allow / Deny in the conversation.                                                                                                        |
-| `requestBodyLimit`                        | `10mb`     | Express body limit for `/chat`.                                                                                                                              |
-| `providers.<id>.type`                     | required   | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                   |
-| `providers.<id>.apiKey`                   | required   | Provider key (secret).                                                                                                                                       |
-| `providers.<id>.baseUrl`                  |            | Base URL override.                                                                                                                                           |
-| `providers.<id>.options`                  |            | Untyped passthrough object spread into the `@ai-sdk/*` factory (e.g. Azure `apiVersion`). Not schema-validated; keep credentials out of it and use `apiKey`. |
-| `providers.<id>.models`                   | required   | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. A plain string list is rejected at startup.                                      |
-| `providers.<id>.models[].contextWindow`   |            | Max input tokens; drives the context gauge.                                                                                                                  |
-| `providers.<id>.models[].reasoning`       | `false`    | `true` if the model reasons; adds the effort picker (see Per-model options).                                                                                 |
-| `providers.<id>.models[].maxOutputTokens` |            | Output-token ceiling; must be > 0. Only needed when the provider misjudges an unrecognized model id.                                                         |
-| `mcp.connectTimeoutMs`                    | `8000`     | Global MCP connect/list-tools timeout ceiling in ms; must be > 0.                                                                                            |
-| `mcp.servers.<id>`                        |            | External MCP server connections (see Add an MCP server).                                                                                                     |
-| `mcp.servers.<id>.transport`              | `http`     | `http` \| `sse` \| `stdio`.                                                                                                                                  |
-| `mcp.servers.<id>.url`                    | http/sse   | Endpoint URL; required for `http` and `sse`.                                                                                                                 |
-| `mcp.servers.<id>.headers`                |            | Headers sent on every request (`http`/`sse`); values are secret.                                                                                             |
-| `mcp.servers.<id>.command`                | stdio      | Executable to spawn; required for `stdio`.                                                                                                                   |
-| `mcp.servers.<id>.args`                   |            | Arguments for `command` (`stdio`).                                                                                                                           |
-| `mcp.servers.<id>.env`                    |            | Extra environment for the child process, merged over a safe default (`stdio`); values are secret.                                                            |
-| `mcp.servers.<id>.cwd`                    |            | Working directory for the child process (`stdio`).                                                                                                           |
-| `mcp.servers.<id>.connectTimeoutMs`       | the global | Per-server connect/list-tools ceiling; must be > 0.                                                                                                          |
-| `mcp.servers.<id>.requireApproval`        | `[]`       | Tool names of this server gated by Allow / Deny.                                                                                                             |
+| Key                                       | Default    | Description                                                                                                                                                              |
+| ----------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `defaultModel`                            | required   | Initial `<providerId>:<model>`; must exist in a provider.                                                                                                                |
+| `maxSteps`                                | `10`       | Max tool-call steps per turn.                                                                                                                                            |
+| `builtinActions`                          | `false`    | Register built-in catalog/TechDocs read tools.                                                                                                                           |
+| `toolResultMaxChars`                      | `30000`    | Max chars of a single tool result (head+tail truncation; `0` disables).                                                                                                  |
+| `requireApproval`                         | `[]`       | Action ids gated by Allow / Deny in the conversation.                                                                                                                    |
+| `requestBodyLimit`                        | `10mb`     | JSON body limit for every plugin request, sized for `/chat` attachments.                                                                                                 |
+| `providers.<id>.type`                     | required   | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                               |
+| `providers.<id>.apiKey`                   | required   | Provider key (secret).                                                                                                                                                   |
+| `providers.<id>.baseUrl`                  |            | Base URL override.                                                                                                                                                       |
+| `providers.<id>.options`                  |            | Untyped passthrough object spread into the `@ai-sdk/*` factory (e.g. Azure `useDeploymentBasedUrls`). Not schema-validated; keep credentials out of it and use `apiKey`. |
+| `providers.<id>.models`                   | required   | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. A plain string list is rejected at startup.                                                  |
+| `providers.<id>.models[].contextWindow`   |            | Max input tokens; drives the context gauge.                                                                                                                              |
+| `providers.<id>.models[].reasoning`       | `false`    | `true` if the model reasons; adds the effort picker (see Per-model options).                                                                                             |
+| `providers.<id>.models[].maxOutputTokens` |            | Output-token ceiling; must be > 0. Only needed when the provider misjudges an unrecognized model id.                                                                     |
+| `mcp.connectTimeoutMs`                    | `8000`     | Global MCP connect/list-tools timeout ceiling in ms; must be > 0.                                                                                                        |
+| `mcp.servers.<id>`                        |            | External MCP server connections (see Add an MCP server).                                                                                                                 |
+| `mcp.servers.<id>.transport`              | `http`     | `http` \| `sse` \| `stdio`.                                                                                                                                              |
+| `mcp.servers.<id>.url`                    | http/sse   | Endpoint URL; required for `http` and `sse`.                                                                                                                             |
+| `mcp.servers.<id>.headers`                |            | Headers sent on every request (`http`/`sse`); values are secret.                                                                                                         |
+| `mcp.servers.<id>.command`                | stdio      | Executable to spawn; required for `stdio`.                                                                                                                               |
+| `mcp.servers.<id>.args`                   |            | Arguments for `command` (`stdio`).                                                                                                                                       |
+| `mcp.servers.<id>.env`                    |            | Extra environment for the child process, merged over a safe default (`stdio`); values are secret.                                                                        |
+| `mcp.servers.<id>.cwd`                    |            | Working directory for the child process (`stdio`).                                                                                                                       |
+| `mcp.servers.<id>.connectTimeoutMs`       | the global | Per-server connect/list-tools ceiling; must be > 0.                                                                                                                      |
+| `mcp.servers.<id>.requireApproval`        | `[]`       | Tool names of this server gated by Allow / Deny.                                                                                                                         |
 
 ### Startup errors
 
 Each of these is an `InputError` raised while reading config; the backend
-exits with the message:
+exits with the message. A missing `assistants` block, `defaultModel`,
+`providers.<id>.apiKey`, or `providers.<id>.models` fails earlier with
+Backstage's own missing-config error naming the key.
 
 - `Unsupported provider type '<type>' for provider '<id>'`: `type` is not one
   of `openai`, `anthropic`, `azure`, `openai-compatible`.
@@ -649,8 +665,9 @@ exits with the message:
 
 ### HTTP routes
 
-All routes are under `/api/assistants`. `assistant.use` routes also apply the
-per-assistant access policy and, for conversation routes, the owning user.
+All routes are under `/api/assistants`. `/status`, `/chat`, and the thread
+list, create, and status routes also apply the per-assistant access policy;
+every conversation route is scoped to the owning user.
 
 | Route                           | Permission         | Purpose                                                     |
 | ------------------------------- | ------------------ | ----------------------------------------------------------- |
@@ -658,25 +675,24 @@ per-assistant access policy and, for conversation routes, the owning user.
 | `POST /chat`                    | `assistant.use`    | Run a turn; streams the reply.                              |
 | `GET /chat/resume/:threadId`    | `assistant.use`    | Rejoin an in-flight reply's stream.                         |
 | `POST /chat/cancel/:threadId`   | `assistant.use`    | Stop an in-flight reply.                                    |
-| `GET /threads`                  | `assistant.use`    | List the caller's conversations.                            |
+| `GET /threads`                  | `assistant.use`    | List the caller's conversations; `?assistantId=` filters.   |
 | `POST /threads`                 | `assistant.use`    | Create a conversation.                                      |
-| `GET /threads/status`           | `assistant.use`    | Working and unread state per conversation.                  |
+| `GET /threads/status`           | `assistant.use`    | Working, unread, and token count per conversation.          |
 | `GET /threads/:id`              | `assistant.use`    | One conversation.                                           |
-| `PATCH /threads/:id`            | `assistant.use`    | Rename, archive, or change the model or reasoning level.    |
+| `PATCH /threads/:id`            | `assistant.use`    | Rename, pin, archive, or change model or reasoning level.   |
 | `DELETE /threads/:id`           | `assistant.use`    | Delete a conversation and its messages.                     |
 | `POST /threads/:id/read`        | `assistant.use`    | Mark a conversation read.                                   |
 | `GET /threads/:id/messages`     | `assistant.use`    | A conversation's messages.                                  |
 | `GET /capabilities`             | `assistant.manage` | Assignable inventory for the editor.                        |
 | `GET /manage/assistants`        | `assistant.manage` | All assistant definitions.                                  |
 | `POST /manage/assistants`       | `assistant.manage` | Create an assistant.                                        |
-| `GET /manage/assistants/:id`    | `assistant.manage` | One assistant definition.                                   |
 | `PUT /manage/assistants/:id`    | `assistant.manage` | Replace an assistant definition.                            |
 | `DELETE /manage/assistants/:id` | `assistant.manage` | Delete an assistant.                                        |
 
 ### Admin API
 
-The editor is backed by `GET /capabilities` and the `GET`/`POST`/`PUT`/`DELETE`
-`/manage/assistants` endpoints under `/api/assistants`, all gated by
+The editor is backed by `GET /capabilities` and the `/manage/assistants`
+endpoints (`GET` and `POST` on the collection, `PUT` and `DELETE` by id) under `/api/assistants`, all gated by
 `assistant.manage` (403 for callers who lack it). `GET /capabilities` returns
 the live, assignable inventory (Backstage actions, the model pool, each MCP
 server's reachability and tools, and the approval gate) that feeds the

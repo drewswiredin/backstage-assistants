@@ -9,9 +9,8 @@
  *   <any other perm>  -> ALLOW
  *
  * Group membership is read from the caller's ownershipEntityRefs. In this dev
- * app the guest auth provider populates them from
- * `auth.providers.guest.ownershipEntityRefs` (see the app-config.role-*.yaml
- * overlays). This is the same signal the assistants plugin's per-assistant
+ * app the `dev-userpick` sign-in provider issues them from `DEV_USERS` in
+ * ./devUserPickProvider.ts. This is the same signal the assistants plugin's per-assistant
  * access policy uses.
  *
  * Registered in the new backend system via the permission plugin's
@@ -104,9 +103,8 @@ export default createBackendModule({
     reg.registerInit({
       deps: {
         policy: policyExtensionPoint,
-        // coreServices.userInfo is requested only to keep the module future
-        // proof; the policy itself reads ownershipEntityRefs from the
-        // PolicyQueryUser handed to handle(). It is not used directly here.
+        // The policy reads ownershipEntityRefs from the PolicyQueryUser
+        // handed to handle().
         logger: coreServices.logger,
       },
       async init({ policy, logger }) {

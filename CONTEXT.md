@@ -1,6 +1,6 @@
 # backstage-assistants
 
-A Backstage plugin that adds an in-portal AI chat experience. It stitches assistant-ui (chat UI) and the Vercel AI SDK (model + tool loop) into Backstage, exposing the Backstage Actions registry as the model's tools, executed with the calling user's own credentials.
+A Backstage plugin that adds an in-portal AI chat experience. It stitches assistant-ui (chat UI) and the Vercel AI SDK (model + tool loop) into Backstage, exposing Backstage actions (run with the calling user's own credentials) and configured MCP server tools (run under each server's credential) as the model's tools.
 
 ## Language
 
@@ -13,7 +13,7 @@ Not a config concept. Assistant definitions live in the plugin DB (the `assistan
 _Avoid_: using "profile" to mean a distinct domain object, or a `profiles` config block
 
 **Agent**:
-Not a v1 concept. Deliberately excluded to avoid ambiguity with Assistant.
+Not a domain concept. Deliberately excluded to avoid ambiguity with Assistant.
 _Avoid_: introducing "agent" anywhere in config, code, or UI
 
 **Action**:
@@ -24,7 +24,7 @@ _Avoid_: Tool (at the config/registry layer — see Tool)
 An AI SDK `tool()` handed to the model loop. Produced by adapting an Action that is in both the Assistant's allowlist and the caller's visible set. "Tool" is the model-facing word; "Action" is the Backstage-registry word for the same underlying capability.
 
 **Allowlist**:
-The Assistant's unified `allowedTools: string[]` — the set of tools it is permitted to offer. Each entry is a bare Backstage action id or a namespaced `<serverId>__<tool>` MCP tool; explicit only, no wildcard. **Empty = no tools** (careful-by-default; never an implicit "all"). One of the two independent gates.
+The Assistant's unified `allowedTools: string[]` — the set of tools it is permitted to offer. Each entry is a bare Backstage action id or a namespaced `<serverId>__<tool>` MCP tool; explicit only, no wildcard. **Empty = no Backstage or MCP tools** (careful-by-default; never an implicit "all"); the client-side `render_form` and `download_file` are always present. One of the two independent gates.
 
 **Effective tools**:
 What the model actually receives for a request, resolved per turn from the Assistant's `allowedTools`. Backstage action entries are intersected with the actions the caller can see (the two gates); MCP-tool entries are added directly — they run as a configured shared credential (not the calling user), so there is no per-user gate on that path.
@@ -33,12 +33,18 @@ What the model actually receives for a request, resolved per turn from the Assis
 The two independent authorization checks (Backstage action tools). (1) The Assistant **Allowlist** — the `allowedTools` entries that name Backstage actions. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every Backstage action runs as the user. MCP tools in `allowedTools` bypass this user gate — they run as the configured shared server credential, not the caller.
 
 **Approval gate**:
-A GLOBAL config floor of tool ids that must be confirmed — an explicit Allow/Deny in chat — before they run: the top-level `assistants.requireApproval` (action ids) ∪ each per-server `mcp.servers.*.requireApproval` (tool names). The per-turn approval set = this floor ∩ the Assistant's `allowedTools`. Feeds the AI SDK's `toolApproval` map so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Not per-Assistant; config-only, so runtime assistant-editing can never weaken it. "Approval floor" names the same config list. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
+A GLOBAL config floor of tool ids that must be confirmed — Allow, Always allow, or Deny in chat — before they run: the top-level `assistants.requireApproval` (action ids) ∪ each per-server `mcp.servers.*.requireApproval` (tool names). The per-turn approval set = this floor ∩ the Assistant's `allowedTools`. Feeds the AI SDK's `toolApproval` map so execution is paused **deterministically in the loop**, a human checkpoint enforced in code, not a model prompt. Not per-Assistant; config-only, so runtime assistant-editing can never weaken it. "Approval floor" names the same config list. Always allow grants that one tool for the rest of the conversation; the grant lives in the persisted message history. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
 _Avoid_: treating it as authorization (it is a checkpoint, not a permission), or as a per-Assistant setting
 
 **Interactive form** (`render_form`):
-A client-side tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No server `execute`: the model composes the form (JSON Schema + uiSchema), the surface renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. The in-plugin generative UI.
+A client-side tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No server `execute`: the model composes the form (JSON Schema + uiSchema), the surface renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. One of the two in-plugin generative-UI tools, with `download_file`.
 _Avoid_: a bespoke form widget — it reuses scaffolder's fields
+
+**Download file** (`download_file`):
+A client-side tool the model calls to hand back a generated text file (CSV, JSON, Markdown, code, SVG). The surface renders a download chip, with Copy for text and a fullscreen preview for SVG; the call acknowledges itself and never pauses the turn. Always available; not config-gated.
+
+**Built-in actions**:
+`search-catalog`, `search-techdocs`, and `read-techdocs`: read-only Actions this plugin registers under the `assistants` source when `assistants.builtinActions` is true (default false). They call the search backend and TechDocs as the caller. The seeded Assistant's tools.
 
 **Conversation**:
 A single chat session with one Assistant — its ordered messages. The user-facing term. Owned by exactly one Assistant; ownership is immutable (a conversation can never move to another Assistant). Persists server-side in the plugin's own database, scoped to the owning user, and reaches the browser only through assistant-ui's remote thread-list + history adapters — the frontend is a pure view that never persists message content; the server is the single writer and the only durable copy. Lists are siloed per Assistant — no unified cross-Assistant view.
@@ -48,28 +54,32 @@ _Avoid_: Chat, Session (as a noun for stored history)
 assistant-ui's internal name for a Conversation. Use "Thread" only when referring to assistant-ui runtime APIs (thread-list runtime, `ThreadPrimitive`); use "Conversation" everywhere user-facing.
 
 **Knowledge index**:
-The optional `-backend-module-semantic-search` module's store: every TechDocs section and catalog entity, chunked and embedded into the plugin's Postgres database (pgvector, `pg_trgm`, full-text), refreshed by a scheduled task, and served to assistants as the `search-knowledge` action. Results are filtered to entities the caller can read. A rebuildable cache, not domain data.
+The optional `-backend-module-semantic-search` module's store: every published TechDocs section and every catalog entity except `Location`, chunked and embedded into the plugin's Postgres database (pgvector, `pg_trgm`, full-text), refreshed by a scheduled task, and served to assistants as the `search-knowledge` action. Results are filtered to entities the caller can read. A rebuildable cache, not domain data.
 _Avoid_: RAG (as a user-facing name), vector store
 
 **Provider**:
-A configured connection to an LLM backend (`assistants.providers.{id}`). Carries a `type` discriminator selecting the AI-SDK factory (`openai` | `anthropic` | `azure` | `openai-compatible`), `apiKey` (secret), a passthrough `options` bag spread verbatim into that factory, and `models[]`. The `id` is a free label that namespaces model ids. We wire the factory; we never implement a provider.
+A configured connection to an LLM backend (`assistants.providers.{id}`). Carries a `type` discriminator selecting the AI-SDK factory (`openai` | `anthropic` | `azure` | `openai-compatible`), `apiKey` (secret), an optional `baseUrl`, a passthrough `options` bag spread verbatim into that factory, and `models[]`. The `id` is a free label that namespaces model ids. We wire the factory; we never implement a provider.
 _Avoid_: Adapter (we don't write one — the `@ai-sdk/*` package is the provider)
 
 **Model id**:
 A `<providerId>:<model>` string (e.g. `myAzure:gpt-4o`, `openrouter:anthropic/claude-sonnet-4`) used everywhere a model is named — `defaultModel`, per-Assistant allowlist, the picker — and resolved through the AI-SDK provider registry. Note the model segment may itself contain slashes.
 
+**Reasoning level**:
+How hard a reasoning model thinks for one conversation: `low`, `medium`, `high`, or `max`, picked in the header for models marked `reasoning: true`. `max` is a position, sent as each provider's ceiling (Anthropic `max`, OpenAI `xhigh`); no level leaves the provider's default.
+_Avoid_: thinking budget (tiers are relative, not token counts)
+
 **Model pool**:
 The union of every Provider's `models[]`. The global set of selectable models; an Assistant's `models[]` allowlist is a subset of it.
 
 **Conversation surface**:
-The inner chat component — message list, composer, tool-call rendering, approval Allow/Deny, and generative UI (interactive RJSF forms). It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its surface in-repo (seeded from the assistant-ui registry template), plugged in at the **surface seam**. Distinct from the **chrome**.
+The inner chat component — message list, composer, tool-call rendering, approval cards, and generative UI (interactive RJSF forms, download chips). It consumes an assistant-ui runtime from context and owns no transport/auth/chrome. The plugin owns its surface in-repo (seeded from the assistant-ui registry template), plugged in at the **surface seam**. Distinct from the **chrome**.
 _Avoid_: chat window (ambiguous — say "surface" for the replaceable unit, "chrome" for the frame)
 
 **Surface seam**:
 The single component boundary at which a conversation surface plugs in: a BYO-runtime `ConversationSurface: FC<ConversationSurfaceProps>` rendered inside the host's `AssistantRuntimeProvider`. The host owns runtime/transport/auth/chrome; the surface owns only presentation and reads the ambient runtime. Props are a thin, forward-compatible presentational bag (`composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, `className`). Routed through a `surface/` indirection module so swapping the surface is one import. This is assistant-ui's native runtime/surface split — not a custom abstraction.
 
 **Chrome**:
-The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model and effort pickers, the manage gear (`assistant.manage`). Owned by the `backstage-assistants` plugin.
+The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model and effort pickers, the manage gear (`assistant.manage`). Owned by the `assistants` frontend plugin.
 
 **Rail**:
 The assistant list on the left of the panel — one entry per accessible Assistant, with its working / unread rollup. Picking one selects that Assistant's conversations.

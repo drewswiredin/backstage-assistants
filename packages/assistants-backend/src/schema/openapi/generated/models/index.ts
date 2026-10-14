@@ -8,6 +8,7 @@ export * from '../models/ErrorResponse.model';
 export * from '../models/ModelError.model';
 export * from '../models/ModelOption.model';
 export * from '../models/StatusResponse.model';
+export * from '../models/ToolSummary.model';
 export * from '../models/UiOptions.model';
 export * from '../models/UiOptionsComposer.model';
 export * from '../models/UiOptionsSuggestionsInner.model';

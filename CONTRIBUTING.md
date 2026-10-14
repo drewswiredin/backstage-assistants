@@ -2,7 +2,7 @@
 
 ## Setup
 
-Node 22.12 or later and Yarn 4 (the repo pins `yarn@4.4.1` via
+Node 22 (22.12 or later) or 24, and Yarn 4 (the repo pins `yarn@4.4.1` via
 `packageManager`).
 
 ```bash
@@ -14,6 +14,10 @@ The dev app needs a model provider key in `.env` at the repo root:
 ```bash
 OPENROUTER_API_KEY=sk-or-...
 ```
+
+The dev backend runs on in-memory SQLite; [its README](packages/backend/README.md)
+covers the dev users and pointing it at Postgres, which the semantic search
+module needs.
 
 ## Commands
 

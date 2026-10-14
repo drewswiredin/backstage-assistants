@@ -284,7 +284,7 @@ export function ToolFallback({
   // action server-side, Deny tells the model; the standing "always allow" grant
   // additionally skips this tool for the rest of the chat).
   //
-  // The agent often fires several gated calls of the SAME tool in one step
+  // The model often fires several gated calls of the SAME tool in one step
   // (parallel), which would otherwise stack up as one card per call. We COLLAPSE
   // them: the lowest-index pending call is the "leader" and renders ONE control
   // with a count; the rest hide and mirror the leader's decision — so a whole

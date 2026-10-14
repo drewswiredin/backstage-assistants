@@ -1,7 +1,7 @@
 # @drewswiredin/backstage-plugin-assistants-backend-module-semantic-search
 
-Knowledge index for AI Assistants for Backstage. It embeds every TechDocs
-section and catalog entity into the assistants plugin's Postgres database and
+Knowledge index for AI Assistants for Backstage. It embeds every published
+TechDocs section and every catalog entity except `Location` into the assistants plugin's Postgres database and
 gives assistants a `search-knowledge` tool that finds them by meaning, by near
 spelling, and by exact words:
 
@@ -60,8 +60,10 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 | Azure Database for PostgreSQL Flexible | Add `VECTOR` and `PG_TRGM` to the `azure.extensions` server parameter, then run it. |
 | Self-hosted                            | Install pgvector (e.g. `postgresql-16-pgvector`), then run the SQL as a superuser.  |
 
-Until both extensions exist, the module logs the SQL above and stays off; the
-assistants keep their other tools.
+The module checks the extensions at startup. If either is missing it logs an
+error with the `CREATE EXTENSION` statement for each and stays off; the
+assistants keep their other tools. Restart the backend once the admin has
+enabled them.
 
 ## Configure
 
@@ -77,13 +79,19 @@ assistants:
     embeddingModel: openai:text-embedding-3-small
 ```
 
+On Azure OpenAI, deploy an embedding model and name the deployment:
+`embeddingModel: azure:<embedding-deployment>`.
+
 The first run embeds everything; later runs embed only new and changed
 sections and delete removed ones. Changing `embeddingModel` rebuilds the index.
 
 ## Give an assistant the tool
 
 Add `search-knowledge` to the assistant's tools in the assistant editor. It
-pairs with `read-techdocs`, which opens the full page behind a TechDocs result.
+pairs with `read-techdocs` (from `builtinActions: true`), which opens the full
+page behind a TechDocs result. Until the first index run finishes, the tool
+answers with an error that points the model at `search-techdocs` and
+`search-catalog`.
 
 The action registers under the `assistants` plugin, so `assistants` must be in
 `backend.actions.pluginSources`, as it already is for the built-in tools:
@@ -106,13 +114,14 @@ the embedding, a generated full-text vector, and a trigram index over its text.
 The table is a rebuildable cache, not migrated data.
 
 **Retrieval.** `search-knowledge` takes the question and up to three alternative
-phrasings and builds three ranked lists:
+phrasings and builds one semantic list per phrasing, a keyword list, and a
+fuzzy list:
 
-| List     | Matches                                       | Postgres                              |
-| -------- | --------------------------------------------- | ------------------------------------- |
-| Semantic | Meaning, per phrasing                         | pgvector cosine distance (HNSW index) |
-| Keyword  | Any query word, ranked by match density       | `tsvector` / `websearch_to_tsquery`   |
-| Fuzzy    | Near spellings of words absent from the index | `pg_trgm` word similarity             |
+| List     | Matches                                       | Postgres                                                    |
+| -------- | --------------------------------------------- | ----------------------------------------------------------- |
+| Semantic | Meaning, per phrasing                         | pgvector cosine distance (HNSW index up to 2000 dimensions) |
+| Keyword  | Any query word, ranked by match density       | `tsvector` / `websearch_to_tsquery`                         |
+| Fuzzy    | Near spellings of words absent from the index | `pg_trgm` word similarity                                   |
 
 Reciprocal rank fusion merges the lists. The top candidates' entities are
 fetched from the catalog as the user; results for entities the user cannot
@@ -120,10 +129,10 @@ read are dropped.
 
 ## Reference
 
-| Key                                        | Default                          | Meaning                                             |
-| ------------------------------------------ | -------------------------------- | --------------------------------------------------- |
-| `assistants.semanticSearch.embeddingModel` | (required)                       | `<providerId>:<model>` from `assistants.providers`. |
-| `assistants.semanticSearch.schedule`       | every 30 minutes, 1 hour timeout | Backstage task schedule for refreshing the index.   |
+| Key                                        | Default                                              | Meaning                                                                                       |
+| ------------------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `assistants.semanticSearch.embeddingModel` | (required)                                           | `<providerId>:<model>` from `assistants.providers`.                                           |
+| `assistants.semanticSearch.schedule`       | every 30 minutes, 1 hour timeout, 15 s initial delay | Backstage task schedule for refreshing the index; a configured schedule replaces the default. |
 
 ## License
 

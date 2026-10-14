@@ -3,7 +3,8 @@ import { SchedulerServiceTaskScheduleDefinitionConfig } from '@backstage/backend
 export interface Config {
   assistants?: {
     /**
-     * The knowledge index: TechDocs sections and catalog entities embedded into
+     * The knowledge index: published TechDocs sections and catalog entities
+     * (except `Location`) embedded into
      * the assistants plugin's Postgres database and served to assistants as the
      * `search-knowledge` action. Requires the `vector` and `pg_trgm`
      * extensions.
@@ -19,7 +20,8 @@ export interface Config {
 
       /**
        * How often the index refreshes. Each run embeds only new and changed
-       * content. Default: every 30 minutes, 1 hour timeout.
+       * content. Default: every 30 minutes, 1 hour timeout, 15 s initial
+       * delay; a configured schedule replaces it.
        */
       schedule?: SchedulerServiceTaskScheduleDefinitionConfig;
     };

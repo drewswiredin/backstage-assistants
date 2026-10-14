@@ -12,6 +12,9 @@ write a permission policy or a custom nav that references the plugin's
 permissions:
 
 ```bash
+# a permission policy
+yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-common
+# a custom nav
 yarn --cwd packages/app add @drewswiredin/backstage-plugin-assistants-common
 ```
 

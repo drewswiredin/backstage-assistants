@@ -4,14 +4,14 @@
  * renderer, registered via `makeAssistantToolUI`, shows the form inline in the
  * chat message stream. The user's submitted values become the tool result via
  * `addResult`, which resumes the turn (see the composer's `sendAutomaticallyWhen`
- * in useAssistantRuntime). Generic: the agent uses it any time it needs
+ * in useAssistantRuntime). Generic: the model uses it any time it needs
  * structured / multi-field / multiple-choice input instead of asking in chat.
  *
  * Rendering goes through scaffolder's OWN RJSF `<Form>` (alpha) fed with the
  * field registry from `formFieldsApiRef.loadFormFields()` — the exact same set
  * the scaffolder wizard uses (built-in pickers AND any app-registered custom
  * fields), keyed by each field's name (`OwnerPicker`, `EntityPicker`, …). So any
- * `ui:field` the agent emits — including a scaffolder template's verbatim
+ * `ui:field` the model emits — including a scaffolder template's verbatim
  * schema/uiSchema — renders the real picker, dynamically, with no per-field code
  * here. Wrapped in `SecretsContextProvider` so the repo pickers render too.
  */
@@ -159,7 +159,7 @@ export const RenderFormTool = makeAssistantToolUI<RenderFormArgs, unknown>({
       Object.keys(rawSchema).length > 0;
 
     // Scaffolder TEMPLATES embed `ui:*` keys (ui:field, ui:options, ui:autofocus)
-    // directly inside the JSON schema properties, and agents commonly lift a
+    // directly inside the JSON schema properties, and models commonly lift a
     // template's parameter block verbatim. RJSF only honours `ui:*` from the
     // uiSchema, so hoist them out exactly as scaffolder's own wizard does
     // (extractSchemaFromStep) — otherwise a picker's `ui:options` (e.g.

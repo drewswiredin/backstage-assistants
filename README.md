@@ -30,7 +30,8 @@ its pickers, rendered inline.
 
 ![A scaffolder template form in the conversation](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/scaffolder-form.png)
 
-**Tool approval.** `execute-template` waits for Allow / Deny before it runs.
+**Tool approval.** `execute-template` waits for Allow, Always allow, or Deny
+before it runs.
 
 ![An approval card for execute-template](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/tool-approval.png)
 
@@ -48,7 +49,7 @@ their server's configured credential.
 
 - **Grounded answers.** Ask "who owns payments-api?" or "how do we onboard a
   service?" and get an answer sourced from the catalog and TechDocs, not the
-  model's memory. Add the [knowledge index](packages/assistants-backend-module-semantic-search)
+  model's memory. Add the [semantic search module](packages/assistants-backend-module-semantic-search)
   and it finds pages by meaning and tolerates misspellings: "fix errored
   messages" finds the dead-letter runbook, "Nexis" finds Nexus.
 - **Backstage actions as the user.** Let an assistant act on Backstage: look up
@@ -57,8 +58,8 @@ their server's configured credential.
 - **MCP servers.** Give an assistant tools outside Backstage. Each server runs
   under the one credential you configure for it, shared by everyone who uses
   the assistant.
-- **Approval gate.** Require an Allow / Deny in the conversation before the
-  actions you choose run; nothing is gated by default and nothing runs behind
+- **Approval gate.** Require an Allow in the conversation before the actions
+  you choose run (Always allow covers the rest of that conversation); nothing is gated by default and nothing runs behind
   the user's back.
 - **Conversations that keep going.** Keep several conversations going across
   several assistants; leave the page mid-reply and come back to the finished
@@ -70,10 +71,12 @@ their server's configured credential.
 - **Generative UI in the chat pane.** Replies are more than text. The
   assistant shows a form, with your scaffolder pickers, instead of asking one
   question at a time; draws Mermaid diagrams you can open fullscreen to pan and
-  zoom; and hands back generated files as download chips, with a preview for
-  images. Markdown renders in full, tables and code included.
-- **A full chat surface.** Attach files, pick the model per conversation, and
-  set reasoning effort on models that support it.
+  zoom; and hands back generated text files (CSV, JSON, code, SVG) as download chips.
+  Markdown renders in full, tables and code included.
+- **A full chat surface.** Attach images and text files, pick the model per
+  conversation, set reasoning effort on models that support it, watch the
+  context gauge, and copy or regenerate replies. Rename, pin, and delete
+  conversations; open an assistant's details to see its tools and models.
 
 ## What admins get
 

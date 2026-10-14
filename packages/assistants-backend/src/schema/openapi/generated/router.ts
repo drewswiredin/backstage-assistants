@@ -129,6 +129,10 @@ export const spec = {
             "type": "string",
             "description": "Optional human-readable assistant description."
           },
+          "color": {
+            "type": "string",
+            "description": "Optional hex colour that tints the assistant's avatar."
+          },
           "models": {
             "type": "array",
             "description": "The `provider:model` ids this assistant may use (its allowlist). Omitted when the assistant allows the full pool.",
@@ -140,8 +144,35 @@ export const spec = {
             "type": "string",
             "description": "This assistant's default `provider:model` selection."
           },
+          "tools": {
+            "type": "array",
+            "description": "The assistant's tools available to the caller: its allowlist intersected with the actions this user may see, plus its MCP tools.",
+            "items": {
+              "$ref": "#/components/schemas/ToolSummary"
+            }
+          },
           "ui": {
             "$ref": "#/components/schemas/UiOptions"
+          }
+        }
+      },
+      "ToolSummary": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The tool's id as the model sees it; MCP tools are `<serverId>__<tool>`."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the tool does."
+          },
+          "source": {
+            "type": "string",
+            "description": "`backstage` for Backstage actions, or the MCP server id."
           }
         }
       },

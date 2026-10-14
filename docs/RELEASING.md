@@ -62,15 +62,15 @@ npm view @drewswiredin/backstage-plugin-<p>@<version> exports main
 
 ```bash
 git commit -s -m "chore(release): common X, backend Y, frontend Z, semantic search S"
-git tag assistants-common-v<X>
-git tag assistants-backend-v<Y>
-git tag assistants-v<Z>
-git tag assistants-backend-module-semantic-search-v<S>
+git tag -a assistants-common-v<X> -m "assistants-common v<X>"
+git tag -a assistants-backend-v<Y> -m "assistants-backend v<Y>"
+git tag -a assistants-v<Z> -m "assistants v<Z>"
+git tag -a assistants-backend-module-semantic-search-v<S> -m "assistants-backend-module-semantic-search v<S>"
 git push --follow-tags
 ```
 
-One tag per published package, from the next release on; skip the tag for a
-package that did not publish.
+Tags are annotated so `--follow-tags` pushes them. One tag per published
+package; skip the tag for a package that did not publish.
 
 ## 6. Consumer check
 

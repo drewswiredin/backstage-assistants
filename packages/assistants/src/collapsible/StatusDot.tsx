@@ -1,6 +1,6 @@
 /**
  * The single rendering of conversation status as a badge dot — used by the
- * conversation rows, the agent rail, and the nav icon so they can never disagree
+ * conversation rows, the assistant rail, and the nav icon so they can never disagree
  * on look or meaning:
  *   - working (in-flight) → amber, pulsing
  *   - unread → solid red

@@ -283,7 +283,7 @@ export interface CapabilityAction {
  * One MCP server's reachability + tool inventory for the editor pickers,
  * derived from the cached `probeServerTools` probe. Per-server reachability is
  * surfaced rather than silently empty on failure: an unreachable server yields
- * `reachable: false` with `error` set and no `tools`.
+ * `reachable: false` with `error` set and its last-known `tools`, if any.
  *
  * @public
  */

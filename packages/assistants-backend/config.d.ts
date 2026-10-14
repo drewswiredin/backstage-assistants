@@ -60,7 +60,8 @@ export interface Config {
     builtinActions?: boolean;
 
     /**
-     * Global approval floor: bare Backstage action ids whose execution must be
+     * Global approval floor: Backstage action ids (or namespaced
+     * `<serverId>__<tool>` names) whose execution must be
      * gated behind an explicit user Allow/Deny in the chat (deterministic,
      * enforced via the AI SDK's `toolApproval` map — not by prompting the model).
      * The effective approval set for an assistant is this list (∪ each MCP
@@ -73,8 +74,8 @@ export interface Config {
     /**
      * External MCP (Model Context Protocol) servers whose tools are exposed to
      * assistants. Each server is connected with a static credential (the
-     * configured `headers`) — i.e. one shared identity for all users (not yet
-     * run-as-user). Assistants opt in by listing namespaced `<serverId>__<tool>`
+     * configured `headers`) — i.e. one shared identity for all users.
+     * Assistants opt in by listing namespaced `<serverId>__<tool>`
      * entries in their `allowedTools`.
      */
     mcp?: {
@@ -209,9 +210,8 @@ export interface Config {
     };
 
     /**
-     * Express body-parser size limit for `/chat` and `/title` requests (the
-     * routes that carry conversation payloads, incl. inline attachments).
-     * Default `'10mb'`.
+     * JSON body size limit for every request to the plugin, sized for
+     * `/chat`, which carries inline attachments. Default `'10mb'`.
      */
     requestBodyLimit?: string;
   };

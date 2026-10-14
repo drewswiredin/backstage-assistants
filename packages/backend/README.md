@@ -1,59 +1,28 @@
-# example-backend
+# backend
 
-This package is an EXAMPLE of a Backstage backend.
+The dev backend for this repo: a Backstage backend that loads the assistants
+plugin, the semantic search module, and the plugins they call. It is not
+published.
 
-The main purpose of this package is to provide a test bed for Backstage plugins
-that have a backend part. Feel free to experiment locally or within your fork by
-adding dependencies and routes to this backend, to try things out.
+Run it from the repo root with `yarn start`, which loads `.env` (for
+`OPENROUTER_API_KEY`) and starts the app and this backend on port 7007.
 
-Our goal is to eventually amend the create-app flow of the CLI, such that a
-production ready version of a backend skeleton is made alongside the frontend
-app. Until then, feel free to experiment here!
+## What it wires
 
-## Development
+| File                         | Role                                                                                                                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`               | Catalog, scaffolder, TechDocs, search (Postgres engine, catalog and TechDocs collators), permissions, signals, MCP actions, the assistants backend, and the semantic search module |
+| `src/devUserPickProvider.ts` | The `dev-userpick` sign-in provider: pick one of the `DEV_USERS` and sign in with that user's ownership refs                                                                       |
+| `src/permissionPolicy.ts`    | Grants `assistant.use` to `group:development/assistants-users` or `-admins`, `assistant.manage` to `-admins`, and allows every other permission                                    |
 
-To run the example backend, first go to the project root and run
+The three dev users are `guest-user` (no assistant access),
+`guest-assistants-user`, and `guest-assistants-admin`, all in the `development`
+namespace.
 
-```bash
-yarn install
-```
+## Database
 
-You should only need to do this once.
-
-After that, go to the `packages/backend` directory and run
-
-```bash
-yarn start
-```
-
-If you want to override any configuration locally, for example adding any secrets,
-you can do so in `app-config.local.yaml`.
-
-The backend starts up on port 7007 per default.
-
-## Populating The Catalog
-
-If you want to use the catalog functionality, you need to add so called
-locations to the backend. These are places where the backend can find some
-entity descriptor data to consume and serve. For more information, see
-[Software Catalog Overview - Adding Components to the Catalog](https://backstage.io/docs/features/software-catalog/#adding-components-to-the-catalog).
-
-To get started quickly, this template already includes some statically configured example locations
-in `app-config.yaml` under `catalog.locations`. You can remove and replace these locations as you
-like, and also override them for local development in `app-config.local.yaml`.
-
-## Authentication
-
-We chose [Passport](http://www.passportjs.org/) as authentication platform due
-to its comprehensive set of supported authentication
-[strategies](http://www.passportjs.org/packages/).
-
-Read more about the
-[auth-backend](https://github.com/backstage/backstage/blob/master/plugins/auth-backend/README.md)
-and
-[how to add a new provider](https://github.com/backstage/backstage/blob/master/docs/auth/add-auth-provider.md)
-
-## Documentation
-
-- [Backstage Readme](https://github.com/backstage/backstage/blob/master/README.md)
-- [Backstage Documentation](https://backstage.io/docs)
+`app-config.yaml` uses in-memory SQLite, so assistants and conversations reset
+on restart. To keep them, or to run the semantic search module, point
+`backend.database` at Postgres in a gitignored `app-config.local.yaml`; the
+module also needs the `vector` and `pg_trgm` extensions and
+`assistants.semanticSearch.embeddingModel`.

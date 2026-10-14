@@ -8,7 +8,7 @@ frontend system: a collapsible, multi-conversation chat panel at `/assistants`
 and the in-app editor where admins create assistants. The panel renders
 generative UI: forms built from your scaffolder field extensions, Mermaid
 diagrams with fullscreen pan and zoom, download chips for generated files, and
-Allow / Deny cards for gated tools. It pairs with:
+approval cards (Allow, Always allow, Deny) for gated tools. It pairs with:
 
 - [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend),
   the backend (required)
@@ -71,7 +71,21 @@ export default createApp({
 });
 ```
 
-The page mounts at `/assistants`.
+The page mounts at `/assistants`; `?assistant=<id>` opens it on a given
+assistant. In an app with `app.packages: all`, the plugin is discovered
+without the `features` entry.
+
+For live working and unread status, add Signals to the app (and
+`@backstage/plugin-signals-backend` to the backend); without it the panel polls
+every 10 seconds:
+
+```ts
+import signalsPlugin from '@backstage/plugin-signals/alpha';
+
+export default createApp({
+  features: [assistantsPlugin, signalsPlugin],
+});
+```
 
 ### Backend
 
@@ -194,12 +208,30 @@ export const SidebarContent = NavContentBlueprint.make({
 The plugin itself is the default export of the `./alpha` subpath. The package
 root exports what a host app needs to integrate with it:
 
-| Export                                                          | Purpose                                                                            |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `rootRouteRef`                                                  | Route ref for the `/assistants` page.                                              |
-| `assistantsApiRef`                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status. |
-| `AssistantsNavIcon`                                             | Nav-rail icon with a live working/unread status dot, for a custom sidebar.         |
-| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types) | The client interface and its row/patch shapes.                                     |
+| Export                                                          | Purpose                                                                                 |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `rootRouteRef`                                                  | Route ref for the `/assistants` page.                                                   |
+| `assistantsApiRef`                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.      |
+| `AssistantsNavIcon`                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none. |
+| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types) | The client interface and its row/patch shapes.                                          |
+
+### Chat panel
+
+- Conversations: one list per assistant; a row's menu renames, pins, or
+  deletes it, and pinned conversations sort first.
+- Assistant details: the info button shows an assistant's description, tools
+  grouped by source, and models.
+- A new conversation opens on a welcome with the assistant's description and
+  its starter suggestions; a suggestion sends immediately.
+- Replies have Copy, Copy as rich text (for Teams, Outlook, email), and
+  Regenerate, with a picker between regenerated branches. Reasoning shows in a
+  collapsible block; a tool call without its own UI shows its input and output
+  on expand.
+- The composer takes images (picked or pasted) and text and code files up to
+  7 MB each, shows a context gauge against the model's `contextWindow`, and
+  stops a running reply. A stopped reply ends with "Request interrupted"; a
+  dropped connection with "Connection lost".
+- Attached images and SVG files open in a fullscreen pan-and-zoom preview.
 
 ### Generative UI
 
@@ -207,8 +239,8 @@ Two client-side tools render components in the conversation. Both are always
 available and need no config:
 
 - `render_form`: an inline form; the submitted values become the tool result.
-- `download_file`: a download chip for a file the assistant generates, with a
-  fullscreen preview for images.
+- `download_file`: a download chip for a text file the assistant generates
+  (CSV, JSON, Markdown, code, SVG), with Copy for text files.
 
 Mermaid code blocks render as diagrams themed to the Backstage light or dark
 mode, with a fullscreen pan-and-zoom view. Markdown renders with GitHub
