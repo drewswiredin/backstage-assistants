@@ -3,6 +3,17 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.3 - 2026-10-14
+
+### Fixed
+
+- A per-server `requireApproval` entry matches its tool when the server id contains a character outside `[a-zA-Z0-9_-]`, such as `:`. Those tools ran without approval.
+
+### Changed
+
+- The OpenAPI `AssistantSummary` includes `color` and `tools`, which `/status` returns.
+- The README and config schema descriptions match the code: access-policy scope, the Azure provider example, and the routes table.
+
 ## 0.17.2 - 2026-10-12
 
 ### Changed

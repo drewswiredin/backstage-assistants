@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.2 - 2026-10-14
+
+### Changed
+
+- The README documents the chat panel (pin, rename, details, copy, regenerate, context gauge), `?assistant=` links, Always allow, and Signals wiring.
+
 ## 0.15.1 - 2026-10-08
 
 ### Fixed
