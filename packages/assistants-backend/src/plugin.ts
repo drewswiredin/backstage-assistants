@@ -12,6 +12,7 @@ import { readConfig } from './config';
 import { createRouter } from './router';
 import { registerCoreActions } from './actions';
 import { ThreadService } from './threads';
+import { StreamBuffer } from './streamBuffer';
 import { AssistantStore } from './assistants';
 import {
   maintainMcpConnections,
@@ -95,6 +96,7 @@ export const assistantsPlugin = createBackendPlugin({
         const db = (await database.getClient()) as any;
         const threadService = new ThreadService(db);
         await threadService.runMigrations();
+        const streamBuffer = new StreamBuffer(db, logger);
 
         // Assistant DEFINITIONS persistence: same DB, managed at runtime via the
         // admin `/manage` API. The store holds a synchronously-read snapshot the
@@ -118,6 +120,7 @@ export const assistantsPlugin = createBackendPlugin({
           assistants,
           assistantStore,
           threadService,
+          streamBuffer,
           signals,
         });
 

@@ -523,21 +523,23 @@ g, group:default/assistants-admins, role:default/assistants-admins
 
 ## Run in production
 
-### Replicas and session affinity
+### Replicas
 
-Run one backend replica, or pin session affinity for `/api/assistants/*`.
-State that lives in process memory: the in-flight stream buffer that lets a
-reload rejoin a running reply (kept for 60 seconds after a turn completes),
-the `working` flag, the abort handle behind the Stop button, and a copy of
-assistant definitions, updated immediately on the replica that edited them and
-within 60 seconds on the others. The MCP connection pool is per process, with
-its own maintenance task on each replica.
+The plugin runs on several backend replicas with no session affinity. Running
+turns and their streams are recorded in the database, so the working
+indicator, the Stop button, and reopening a conversation mid-reply behave the
+same on every replica. A reopened conversation replays the reply so far,
+including reasoning and tool calls, and follows it about half a second behind
+live. Stream rows are deleted 60 seconds after a turn completes.
 
-Turns always complete and persist on the replica that serves them, so without
-affinity a reload still shows the full reply once it finishes; only live
-resume and Stop are affected. Signals reach only clients connected to the
-replica that emitted them unless your events service is configured for
-cross-instance delivery; see the Backstage signals documentation.
+Assistant definitions are cached per replica: updated immediately on the
+replica that edited them and within 60 seconds on the others. The MCP
+connection pool is per process, with its own maintenance task on each replica.
+
+Signals reach only clients connected to the replica that emitted them unless
+your events service is configured for cross-instance delivery; see the
+Backstage signals documentation. While a turn runs the browser also polls its
+status every 5 seconds, so indicators clear without that delivery.
 
 ### Upgrading and backups
 
@@ -576,7 +578,6 @@ this turn: <reason>` and logs `chat stream error surfaced to client`.
 | An MCP server is never reachable; the log shows `MCP server '<id>' tool listing failed: ... timed out after <n>ms` | The server takes longer than `connectTimeoutMs` to start                                     | Raise `connectTimeoutMs` (uvx/npx servers often need 15000 to 20000)                                           |
 | "You are not permitted to use assistants"                                                                          | The permission policy denies `assistant.use`                                                 | Grant `assistant.use`; see [Grant assistant.use and assistant.manage](#grant-assistantuse-and-assistantmanage) |
 | The gear is missing from the sidebar                                                                               | The permission policy denies `assistant.manage`                                              | Grant `assistant.manage`                                                                                       |
-| A reload does not rejoin a running reply                                                                           | More than 60 seconds since the turn completed, or the request reached a different replica    | Pin session affinity for `/api/assistants/*`; the finished reply is shown once the turn ends                   |
 
 ## Security
 

@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- Working indicators clear when a turn finishes on another replica, even if its signal never arrives: while any turn runs, status is re-checked every 5 seconds.
+
 ## 0.15.3 - 2026-10-14
 
 ### Added

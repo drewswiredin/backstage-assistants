@@ -50,8 +50,12 @@ import {
 import type { AssistantStore } from './assistants';
 import { createOpenApiRouter } from './schema/openapi';
 import { createManageRouter } from './manage';
-import { parseThreadPatch, type ThreadService } from './threads';
-import { ResumableStreamRegistry } from './resumableStreams';
+import {
+  parseThreadPatch,
+  TURN_HEARTBEAT_MS,
+  type ThreadService,
+} from './threads';
+import type { StreamBuffer } from './streamBuffer';
 import type { SignalsService } from '@backstage/plugin-signals-node';
 
 /** Signals channel for per-user conversation notifications (working / unread). */
@@ -86,6 +90,8 @@ export interface RouterOptions {
   assistantStore: AssistantStore;
   /** Server-side conversation persistence. */
   threadService: ThreadService;
+  /** Shared buffer of running turns' streams, for rejoining from any replica. */
+  streamBuffer: StreamBuffer;
   /** Real-time push for working / unread indicators (per user). */
   signals: SignalsService;
 }
@@ -301,6 +307,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     assistants,
     assistantStore,
     threadService,
+    streamBuffer,
     signals,
   } = options;
 
@@ -320,26 +327,38 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   }
 
-  // Live, per-user set of in-flight generations: userRef -> (threadId -> assistantId).
-  // Ephemeral (single backend replica); surfaced to the client via GET /threads/status.
-  const inFlight = new Map<string, Map<string, string>>();
-
-  // In-memory buffers of in-flight /chat SSE streams, for mid-flight resume.
-  const resumables = new ResumableStreamRegistry();
-
   // Per-thread AbortController for the in-flight turn, so an explicit Stop
   // (POST /chat/cancel/:threadId) can abort the server-side generation. A bare
   // disconnect must NOT abort — that means "navigate away / reload" and the turn
   // keeps running so it can be resumed.
   const turnAborts = new Map<string, AbortController>();
 
-  function noteStarted(userRef: string, threadId: string, assistantId: string) {
-    let m = inFlight.get(userRef);
-    if (!m) {
-      m = new Map();
-      inFlight.set(userRef, m);
-    }
-    m.set(threadId, assistantId);
+  // Heartbeat timers for the turns this process runs. The heartbeat keeps the
+  // thread's `working` flag fresh for every replica and picks up a Stop that
+  // another replica received.
+  const turnHeartbeats = new Map<string, ReturnType<typeof setInterval>>();
+
+  async function noteStarted(
+    userRef: string,
+    threadId: string,
+    assistantId: string,
+  ) {
+    await threadService.startTurn(threadId);
+    const timer = setInterval(() => {
+      threadService
+        .heartbeatTurn(threadId)
+        .then(cancel => {
+          if (cancel) turnAborts.get(threadId)?.abort();
+        })
+        .catch(error =>
+          logger.warn('turn heartbeat failed', {
+            threadId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+    }, TURN_HEARTBEAT_MS);
+    timer.unref?.();
+    turnHeartbeats.set(threadId, timer);
     void signals
       .publish({
         recipients: { type: 'user', entityRef: userRef },
@@ -349,16 +368,21 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       .catch(() => {});
   }
 
-  function noteFinished(
+  async function noteFinished(
     userRef: string,
     threadId: string,
     assistantId: string,
   ) {
-    const m = inFlight.get(userRef);
-    if (m) {
-      m.delete(threadId);
-      if (m.size === 0) inFlight.delete(userRef);
-    }
+    const timer = turnHeartbeats.get(threadId);
+    if (!timer) return; // already finished (Stop runs onAbort, then onFinish)
+    clearInterval(timer);
+    turnHeartbeats.delete(threadId);
+    await threadService.endTurn(threadId).catch(error =>
+      logger.error('failed to clear turn state', {
+        threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     void signals
       .publish({
         recipients: { type: 'user', entityRef: userRef },
@@ -408,44 +432,57 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const credentials = await httpAuth.credentials(req, { allow: ['user'] });
       await requireUse(credentials);
       const user = await userInfo.getUserInfo(credentials);
-      const sub = resumables.subscribe(
-        req.params.threadId,
-        user.userEntityRef,
-        chunk => (chunk === null ? res.end() : res.write(chunk)),
-      );
-      // Unknown / expired / not owned → nothing to resume.
-      if (!sub) {
+      const threadId = req.params.threadId;
+      // Unknown or foreign thread → nothing to resume.
+      if (!(await threadService.getThread(user.userEntityRef, threadId))) {
         res.status(204).end();
         return;
       }
-      // Match the UI message stream content type so the client parser accepts it.
-      res.status(200);
-      for (const [key, value] of Object.entries(UI_MESSAGE_STREAM_HEADERS)) {
-        res.setHeader(key, String(value));
-      }
-      res.setHeader('Cache-Control', 'no-cache, no-transform');
-      res.flushHeaders();
-      // Replay everything buffered so far; the live tail arrives via the listener.
-      for (const chunk of sub.buffered) res.write(chunk);
-      if (sub.done) {
-        res.end();
+      let closed = false;
+      res.on('close', () => {
+        closed = true;
+      });
+      const found = await streamBuffer.follow(threadId, {
+        start: () => {
+          // Match the UI message stream content type so the client parser
+          // accepts it.
+          res.status(200);
+          for (const [key, value] of Object.entries(
+            UI_MESSAGE_STREAM_HEADERS,
+          )) {
+            res.setHeader(key, String(value));
+          }
+          res.setHeader('Cache-Control', 'no-cache, no-transform');
+          res.flushHeaders();
+        },
+        write: data => {
+          res.write(data);
+        },
+        closed: () => closed,
+        running: () => threadService.isTurnRunning(threadId),
+      });
+      // No buffered turn (none ran recently, or it expired) → nothing to resume.
+      if (!found) {
+        res.status(204).end();
         return;
       }
-      req.on('close', () => sub.unsubscribe());
+      res.end();
     })().catch(next);
   });
 
   // Abort an in-flight turn — the composer Stop button. A bare connection close
   // means "navigate away / reload" (the turn keeps running so it can be resumed),
   // so the client signals an EXPLICIT stop here. Scoped to the caller's own
-  // in-flight turn (checked against the per-user in-flight set).
+  // running turn. The request is recorded on the thread, so the replica running
+  // the turn stops it on its next heartbeat; when that is this process, it
+  // stops now.
   streamRouter.post('/chat/cancel/:threadId', (req, res, next) => {
     (async () => {
       const credentials = await httpAuth.credentials(req, { allow: ['user'] });
       await requireUse(credentials);
       const user = await userInfo.getUserInfo(credentials);
       const threadId = req.params.threadId;
-      if (inFlight.get(user.userEntityRef)?.has(threadId)) {
+      if (await threadService.requestCancel(user.userEntityRef, threadId)) {
         turnAborts.get(threadId)?.abort();
       }
       res.status(204).end();
@@ -886,7 +923,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         // metadata.canceled (see onFinish below).
         if (threadId) {
           turnAborts.delete(threadId);
-          noteFinished(user.userEntityRef, threadId, assistantId);
+          void noteFinished(user.userEntityRef, threadId, assistantId);
         }
         logger.info('chat turn aborted (stop)', {
           requestId,
@@ -897,7 +934,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       onError: ({ error }) => {
         if (threadId) {
           turnAborts.delete(threadId);
-          noteFinished(user.userEntityRef, threadId, assistantId);
+          void noteFinished(user.userEntityRef, threadId, assistantId);
         }
         logger.error('chat turn errored', {
           requestId,
@@ -922,7 +959,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       );
     }
 
-    if (threadId) noteStarted(user.userEntityRef, threadId, assistantId);
+    // Buffer the SSE under the THREAD id, so a client returning to this thread
+    // can rejoin by an id it already knows (GET /chat/resume/:threadId) — there
+    // is no fragile per-turn id to capture. One in-flight stream per thread.
+    // Begun before the turn reads as working, so a rejoin never replays the
+    // thread's previous turn.
+    const streamTurnId = threadId
+      ? await streamBuffer.begin(threadId)
+      : undefined;
+    if (threadId) await noteStarted(user.userEntityRef, threadId, assistantId);
 
     logger.info('chat turn started', {
       requestId,
@@ -945,11 +990,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           error: String(error),
         }),
     });
-
-    // Buffer the SSE under the THREAD id, so a client returning to this thread
-    // can rejoin by an id it already knows (GET /chat/resume/:threadId) — there
-    // is no fragile per-turn id to capture. One in-flight stream per thread.
-    const resumableId = threadId ?? randomUUID();
 
     // 11. Pipe the UI message stream to the response. On finish, persist the
     //     completed conversation to the thread (scoped to this user). The
@@ -1039,7 +1079,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             });
           } finally {
             // Clear "working" the instant the reply is done — titling is background.
-            noteFinished(user.userEntityRef, threadId, assistantId);
+            await noteFinished(user.userEntityRef, threadId, assistantId);
           }
 
           // Auto-title the conversation's first turn OFF the critical path, so the
@@ -1100,10 +1140,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         },
         sendReasoning: true,
       }),
-      // Buffer a tee'd copy of the SSE so a client returning mid-flight can
-      // rejoin via GET /chat/resume/:id (in-memory; single replica).
+      // Buffer a tee'd copy of the SSE in the database so a client returning
+      // mid-flight can rejoin via GET /chat/resume/:id on any replica.
       consumeSseStream: ({ stream }) => {
-        resumables.start(resumableId, user.userEntityRef, stream);
+        if (threadId && streamTurnId) {
+          streamBuffer.record(threadId, streamTurnId, stream);
+        }
       },
       headers: {
         'Cache-Control': 'no-cache, no-transform',
@@ -1186,14 +1228,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   // Per-conversation status across ALL of the user's assistants — the single
   // source the client derives every indicator from (conversation dots,
-  // assistant rollups, nav). `unread` is durable (DB); `working` is the live
-  // in-flight set.
+  // assistant rollups, nav). Both `unread` and `working` come from the
+  // database, so every replica answers the same.
   // MUST precede `/:id` so 'status' isn't matched as a thread id.
   threads.get('/status', (req, res, next) => {
     (async () => {
       const { userRef, accessibleIds } = await resolveAccess(req);
       const rows = await threadService.listUserThreadStatuses(userRef);
-      const working = inFlight.get(userRef);
       res.json({
         threads: rows
           .filter(r => accessibleIds.has(r.assistantId))
@@ -1201,7 +1242,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             threadId: r.threadId,
             assistantId: r.assistantId,
             unread: r.unread,
-            working: working?.has(r.threadId) ?? false,
+            working: r.working,
             tokens: r.tokens,
           })),
       });

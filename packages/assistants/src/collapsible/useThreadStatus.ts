@@ -6,7 +6,9 @@
  * `{ working, unread }` (+ `assistantId`). We refetch it on any Signals message
  * (delivered even while the tab is backgrounded) and when the tab becomes
  * visible — never on window focus. Signals is optional: a host app without
- * `@backstage/plugin-signals` polls the endpoint instead. Every indicator is a
+ * `@backstage/plugin-signals` polls the endpoint instead. While any turn runs it
+ * also polls, because a turn on another backend replica may finish without its
+ * signal reaching this browser. Every indicator is a
  * pure derivation:
  *   - `working` (in-flight) shows ALWAYS, even for the focused conversation
  *   - `unread` shows until you FOCUS the conversation (focusing marks it read)
@@ -21,6 +23,8 @@ import type { ConversationStatusRow } from '../api';
 const NOTIFY_CHANNEL = 'assistants:threads';
 /** Refetch cadence when the host app has no Signals API installed. */
 const POLL_INTERVAL_MS = 10_000;
+/** Refetch cadence while any conversation is working. */
+const WORKING_POLL_INTERVAL_MS = 5_000;
 
 export type ConvStatus = 'read' | 'working' | 'unread';
 
@@ -94,6 +98,15 @@ export function useThreadStatus(
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [signals, refresh]);
+
+  // While a turn runs, poll as well: its finish may come from a replica whose
+  // signal never reaches this browser.
+  const anyWorking = rows.some(r => r.working);
+  useEffect(() => {
+    if (!anyWorking) return undefined;
+    const poll = setInterval(() => void refresh(), WORKING_POLL_INTERVAL_MS);
+    return () => clearInterval(poll);
+  }, [anyWorking, refresh]);
 
   // Focusing a conversation marks it read (optimistically + on the server).
   useEffect(() => {

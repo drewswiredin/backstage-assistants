@@ -99,8 +99,11 @@ _Avoid_: an `assistants.admins` config allowlist (management is the `assistant.m
 **Snapshot**:
 The AssistantStore's in-memory copy of every assistant definition — write-through on the replica that served the edit, lazily refreshed every 60 s elsewhere. Read synchronously by `/status` and `/threads*`; `/chat` reads the DB row instead, so a turn never runs against a stale definition.
 
-**Resumable buffer**:
-A per-process SSE buffer keyed by thread id, holding a turn's stream while it runs and for 60 s after it completes. `GET /chat/resume/:threadId` replays it; one backend replica or session affinity for `/api/assistants/*`.
+**Stream buffer**:
+The `stream_chunks` rows holding a running turn's UI message stream, keyed by thread id, written in 250 ms batches by the replica running the turn and kept 60 s after it completes. `GET /chat/resume/:threadId` replays and follows them from any replica.
+
+**Turn state**:
+The running-turn record on a `threads` row: `turn_heartbeat_at`, refreshed every 5 s by the replica running the turn, and `turn_cancel_requested`, a Stop for that replica to pick up. A heartbeat younger than 30 s is `working`.
 
 **Delta-validation**:
 The editor's save rule: only _new_ additions are validated against live capabilities; pre-existing entries are grandfathered, surfaced as stale (RED gone / AMBER unverifiable), and pruned only on demand. Save is never blocked by stale entries.

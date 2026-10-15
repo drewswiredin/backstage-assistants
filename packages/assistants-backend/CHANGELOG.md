@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- The working indicator and Stop hold across backend replicas. A running turn is recorded on its thread with a heartbeat every 5 seconds, so every replica reports it, and a Stop received by one replica reaches the one running the turn. A turn whose replica stops heartbeating stops showing as working within 30 seconds. Adds the `turn_heartbeat_at` and `turn_cancel_requested` columns to `threads`.
+- Reopening a conversation mid-reply rejoins the live stream on any backend replica. The stream is buffered in the new `stream_chunks` table in 250 ms batches, replayed from the start and followed until the turn ends, and deleted 60 seconds after. Session affinity is no longer needed.
+
 ## 0.17.5 - 2026-10-14
 
 ### Added

@@ -66,25 +66,25 @@ flowchart LR
 
 Every route accepts user tokens only. `/chat` applies the per-assistant access policy, and `GET /threads`, `POST /threads`, and `/threads/status` filter or check by it; the per-thread routes and `/chat/resume` and `/chat/cancel` are scoped to the owning user. Handlers live in `router.ts`; `/capabilities` and `/manage/*` live in `manage.ts`.
 
-| Method | Path                     | Gate               | Reads                                                                                                      | Writes                                                            | Signals                              |
-| ------ | ------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
-| GET    | `/status`                | `assistant.use`    | snapshot, `actions.list`, MCP tool cache                                                                   |                                                                   |                                      |
-| POST   | `/chat`                  | `assistant.use`    | assistant row (DB), thread row, `actions.list`, pool                                                       | `messages`, `threads` `updated_at`, `model`, `last_tokens`, title | turn-started, turn-finished, updated |
-| GET    | `/chat/resume/:threadId` | `assistant.use`    | resumable buffer                                                                                           |                                                                   |                                      |
-| POST   | `/chat/cancel/:threadId` | `assistant.use`    | in-flight set, abort handle                                                                                |                                                                   | turn-finished                        |
-| GET    | `/threads`               | `assistant.use`    | snapshot (access filter), `threads`; optional `?assistantId=`; unarchived, pinned first, then `updated_at` |                                                                   |                                      |
-| POST   | `/threads`               | `assistant.use`    | snapshot (access check)                                                                                    | `threads` row                                                     |                                      |
-| GET    | `/threads/status`        | `assistant.use`    | snapshot, `threads`, in-flight set                                                                         |                                                                   |                                      |
-| GET    | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  |                                                                   |                                      |
-| PATCH  | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  | title, model, reasoning level, pinned, archived                   |                                      |
-| DELETE | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  | `threads` and `messages` rows                                     |                                      |
-| POST   | `/threads/:id/read`      | `assistant.use`    | `threads`                                                                                                  | `last_read_at`                                                    | read                                 |
-| GET    | `/threads/:id/messages`  | `assistant.use`    | `messages`                                                                                                 |                                                                   |                                      |
-| GET    | `/capabilities`          | `assistant.manage` | `actions.list`, model pool, MCP pool                                                                       |                                                                   |                                      |
-| GET    | `/manage/assistants`     | `assistant.manage` | `assistants` (DB)                                                                                          |                                                                   |                                      |
-| POST   | `/manage/assistants`     | `assistant.manage` | capabilities                                                                                               | `assistants` row, snapshot rebuild                                |                                      |
-| PUT    | `/manage/assistants/:id` | `assistant.manage` | `assistants` row, capabilities                                                                             | `assistants` row, snapshot rebuild                                |                                      |
-| DELETE | `/manage/assistants/:id` | `assistant.manage` |                                                                                                            | `assistants` row, snapshot rebuild                                |                                      |
+| Method | Path                     | Gate               | Reads                                                                                                      | Writes                                                                        | Signals                              |
+| ------ | ------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
+| GET    | `/status`                | `assistant.use`    | snapshot, `actions.list`, MCP tool cache                                                                   |                                                                               |                                      |
+| POST   | `/chat`                  | `assistant.use`    | assistant row (DB), thread row, `actions.list`, pool                                                       | `messages`, `threads` `updated_at`, `model`, `last_tokens`, turn state, title | turn-started, turn-finished, updated |
+| GET    | `/chat/resume/:threadId` | `assistant.use`    | thread row, `stream_chunks`                                                                                |                                                                               |                                      |
+| POST   | `/chat/cancel/:threadId` | `assistant.use`    | `threads` turn state, abort handle                                                                         | `turn_cancel_requested`                                                       | turn-finished                        |
+| GET    | `/threads`               | `assistant.use`    | snapshot (access filter), `threads`; optional `?assistantId=`; unarchived, pinned first, then `updated_at` |                                                                               |                                      |
+| POST   | `/threads`               | `assistant.use`    | snapshot (access check)                                                                                    | `threads` row                                                                 |                                      |
+| GET    | `/threads/status`        | `assistant.use`    | snapshot, `threads` including turn state                                                                   |                                                                               |                                      |
+| GET    | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  |                                                                               |                                      |
+| PATCH  | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  | title, model, reasoning level, pinned, archived                               |                                      |
+| DELETE | `/threads/:id`           | `assistant.use`    | `threads`                                                                                                  | `threads` and `messages` rows                                                 |                                      |
+| POST   | `/threads/:id/read`      | `assistant.use`    | `threads`                                                                                                  | `last_read_at`                                                                | read                                 |
+| GET    | `/threads/:id/messages`  | `assistant.use`    | `messages`                                                                                                 |                                                                               |                                      |
+| GET    | `/capabilities`          | `assistant.manage` | `actions.list`, model pool, MCP pool                                                                       |                                                                               |                                      |
+| GET    | `/manage/assistants`     | `assistant.manage` | `assistants` (DB)                                                                                          |                                                                               |                                      |
+| POST   | `/manage/assistants`     | `assistant.manage` | capabilities                                                                                               | `assistants` row, snapshot rebuild                                            |                                      |
+| PUT    | `/manage/assistants/:id` | `assistant.manage` | `assistants` row, capabilities                                                                             | `assistants` row, snapshot rebuild                                            |                                      |
+| DELETE | `/manage/assistants/:id` | `assistant.manage` |                                                                                                            | `assistants` row, snapshot rebuild                                            |                                      |
 
 `/status` and `/chat` sit on the typed OpenAPI router (`src/schema/openapi.yaml`); the other routes are plain Express sub-routers. The OpenAPI router's JSON parser runs ahead of every route, so `requestBodyLimit` (default `10mb`, sized for `/chat` attachments) is the body limit for all of them. `PATCH /threads/:id` rejects unknown fields; `POST /threads` answers 201; `/chat/cancel` always answers 204; `/chat/resume` answers 204 for an unknown, foreign, or expired stream.
 
@@ -135,19 +135,28 @@ sequenceDiagram
   participant B as Browser
   participant R as Router
   participant L as AI SDK loop
-  participant F as Resumable buffer
+  participant F as stream_chunks
   B->>R: POST /chat/cancel/:threadId
-  R->>L: abort this turn
+  alt this replica runs the turn
+    R->>L: abort this turn
+  else another replica runs it
+    R->>R: set turn_cancel_requested
+    Note over R,L: that replica aborts on its next heartbeat
+  end
   L-->>R: onAbort, turn-finished
   Note over B,L: a disconnect never aborts
   B->>R: GET /threads/status
   R-->>B: working: true
   B->>R: GET /chat/resume/:threadId
-  R->>F: subscribe by thread id
-  F-->>B: buffered chunks, then live tail
+  R->>F: read rows by thread id
+  F-->>B: buffered rows, then new rows every 300 ms until done
 ```
 
-Stop aborts only this turn's controller, checked against the caller's in-flight set. A dropped connection does not abort: `consumeStream` drives the turn to completion and `onFinish` persists it. On entering a conversation the runtime hook checks the `working` flag and calls `resumeStream()`, which targets `/chat/resume/:threadId` with the thread id as the stream id. The buffer stays 60 s after completion; after that the route answers 204 and the durable turn loads from the database.
+A running turn is recorded on its thread: `noteStarted` sets `turn_heartbeat_at`, the replica running the turn refreshes it every 5 s, and `noteFinished` clears it. `working` is a heartbeat younger than 30 s, so every replica reports the same and a replica that dies mid-turn stops reporting within 30 s.
+
+Stop sets `turn_cancel_requested` on the caller's own running turn and aborts it at once when this process runs it; otherwise the running replica reads the flag on its next heartbeat and aborts. A dropped connection does not abort: `consumeStream` drives the turn to completion and `onFinish` persists it.
+
+On entering a conversation the runtime hook checks the `working` flag and calls `resumeStream()`, which targets `/chat/resume/:threadId` with the thread id as the stream id. Any replica serves it from `stream_chunks`, which keeps the turn's rows 60 s after completion. The first row is written before the turn reads as working, so a working turn always has rows to replay; a resume that finds none answers 204. When the replica running a turn dies, the replay ends without a finish once the heartbeat goes stale, and the surface shows "Connection lost".
 
 | End state    | Persisted                                             | Surface shows                                                              |
 | ------------ | ----------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -208,41 +217,53 @@ A low-privilege user chatting with an assistant wired to a powerful MCP server g
 
 ## State and lifetime
 
-| Store                           | Where          | Scope                         | Written by                                            | Lifetime                                                    | Several replicas                        |
-| ------------------------------- | -------------- | ----------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------- |
-| `threads`, `messages`           | DB             | Per `user_ref`                | `ThreadService` from `/chat` and `/threads`           | Durable                                                     | Shared                                  |
-| `assistants`, `assistants_meta` | DB             | Global                        | `AssistantStore` from `/manage`, seed-once            | Durable                                                     | Shared                                  |
-| `assistants_knowledge_*`        | DB             | Global                        | The knowledge index refresh task, one replica per run | Rebuildable cache; rebuilt when the embedding model changes | Shared                                  |
-| Assistant snapshot              | Process memory | Global                        | Write-through on the editing replica                  | Lazy refresh after 60 s elsewhere                           | Stale up to 60 s; `/chat` reads the row |
-| Resumable buffer                | Process memory | Per thread, owner-checked     | `consumeSseStream` tee                                | 60 s after completion                                       | Resume must hit the same process        |
-| In-flight set                   | Process memory | Per user, thread to assistant | `noteStarted`, `noteFinished`                         | Cleared on finish, abort, or error                          | `working` is local to one process       |
-| Abort handles                   | Process memory | Per thread                    | `/chat`                                               | Cleared on finish, abort, or error                          | Cancel must hit the same process        |
-| MCP pool and tool cache         | Process memory | Per server                    | `maintainMcpConnections` every 2 min                  | Until shutdown; 5 min freshness for `/capabilities`         | Each replica keeps its own              |
-| Runtime messages                | Browser memory | Per tab                       | `useChat` stream, history adapter load                | Until unmount; never persisted                              | n/a                                     |
-| Thread status rows              | Browser memory | Per tab                       | `useThreadStatus` refetch                             | Until unmount                                               | n/a                                     |
-| `interruptedTurns` reasons      | Browser memory | Per message id                | `useChat.onFinish`                                    | Cleared on reload; the DB flag takes over                   | n/a                                     |
-| Model and effort refs           | React refs     | Per tab                       | Header pickers; PATCHed to the thread                 | Until unmount                                               | n/a                                     |
-| Side pane collapsed             | `localStorage` | Per browser                   | The collapse control                                  | Persistent                                                  | n/a                                     |
-| Active assistant                | URL            | Per tab                       | `?assistant=<id>`, rewritten on each switch           | Survives reload                                             | n/a                                     |
-| Nav icon status rows            | Browser memory | Per tab                       | `AssistantsNavIcon`'s own `useThreadStatus`           | Until unmount                                               | n/a                                     |
-| Scaffolder field registry       | Module memory  | Per tab                       | `render_form`'s first `loadFormFields()`              | Until reload                                                | n/a                                     |
+| Store                           | Where          | Scope                             | Written by                                            | Lifetime                                                                      | Several replicas                               |
+| ------------------------------- | -------------- | --------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------- |
+| `threads`, `messages`           | DB             | Per `user_ref`                    | `ThreadService` from `/chat` and `/threads`           | Durable                                                                       | Shared                                         |
+| `assistants`, `assistants_meta` | DB             | Global                            | `AssistantStore` from `/manage`, seed-once            | Durable                                                                       | Shared                                         |
+| `assistants_knowledge_*`        | DB             | Global                            | The knowledge index refresh task, one replica per run | Rebuildable cache; rebuilt when the embedding model changes                   | Shared                                         |
+| Assistant snapshot              | Process memory | Global                            | Write-through on the editing replica                  | Lazy refresh after 60 s elsewhere                                             | Stale up to 60 s; `/chat` reads the row        |
+| `stream_chunks`                 | DB             | Per thread, owner-checked on read | `StreamBuffer` from the `consumeSseStream` tee        | Replaced by the next turn; deleted 60 s after completion; swept after an hour | Shared                                         |
+| Turn state                      | DB             | Per thread                        | `noteStarted`, a 5 s heartbeat, `noteFinished`        | Cleared on finish, abort, or error; stale after 30 s                          | Shared                                         |
+| Abort handles                   | Process memory | Per thread                        | `/chat`                                               | Cleared on finish, abort, or error                                            | A cancel elsewhere lands on the next heartbeat |
+| MCP pool and tool cache         | Process memory | Per server                        | `maintainMcpConnections` every 2 min                  | Until shutdown; 5 min freshness for `/capabilities`                           | Each replica keeps its own                     |
+| Runtime messages                | Browser memory | Per tab                           | `useChat` stream, history adapter load                | Until unmount; never persisted                                                | n/a                                            |
+| Thread status rows              | Browser memory | Per tab                           | `useThreadStatus` refetch                             | Until unmount                                                                 | n/a                                            |
+| `interruptedTurns` reasons      | Browser memory | Per message id                    | `useChat.onFinish`                                    | Cleared on reload; the DB flag takes over                                     | n/a                                            |
+| Model and effort refs           | React refs     | Per tab                           | Header pickers; PATCHed to the thread                 | Until unmount                                                                 | n/a                                            |
+| Side pane collapsed             | `localStorage` | Per browser                       | The collapse control                                  | Persistent                                                                    | n/a                                            |
+| Active assistant                | URL            | Per tab                           | `?assistant=<id>`, rewritten on each switch           | Survives reload                                                               | n/a                                            |
+| Nav icon status rows            | Browser memory | Per tab                           | `AssistantsNavIcon`'s own `useThreadStatus`           | Until unmount                                                                 | n/a                                            |
+| Scaffolder field registry       | Module memory  | Per tab                           | `render_form`'s first `loadFormFields()`              | Until reload                                                                  | n/a                                            |
 
-The resumable buffer, the in-flight set, and the abort handles live in process memory. The plugin therefore runs on one backend replica or behind session affinity for `/api/assistants/*`; completed turns are durable regardless.
+Turn state and the stream buffer are in the database, so `working`, Stop, and rejoining a running reply work on any replica. The abort handles live in process memory; a Stop received elsewhere reaches them through the heartbeat.
 
 ## Data model
 
 `threads`
 
-| Column                                     | Notes                                                           |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| `id`                                       | Primary key, UUID                                               |
-| `assistant_id`                             | Owning assistant; immutable                                     |
-| `user_ref`                                 | Owner; every read and write is scoped to it                     |
-| `title`                                    | 512 characters; defaults to `New Chat`, the auto-title sentinel |
-| `model`, `reasoning_level`                 | Last model id; nullable chosen effort                           |
-| `last_tokens`                              | Input plus output of the latest turn; drives the context gauge  |
-| `pinned`, `archived`                       | List state                                                      |
-| `created_at`, `updated_at`, `last_read_at` | Timestamps; `last_read_at` nullable                             |
+| Column                                       | Notes                                                           |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| `id`                                         | Primary key, UUID                                               |
+| `assistant_id`                               | Owning assistant; immutable                                     |
+| `user_ref`                                   | Owner; every read and write is scoped to it                     |
+| `title`                                      | 512 characters; defaults to `New Chat`, the auto-title sentinel |
+| `model`, `reasoning_level`                   | Last model id; nullable chosen effort                           |
+| `last_tokens`                                | Input plus output of the latest turn; drives the context gauge  |
+| `turn_heartbeat_at`, `turn_cancel_requested` | Set while a turn runs; a Stop for the replica running it        |
+| `pinned`, `archived`                         | List state                                                      |
+| `created_at`, `updated_at`, `last_read_at`   | Timestamps; `last_read_at` nullable                             |
+
+`stream_chunks`
+
+| Column       | Notes                                                             |
+| ------------ | ----------------------------------------------------------------- |
+| `id`         | Auto-increment; the replay order                                  |
+| `thread_id`  | The thread the turn runs on; one turn's rows per thread at a time |
+| `turn_id`    | UUID per turn; a new id ends followers of the previous turn       |
+| `data`       | UI message stream text, one 250 ms batch; `LONGTEXT` on MySQL     |
+| `done`       | Set on the final row of a turn                                    |
+| `created_at` | Drives the hourly sweep of abandoned rows                         |
 
 `messages`
 
@@ -411,9 +432,9 @@ The backend publishes on the per-user channel `assistants:threads`.
 | `updated`       | Thread metadata changed, such as an auto-title |
 | `read`          | The thread was marked read in some view        |
 
-Every indicator derives from one `GET /threads/status` snapshot. `working` comes from the in-flight set; `unread` is `updated_at > last_read_at` in the database. Rollups per assistant and for `AssistantsNavIcon`: working beats unread. `AssistantsNavIcon` runs its own status subscription; the auto-registered nav entry uses the plain plugin icon and shows no status. The focused conversation shows working but never unread, and focusing it posts `/threads/:id/read`. `StatusDot` renders amber pulsing for working, solid red for unread, nothing for read.
+Every indicator derives from one `GET /threads/status` snapshot. `working` is a fresh turn heartbeat on the thread; `unread` is `updated_at > last_read_at` in the database. Rollups per assistant and for `AssistantsNavIcon`: working beats unread. `AssistantsNavIcon` runs its own status subscription; the auto-registered nav entry uses the plain plugin icon and shows no status. The focused conversation shows working but never unread, and focusing it posts `/threads/:id/read`. `StatusDot` renders amber pulsing for working, solid red for unread, nothing for read.
 
-The client refetches the snapshot 120 ms after any signal and on tab-visible, never on window focus. Without a Signals API it polls every 10 s. The thread list reloads 150 ms after an `updated` signal. Under polling the list reloads on each status tick, skipped on the first tick and while any turn runs, because a reload re-keys an in-flight thread.
+The client refetches the snapshot 120 ms after any signal and on tab-visible, never on window focus. Without a Signals API it polls every 10 s. While any conversation is working it also polls every 5 s, because a turn that finishes on another replica may never deliver its signal. The thread list reloads 150 ms after an `updated` signal. Under polling the list reloads on each status tick, skipped on the first tick and while any turn runs, because a reload re-keys an in-flight thread.
 
 The composer gauge shows `last_tokens` against the chosen model's `contextWindow`; without one the readout has no limit. When the history exceeds the window the composer shows "Context exceeded for the chosen model". The model picker is never filtered by context window.
 
@@ -425,7 +446,7 @@ The composer gauge shows `last_tokens` against the chosen model's `contextWindow
 
 **AssistantStore snapshot.** The store keeps every definition in memory and rebuilds it after each create, update, delete, and at init. Synchronous reads (`get`, `list`) serve `/status`, the access filters, and `/threads*`. When the snapshot is older than 60 s a read starts one shared background refresh and returns immediately. `/chat` and `/manage` read the database row instead. Derived values are computed at read: `hasModelAllowlist`, effective models, and the effective default. A malformed access blob normalises to deny; malformed arrays normalise to empty.
 
-**Resumable buffer.** `pipeUIMessageStreamToResponse` tees the SSE into `ResumableStreamRegistry` under the thread id, owned by the caller's `userEntityRef`. A subscriber receives the buffered chunks then the live tail; the pump only mutates state at `await` points, so no chunk is missed or duplicated. The entry is deleted 60 s after the stream completes.
+**Stream buffer.** Before a turn reads as working, `StreamBuffer.begin` deletes the thread's previous rows and any row older than an hour, then writes an empty first row under a new turn id, so a rejoin finds the turn at once and never replays the previous one. `pipeUIMessageStreamToResponse` tees the SSE to `StreamBuffer.record`, which writes the accumulated text every 250 ms in order and a `done` row at the end, and deletes the turn's rows 60 s later. `/chat/resume/:threadId` checks thread ownership, then `follow` replays the rows by id and polls every 300 ms. It ends at `done`, when the client disconnects, when another turn id appears, or after 5 s without rows once the heartbeat is stale.
 
 ## Invariants
 

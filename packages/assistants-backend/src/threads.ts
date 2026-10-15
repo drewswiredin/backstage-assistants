@@ -51,6 +51,15 @@ export type ThreadPatch = Partial<
   Pick<Thread, 'title' | 'model' | 'reasoningLevel' | 'pinned' | 'archived'>
 >;
 
+/** How often the replica running a turn refreshes its heartbeat. */
+export const TURN_HEARTBEAT_MS = 5_000;
+
+/**
+ * A turn whose heartbeat is older than this is not working: the replica
+ * running it stopped without finishing it.
+ */
+export const TURN_STALE_MS = 30_000;
+
 /** Longest title the `threads.title` column holds. */
 const THREAD_TITLE_MAX_CHARS = 512;
 
@@ -215,6 +224,7 @@ export class ThreadService {
       // Delete messages explicitly rather than relying on FK cascade, which
       // SQLite does not enforce unless PRAGMA foreign_keys is on.
       await trx('messages').where({ thread_id: threadId }).delete();
+      await trx('stream_chunks').where({ thread_id: threadId }).delete();
       await trx('threads').where({ id: threadId, user_ref: userRef }).delete();
       return true;
     });
@@ -235,14 +245,15 @@ export class ThreadService {
   /**
    * Per-conversation status for ALL of this user's non-archived threads (across
    * every assistant) — the single source the client derives every indicator
-   * from. `unread` (`updated_at > last_read_at`) is durable; the live `working`
-   * flag is merged in by the router from its in-flight set. One cheap query.
+   * from. `unread` is `updated_at > last_read_at`; `working` is a turn heartbeat
+   * fresher than {@link TURN_STALE_MS}. One cheap query.
    */
   async listUserThreadStatuses(userRef: string): Promise<
     Array<{
       threadId: string;
       assistantId: string;
       unread: boolean;
+      working: boolean;
       tokens?: number;
     }>
   > {
@@ -254,6 +265,7 @@ export class ThreadService {
         'updated_at',
         'last_read_at',
         'last_tokens',
+        'turn_heartbeat_at',
       );
     return rows.map(r => {
       const updatedAt = toIsoTimestamp(r.updated_at)!;
@@ -262,9 +274,66 @@ export class ThreadService {
         threadId: r.id as string,
         assistantId: r.assistant_id as string,
         unread: lastReadAt ? new Date(updatedAt) > new Date(lastReadAt) : false,
+        working: isFresh(r.turn_heartbeat_at),
         tokens: typeof r.last_tokens === 'number' ? r.last_tokens : undefined,
       };
     });
+  }
+
+  // ---- In-flight turns ------------------------------------------------------
+  // Turn state lives on the thread row so every replica answers the same:
+  // the replica running a turn refreshes its heartbeat, any replica reads it,
+  // and any replica can request a cancel for the running one to pick up.
+
+  /** Mark a turn running on this thread and clear any stale cancel request. */
+  async startTurn(threadId: string): Promise<void> {
+    await this.db('threads').where({ id: threadId }).update({
+      turn_heartbeat_at: new Date().toISOString(),
+      turn_cancel_requested: false,
+    });
+  }
+
+  /**
+   * Refresh a running turn's heartbeat. Returns true when a cancel has been
+   * requested for it.
+   */
+  async heartbeatTurn(threadId: string): Promise<boolean> {
+    await this.db('threads')
+      .where({ id: threadId })
+      .whereNotNull('turn_heartbeat_at')
+      .update({ turn_heartbeat_at: new Date().toISOString() });
+    const row = await this.db('threads')
+      .where({ id: threadId })
+      .first('turn_cancel_requested');
+    return Boolean(row?.turn_cancel_requested);
+  }
+
+  /** Whether a turn is running on this thread (its heartbeat is fresh). */
+  async isTurnRunning(threadId: string): Promise<boolean> {
+    const row = await this.db('threads')
+      .where({ id: threadId })
+      .first('turn_heartbeat_at');
+    return isFresh(row?.turn_heartbeat_at);
+  }
+
+  /** Mark this thread's turn finished. */
+  async endTurn(threadId: string): Promise<void> {
+    await this.db('threads').where({ id: threadId }).update({
+      turn_heartbeat_at: null,
+      turn_cancel_requested: false,
+    });
+  }
+
+  /**
+   * Ask the replica running this user's turn on the thread to stop it.
+   * Returns false when the user has no running turn there.
+   */
+  async requestCancel(userRef: string, threadId: string): Promise<boolean> {
+    const count = await this.db('threads')
+      .where({ id: threadId, user_ref: userRef })
+      .whereNotNull('turn_heartbeat_at')
+      .update({ turn_cancel_requested: true });
+    return count > 0;
   }
 
   // ---- Messages -------------------------------------------------------------
@@ -373,6 +442,12 @@ function toThread(row: Record<string, unknown>): Thread {
     lastReadAt,
     unread: lastReadAt ? new Date(updatedAt) > new Date(lastReadAt) : false,
   };
+}
+
+/** A turn heartbeat younger than {@link TURN_STALE_MS}. */
+function isFresh(heartbeat: unknown): boolean {
+  const at = toIsoTimestamp(heartbeat);
+  return at ? Date.now() - new Date(at).getTime() < TURN_STALE_MS : false;
 }
 
 function toMessage(row: Record<string, unknown>): StoredMessage {
