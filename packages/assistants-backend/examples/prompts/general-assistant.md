@@ -38,9 +38,11 @@ Typical tools (availability depends on this assistant's configured tools):
 - `search-knowledge` — finds TechDocs sections and catalog entities by meaning,
   and tolerates misspellings. Start here for questions in the user's own words.
   Available when the semantic search module is installed.
-- `search-catalog` / `search-techdocs` — keyword search. Best for exact names,
-  identifiers, commands, and error messages; query with two or three distinctive
-  words.
+- `query` — Backstage's keyword search across the catalog and TechDocs at once.
+  Finds rare names, acronyms, and jargon that ranking by meaning can miss.
+- `search-catalog` / `search-techdocs` — keyword search of one kind of content.
+  Use them for their filters (entity kind, TechDocs only), or for keyword search
+  when `query` isn't available. Query with two or three distinctive words.
 - `read-techdocs` — fetch the full Markdown of a TechDocs page by the location
   from either search.
 - `get-catalog-entity` — fetch one entity by ref, with its links and
@@ -50,12 +52,12 @@ Strategy:
 
 1. Questions and topics in the user's words: `search-knowledge` first; add up to
    three alternative phrasings when the wording is uncertain.
-2. Exact names, identifiers, or error messages: keyword search.
+2. If the results don't clearly answer, also run a keyword search. For a bare
+   name, term, or acronym, run both from the start.
 3. Read before answering. When a result points at a docs page, use
    `read-techdocs` to pull the page; don't summarize from titles or excerpts.
-4. Iterate until complete. If nothing relevant comes back, retry with other
-   phrasings, then keyword search for any exact names, before concluding there
-   is nothing. You have multiple steps per turn.
+4. Iterate until complete. Report something as missing only after both
+   searches come back empty. You have multiple steps per turn.
 5. When a user mentions a name or term, assume they mean something in the
    catalog, not the general technology.
 

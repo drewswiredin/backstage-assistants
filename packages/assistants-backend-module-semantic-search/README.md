@@ -90,8 +90,16 @@ sections and delete removed ones. Changing `embeddingModel` rebuilds the index.
 Add `search-knowledge` to the assistant's tools in the assistant editor. It
 pairs with `read-techdocs` (from `builtinActions: true`), which opens the full
 page behind a TechDocs result. Until the first index run finishes, the tool
-answers with an error that points the model at `search-techdocs` and
+answers with an error that points the model at keyword search: Backstage's
+`query` action when the assistant has it, otherwise `search-techdocs` and
 `search-catalog`.
+
+The tool's description carries the search strategy, so agents that see only
+tool descriptions (some MCP clients drop server instructions) still follow it:
+`search-knowledge` first, keyword search when the results don't clearly answer
+or the question is a bare name or acronym, and nothing reported missing until
+both come back empty. The built-in `search-catalog` and `search-techdocs`
+descriptions say the same.
 
 The action registers under the `assistants` plugin, so `assistants` must be in
 `backend.actions.pluginSources`, as it already is for the built-in tools:
@@ -114,18 +122,24 @@ the embedding, a generated full-text vector, and a trigram index over its text.
 The table is a rebuildable cache, not migrated data.
 
 **Retrieval.** `search-knowledge` takes the question and up to three alternative
-phrasings and builds one semantic list per phrasing, a keyword list, and a
-fuzzy list:
+phrasings and builds one semantic list per phrasing, a keyword list, a rare-word
+list, and a fuzzy list:
 
-| List     | Matches                                       | Postgres                                                    |
-| -------- | --------------------------------------------- | ----------------------------------------------------------- |
-| Semantic | Meaning, per phrasing                         | pgvector cosine distance (HNSW index up to 2000 dimensions) |
-| Keyword  | Any query word, ranked by match density       | `tsvector` / `websearch_to_tsquery`                         |
-| Fuzzy    | Near spellings of words absent from the index | `pg_trgm` word similarity                                   |
+| List      | Matches                                       | Postgres                                                    |
+| --------- | --------------------------------------------- | ----------------------------------------------------------- |
+| Semantic  | Meaning, per phrasing                         | pgvector cosine distance (HNSW index up to 2000 dimensions) |
+| Keyword   | Any query word, ranked by match density       | `tsvector` / `websearch_to_tsquery`                         |
+| Rare word | Query words found in three chunks or fewer    | `tsvector` / `websearch_to_tsquery`                         |
+| Fuzzy     | Near spellings of words absent from the index | `pg_trgm` word similarity                                   |
 
-Reciprocal rank fusion merges the lists. The top candidates' entities are
-fetched from the catalog as the user; results for entities the user cannot
-read are dropped.
+Query words include adjacent pairs written as one word, so "tally up" also
+matches "TallyUp". Reciprocal rank fusion merges the lists with one vote per
+method: the semantic lists share one vote, so extra phrasings broaden recall
+without outvoting an exact match. The rare-word list keeps a name or acronym
+mentioned once in a paragraph about something else from being outranked by
+sections that are only near the question in meaning. The top candidates'
+entities are fetched from the catalog as the user; results for entities the
+user cannot read are dropped, and repeated text is shown once.
 
 ## Reference
 

@@ -8,19 +8,42 @@ const STOPWORDS = new Set(
 
 const MAX_WORDS = 8;
 
+function tokens(phrasing: string): string[] {
+  return phrasing
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}_-]+/u)
+    .map(raw => raw.replace(/^[-_]+|[-_]+$/g, ''))
+    .filter(Boolean);
+}
+
 /**
  * The distinct content words of the given phrasings: lowercased, at least
  * three characters, stopwords dropped, capped at eight. These drive the
- * keyword and fuzzy lists; the full phrasings drive the vector list.
+ * keyword and fuzzy lists; the full phrasings drive the vector lists.
  */
 export function queryWords(phrasings: string[]): string[] {
   const words = new Set<string>();
   for (const phrasing of phrasings) {
-    for (const raw of phrasing.toLowerCase().split(/[^\p{L}\p{N}_-]+/u)) {
-      const word = raw.replace(/^[-_]+|[-_]+$/g, '');
+    for (const word of tokens(phrasing)) {
       if (word.length >= 3 && !STOPWORDS.has(word)) {
         words.add(word);
       }
+    }
+  }
+  return [...words].slice(0, MAX_WORDS);
+}
+
+/**
+ * Adjacent word pairs written as one word ("tally up" → "tallyup"), capped at
+ * eight, for terms the user split in two. Only pairs the index contains are
+ * searched, so the nonsense pairs cost nothing.
+ */
+export function joinedWords(phrasings: string[]): string[] {
+  const words = new Set<string>();
+  for (const phrasing of phrasings) {
+    const parts = tokens(phrasing);
+    for (let i = 1; i < parts.length; i++) {
+      words.add(parts[i - 1] + parts[i]);
     }
   }
   return [...words].slice(0, MAX_WORDS);

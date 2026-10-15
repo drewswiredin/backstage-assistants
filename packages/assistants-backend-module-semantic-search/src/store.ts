@@ -186,24 +186,36 @@ export class KnowledgeStore {
     return rows.map((row: { id: string }) => row.id);
   }
 
-  /** The words that match nothing in the index exactly — likely misspellings. */
-  async unknownWords(words: string[]): Promise<string[]> {
+  /**
+   * How many chunks contain each word, counted up to `cap`: 0 for a word the
+   * index lacks (likely a misspelling), absent for a word Postgres ignores as
+   * a stopword.
+   */
+  async documentFrequencies(
+    words: string[],
+    cap: number,
+  ): Promise<Map<string, number>> {
     if (words.length === 0) {
-      return [];
+      return new Map();
     }
     const { rows } = await this.db.raw(
-      `SELECT w FROM unnest(?::text[]) AS w
-        WHERE NOT EXISTS (
-          SELECT 1 FROM ${CHUNKS} WHERE tsv @@ plainto_tsquery('english', w)
-        )`,
-      [words],
+      `SELECT w, (
+          SELECT count(*) FROM (
+            SELECT 1 FROM ${CHUNKS} WHERE tsv @@ plainto_tsquery('english', w) LIMIT ?
+          ) hits
+        ) AS n
+        FROM unnest(?::text[]) AS w
+        WHERE numnode(plainto_tsquery('english', w)) > 0`,
+      [cap, words],
     );
-    return rows.map((row: { w: string }) => row.w);
+    return new Map(
+      rows.map((row: { w: string; n: string }) => [row.w, Number(row.n)]),
+    );
   }
 
   /**
    * Chunks whose text contains a near spelling of the words, ranked by summed
-   * trigram word similarity. Run only for {@link unknownWords}: a word that
+   * trigram word similarity. Run only for words the index lacks: a word that
    * matches exactly is already covered by {@link keyword}.
    */
   async fuzzy(words: string[], limit: number): Promise<string[]> {

@@ -69,7 +69,9 @@ function registerSearchCatalogAction({
     name: 'search-catalog',
     title: 'Search Catalog',
     attributes: { destructive: false, readOnly: true, idempotent: true },
-    description: `Search the Backstage catalog for entities by the words in their names and descriptions. Results are ordered by relevance to the query. Best for a known entity name or term, and for listing entities of particular kinds; a misspelled name or a different wording than the catalog uses may find nothing. For questions or topics in the user's own words, use search-knowledge instead when it is available.
+    description: `Keyword search of the Backstage catalog: finds entities by the words in their names and descriptions, and can filter by kind. Results are ordered by relevance to the query. Best for listing entities of particular kinds and for looking up a known entity name or term; a misspelled name or a different wording than the catalog uses may find nothing.
+
+How to search the organization's docs and catalog: for questions or topics in the user's own words, start with search-knowledge (it matches by meaning) when it is available. If that doesn't clearly answer, run a keyword search: the query tool (catalog and TechDocs at once) when it is available, otherwise this tool and search-techdocs. Use this tool directly when you need its kind filter. Report something as missing only after both kinds of search come back empty.
 
 Query with two or three distinctive words, not a full question: on some search backends every word must match. If nothing comes back, retry with fewer words or a different term.
 
@@ -156,8 +158,11 @@ function registerSearchTechDocsAction({
     description:
       "Keyword search across all TechDocs pages in the organization's Backstage. " +
       'Matches the words in the query, so it is best for exact terms: names, identifiers, commands, error messages. ' +
-      "For questions or topics in the user's own words, use search-knowledge instead when it is available; it matches by meaning. " +
       'A misspelling or a different wording than the docs use may find nothing. ' +
+      "How to search the organization's docs and catalog: for questions or topics in the user's own words, start with search-knowledge (it matches by meaning) when it is available. " +
+      "If that doesn't clearly answer, run a keyword search: the query tool (catalog and TechDocs at once) when it is available, otherwise this tool and search-catalog. " +
+      'Use this tool directly when you want TechDocs pages only. ' +
+      'Report something as missing only after both kinds of search come back empty. ' +
       'Query with two or three distinctive words, not a full question: on some search backends every word must match. ' +
       'If nothing comes back, retry with fewer words or a different term. ' +
       'Returns matching pages with their title, a text excerpt and a location path. ' +
@@ -275,7 +280,7 @@ function registerReadTechDocsAction({
     attributes: { destructive: false, readOnly: true, idempotent: true },
     description: `Reads a specific page of Backstage TechDocs technical documentation and returns the content.
 
-Use the location from search-knowledge or search-techdocs results.
+Use the location from any search result (search-knowledge, the query tool, or search-techdocs).
 
 Alternatively the path to the root documentation page of a Backstage entity can be constructed as follows:
 

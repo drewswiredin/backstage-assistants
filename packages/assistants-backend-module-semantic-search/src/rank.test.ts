@@ -1,4 +1,4 @@
-import { fuseRankings, queryWords } from './rank';
+import { fuseRankings, joinedWords, queryWords } from './rank';
 
 describe('queryWords', () => {
   it('keeps distinct content words and drops stopwords and short words', () => {
@@ -17,6 +17,20 @@ describe('queryWords', () => {
   });
 });
 
+describe('joinedWords', () => {
+  it('joins adjacent words, short ones included, into single terms', () => {
+    expect(joinedWords(['tally up', 'roll back now'])).toEqual([
+      'tallyup',
+      'rollback',
+      'backnow',
+    ]);
+  });
+
+  it('caps the pair count', () => {
+    expect(joinedWords(['a b c d e f g h i j k'])).toHaveLength(8);
+  });
+});
+
 describe('fuseRankings', () => {
   it('ranks ids that several lists agree on above a single list leader', () => {
     expect(
@@ -26,6 +40,19 @@ describe('fuseRankings', () => {
         { ids: ['b'], weight: 1 },
       ]),
     ).toEqual(['b', 'c', 'a']);
+  });
+
+  it('lets a one-vote exact match outrank phrasings that share one vote', () => {
+    const phrasings = 4;
+    expect(
+      fuseRankings([
+        ...Array.from({ length: phrasings }, () => ({
+          ids: ['near1', 'near2', 'near3', 'near4', 'rare'],
+          weight: 1 / phrasings,
+        })),
+        { ids: ['rare'], weight: 1 },
+      ])[0],
+    ).toBe('rare');
   });
 
   it('returns nothing for empty lists', () => {

@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The `search-catalog` and `search-techdocs` descriptions state the search order: `search-knowledge` first when available, then keyword search (Backstage's `query` action when available, otherwise these tools), with nothing reported missing until both come back empty. They name their own filters as the reason to call them directly. `read-techdocs` accepts the location from any search result.
+
 ## 0.17.6 - 2026-10-15
 
 ### Fixed
