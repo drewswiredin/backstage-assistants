@@ -92,6 +92,9 @@ export interface ModelOption {
 }
 
 // @public
+export const PLATFORM_INSTRUCTIONS: string;
+
+// @public
 export const REASONING_LEVELS: ReasoningLevel[];
 
 // @public

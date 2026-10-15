@@ -30,7 +30,10 @@ import type {
   ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
-import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
+import {
+  assistantUsePermission,
+  PLATFORM_INSTRUCTIONS,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import {
   AssistantsConfig,
@@ -855,7 +858,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     const result = streamText({
       model,
-      instructions: assistant.prompt,
+      instructions: `${PLATFORM_INSTRUCTIONS}\n\n${assistant.prompt}`,
       messages: modelMessages,
       tools,
       ...(Object.keys(toolApproval).length > 0 ? { toolApproval } : {}),

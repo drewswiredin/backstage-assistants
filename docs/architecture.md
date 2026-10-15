@@ -351,7 +351,7 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 | `definition.title`, `description`, `color`, `ui`     | DB     | Editable content                                               | yes                             |
 | `definition.models`, `defaultModel`                  | DB     | Editable allowlist; empty means the full pool                  | yes                             |
 
-`/status` returns the browser-safe half: assistant summaries, each assistant's effective tools, the model pool, and the platform default. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the prompt becomes `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
+`/status` returns the browser-safe half: assistant summaries, each assistant's effective tools, the model pool, and the platform default. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the platform instructions followed by the prompt become `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
 
 A provider's `type` is `openai`, `anthropic`, `azure`, or `openai-compatible`; it selects the AI SDK factory, and `options` is spread verbatim into it. `openai`, `azure`, and `openai-compatible` models run on the chat-completions API. An MCP server's `transport` is `http` (default), `sse`, or `stdio`; `connectTimeoutMs` must be positive. A model id is `<providerId>:<model>`, resolved through the provider registry; the model segment may contain slashes. The pool is the union of every provider's `models[]`. The effective default is the stored one, else the platform default; with a restricted allowlist it is the stored one when listed, else the first entry.
 
@@ -394,7 +394,7 @@ Structural validation is strict: `title` and `prompt` non-empty, arrays of strin
 
 The editor is a `90vh` master-detail dialog: an alphabetical list on the left, one draft on the right.
 
-- Prompt, description, colour with a live avatar preview, and per-assistant `ui` (placeholder, suggestions).
+- Prompt, with the platform instructions read-only beneath it; description, colour with a live avatar preview, and per-assistant `ui` (placeholder, suggestions).
 - Models from the pool with a starred default; the first added becomes the default and removing it promotes the next.
 - Tools grouped by source, each with a run-as icon, an approval badge when in the floor, and stale flags with a prune control.
 - Access as an "Any signed-in user" row plus user and group rows from the catalog.

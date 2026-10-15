@@ -376,6 +376,17 @@ back as a download chip in the conversation. `render_form` pauses the turn the
 way the approval gate does until the user submits or dismisses; both survive a
 page reload.
 
+## Platform instructions
+
+Every turn, the backend sends the model a fixed set of platform instructions
+before the assistant's prompt: what the chat renders (Markdown and Mermaid; not
+raw HTML or LaTeX), formatting, a monotone symbol set, Mermaid syntax that
+parses, and when to use `render_form` and `download_file`. They are the same
+for every assistant, so a prompt only needs the assistant's role; where the two
+differ, the assistant's prompt takes precedence. The editor shows them
+read-only under the prompt field. The text is `PLATFORM_INSTRUCTIONS` in
+`@drewswiredin/backstage-plugin-assistants-common`.
+
 ## Run a scaffolder template from the conversation
 
 Give an assistant `get-catalog-entity` and `execute-template` (with `catalog`
@@ -578,7 +589,7 @@ DevTools config view. The browser receives only a projection over
 tool list (name and description), and `ui`.
 
 What leaves the cluster: per turn the backend sends the configured model
-provider the assistant's system prompt, the full conversation history
+provider the platform instructions and the assistant's system prompt, the full conversation history
 (including attachments as base64 and prior tool results), and the results of
 tools called in that turn: catalog entities, TechDocs pages, MCP results.
 Auto-title makes one extra model call on a conversation's first turn. The
@@ -707,7 +718,7 @@ are at
 `node_modules/@drewswiredin/backstage-plugin-assistants-backend/examples/prompts/`:
 
 - `general-assistant.md`: read-only catalog/TechDocs helper (scope,
-  guardrails, search strategy, Markdown/Mermaid formatting).
+  guardrails, search strategy).
 - `devops-assistant.md`: adds write/scaffolding tools with a
   confirm-before-acting policy.
 

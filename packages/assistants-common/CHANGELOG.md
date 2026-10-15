@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `PLATFORM_INSTRUCTIONS`: the text the backend sends before every assistant's prompt.
+
 ## 0.11.0 - 2026-10-08
 
 ### Changed

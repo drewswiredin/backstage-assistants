@@ -3,6 +3,16 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Every turn sends platform instructions before the assistant's prompt: what the chat renders, formatting and a monotone symbol set, Mermaid syntax that parses, and when to use `render_form` and `download_file`. The assistant's prompt takes precedence where they differ.
+
+### Changed
+
+- The example prompts drop the rendering and formatting rules the platform instructions now cover; `general-assistant.md` searches with `search-knowledge` first.
+
 ## 0.17.4 - 2026-10-14
 
 ### Changed

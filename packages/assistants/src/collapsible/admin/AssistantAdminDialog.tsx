@@ -52,6 +52,7 @@ import { AccessList } from './AccessList';
 import { ModelsTransfer } from './ModelsTransfer';
 import { ToolsTransfer } from './ToolsTransfer';
 import { SuggestionsEditor } from './SuggestionsEditor';
+import { PlatformInstructions } from './PlatformInstructions';
 import {
   blankDraft,
   cloneDraft,
@@ -834,6 +835,7 @@ export function AssistantAdminDialog({
             value={draft.prompt}
             onChange={e => patch({ prompt: e.target.value })}
           />
+          <PlatformInstructions />
 
           <Divider className={classes.section} />
 

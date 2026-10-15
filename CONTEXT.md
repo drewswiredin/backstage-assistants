@@ -43,6 +43,10 @@ _Avoid_: a bespoke form widget — it reuses scaffolder's fields
 **Download file** (`download_file`):
 A client-side tool the model calls to hand back a generated text file (CSV, JSON, Markdown, code, SVG). The surface renders a download chip, with Copy for text and a fullscreen preview for SVG; the call acknowledges itself and never pauses the turn. Always available; not config-gated.
 
+**Platform instructions**:
+The fixed text the backend sends before every Assistant's system prompt on every turn: what the conversation surface renders, formatting and symbols, safe Mermaid syntax, and how to use `render_form` and `download_file`. Facts about the surface, not a role; the Assistant's prompt follows and takes precedence. `PLATFORM_INSTRUCTIONS` in `-common`; shown read-only in the editor.
+_Avoid_: system preamble, base prompt
+
 **Built-in actions**:
 `search-catalog`, `search-techdocs`, and `read-techdocs`: read-only Actions this plugin registers under the `assistants` source when `assistants.builtinActions` is true (default false). They call the search backend and TechDocs as the caller. The seeded Assistant's tools.
 

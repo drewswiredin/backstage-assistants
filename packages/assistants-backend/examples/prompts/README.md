@@ -3,7 +3,7 @@
 System prompts to copy into an assistant and tailor.
 
 - `general-assistant.md`: read-only catalog/TechDocs helper (scope, guardrails,
-  search strategy, Markdown/Mermaid formatting rules).
+  search strategy).
 - `devops-assistant.md`: adds write/scaffolding tools with a
   confirm-before-acting policy.
 
@@ -15,3 +15,6 @@ Prompts live on the assistant definition in the plugin database, not in
 Open one, then sign in as a user with `assistant.manage`, open the admin editor
 (the gear in the chat sidebar), and paste it into the assistant's prompt field.
 Edit it there to make the assistant your own.
+
+Neither covers rendering, formatting, or the form and file tools: the backend
+sends those as platform instructions before every prompt.

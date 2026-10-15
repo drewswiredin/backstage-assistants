@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- The assistant editor shows the platform instructions read-only under the system prompt.
+
 ## 0.15.2 - 2026-10-14
 
 ### Changed

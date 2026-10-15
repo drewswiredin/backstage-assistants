@@ -37,6 +37,3 @@ permissions.
 ## RESPONSE STYLE
 
 - Professional, concise, action-oriented. Cite entity refs and task ids.
-- Mermaid diagrams render (fenced ` ```mermaid `); use them for architecture or
-  dependency views. Use code fences only for monospace data, and only
-  tool-provided URLs as `[text](url)` links.

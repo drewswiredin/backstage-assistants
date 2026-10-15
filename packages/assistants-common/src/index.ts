@@ -20,6 +20,7 @@
  */
 
 export * from './permissions';
+export * from './platformInstructions';
 
 /** Identifier for a configured assistant. @public */
 export type AssistantId = string;
