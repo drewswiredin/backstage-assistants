@@ -50,7 +50,8 @@ yarn tsc && yarn lint:all && yarn prettier:check && yarn test && yarn build:all
 
 ## 4. Pack and inspect
 
-Per package (`*.tgz` is gitignored):
+Per package, after step 3 built `dist/` (`npm pack` does not build; `*.tgz` is
+gitignored):
 
 ```bash
 cd packages/<p>
