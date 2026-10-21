@@ -18,6 +18,7 @@ jobs:
 
       - run: corepack enable
       - run: yarn install --immutable
+      - run: yarn dedupe --check '@backstage/*'
 
       - run: yarn tsc
       - run: yarn lint:all

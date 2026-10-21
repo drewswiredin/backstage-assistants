@@ -21,7 +21,7 @@ approval cards (Allow, Always allow, Deny) for gated tools. It pairs with:
 
 ## Requirements
 
-- Backstage 1.54 or later, on the new frontend system
+- Backstage 1.56 or later, on the new frontend system
   (`@backstage/frontend-defaults` `createApp`) and the new backend system
   (`@backstage/backend-defaults`).
 - Node 22.12 or later.

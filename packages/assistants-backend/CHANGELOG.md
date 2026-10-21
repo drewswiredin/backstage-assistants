@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- `@backstage/backend-defaults` is no longer a dependency: thrown errors reach the root HTTP router's error middleware, which the host app provides. A consumer app no longer carries a second copy of `backend-defaults` for this plugin.
+- Backstage dependency ranges track the 1.56 release line.
+
 ## 0.18.0 - 2026-10-20
 
 ### Added

@@ -16,7 +16,7 @@ assistants in-app with a prompt, models, tools, and audience, and connect any
 model provider in app-config.
 
 > Requires the new frontend system (`createApp` from
-> `@backstage/frontend-defaults`) on Backstage 1.54 or later, and Node 22.12 or
+> `@backstage/frontend-defaults`) on Backstage 1.56 or later, and Node 22.12 or
 > later. It does not mount in a legacy `packages/app` built on
 > `@backstage/app-defaults`.
 
@@ -90,7 +90,7 @@ their server's configured credential.
 
 ## Requirements
 
-- Backstage 1.54 or later, on the new frontend system
+- Backstage 1.56 or later, on the new frontend system
   (`@backstage/frontend-defaults` `createApp`) and the new backend system
   (`@backstage/backend-defaults`).
 - Node 22.12 or later.

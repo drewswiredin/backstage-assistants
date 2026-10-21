@@ -3,13 +3,11 @@ import {
   HttpAuthService,
   LoggerService,
   PermissionsService,
-  RootConfigService,
   UserInfoService,
   BackstageUserInfo,
   BackstageCredentials,
 } from '@backstage/backend-plugin-api';
 import { ActionsService } from '@backstage/backend-plugin-api/alpha';
-import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { InputError, NotAllowedError, NotFoundError } from '@backstage/errors';
 import { randomUUID } from 'crypto';
 import {
@@ -71,7 +69,6 @@ const NOTIFY_CHANNEL = 'assistants:threads';
  */
 export interface RouterOptions {
   logger: LoggerService;
-  config: RootConfigService;
   httpAuth: HttpAuthService;
   userInfo: UserInfoService;
   /** Permission service used to authorize the `assistant.use` gate. */
@@ -303,7 +300,6 @@ function inlineTextFileAttachments(messages: unknown[]): unknown[] {
 export async function createRouter(options: RouterOptions): Promise<Router> {
   const {
     logger,
-    config,
     httpAuth,
     userInfo,
     permissions,
@@ -1280,10 +1276,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }),
   );
 
-  // Standard Backstage error envelope. Mounted LAST so thrown @backstage/errors
-  // types are serialized to { error: { name, message }, request, response }.
-  const middleware = MiddlewareFactory.create({ logger, config });
-  router.use(middleware.error());
-
+  // Thrown @backstage/errors types reach the root HTTP router's error
+  // middleware, which serializes them to { error: { name, message }, request,
+  // response }.
   return router;
 }

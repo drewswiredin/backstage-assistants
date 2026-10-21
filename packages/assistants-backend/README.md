@@ -29,7 +29,7 @@ Pairs with the frontend plugin
 
 ## Requirements
 
-- Backstage 1.54 or later on the new backend system
+- Backstage 1.56 or later on the new backend system
   (`@backstage/backend-defaults`).
 - Node 22.12 or later.
 - A plugin database: SQLite, Postgres, or MySQL.

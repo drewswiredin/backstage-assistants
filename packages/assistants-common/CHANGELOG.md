@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Backstage dependency ranges track the 1.56 release line.
+
 ## 0.13.0 - 2026-10-20
 
 ### Added

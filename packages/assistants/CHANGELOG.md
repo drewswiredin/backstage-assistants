@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Backstage dependency ranges track the 1.56 release line. `@backstage/plugin-signals-react` is `^0.0.27`, so a 1.56 app installs one copy.
+
 ## 0.16.0 - 2026-10-20
 
 ### Added

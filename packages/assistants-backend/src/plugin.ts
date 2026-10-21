@@ -112,7 +112,6 @@ export const assistantsPlugin = createBackendPlugin({
 
         const router = await createRouter({
           logger,
-          config,
           httpAuth,
           userInfo,
           permissions,
