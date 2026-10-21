@@ -7,6 +7,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The editor and the details dialog group contributed tools as "Backstage client tools" next to "Backstage actions": both run as the user, unlike the MCP server groups that follow.
 - Backstage dependency ranges track the 1.56 release line. `@backstage/plugin-signals-react` is `^0.0.27`, so a 1.56 app installs one copy.
 
 ## 0.16.0 - 2026-10-20

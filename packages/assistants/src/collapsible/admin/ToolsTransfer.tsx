@@ -81,7 +81,7 @@ const useStyles = makeStyles(theme => ({
 /** How a stale row names its source. */
 function staleSourceLabel(source: string): string {
   if (source === BACKSTAGE_SOURCE) return 'action';
-  if (source === CLIENT_SOURCE) return 'browser tool';
+  if (source === CLIENT_SOURCE) return 'client tool';
   return source;
 }
 
@@ -147,7 +147,7 @@ export function ToolsTransfer({
   const classes = useStyles();
 
   const selected = useMemo(() => new Set(allowedTools), [allowedTools]);
-  // The approval floor plus every browser tool that asks on its own account
+  // The approval floor plus every client tool that asks on its own account
   // (not read-only, or destructive), so the gavel means the same thing for
   // every tool kind.
   const approvalSet = useMemo(() => {
@@ -197,7 +197,7 @@ export function ToolsTransfer({
     );
     if (contributed.length > 0) {
       meta.set(CLIENT_SOURCE, {
-        heading: 'Browser tools',
+        heading: 'Backstage client tools',
         reachable: true,
         isBackstage: true,
       });

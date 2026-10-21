@@ -452,7 +452,7 @@ The editor is a `90vh` master-detail dialog: an alphabetical list on the left, o
 
 - Prompt, with the platform instructions read-only beneath it; description, colour with a live avatar preview, and per-assistant `ui` (placeholder, suggestions).
 - Models from the pool with a starred default; the first added becomes the default and removing it promotes the next.
-- Tools grouped by source (Backstage, browser, each MCP server), each with a run-as icon, an approval badge when in the floor, and stale flags with a prune control. Client tools are offered from the tools registered in this browser; one no plugin registers any more is stale.
+- Tools grouped by source (Backstage actions, Backstage client tools, each MCP server), each with a run-as icon, an approval badge when in the floor, and stale flags with a prune control. Client tools are offered from the tools registered in this browser; one no plugin registers any more is stale.
 - Access as an "Any signed-in user" row plus user and group rows from the catalog.
 - Save is dirty-tracked; switching away with edits asks "Discard changes?"; Duplicate clones to a "(copy)" title; Delete confirms.
 

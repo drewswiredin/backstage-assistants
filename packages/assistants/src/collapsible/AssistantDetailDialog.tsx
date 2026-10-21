@@ -231,8 +231,11 @@ export const AssistantDetailDialog: FC<{
     clientTools.map(t => [t.name, t.description]),
   );
   const groupLabels: Record<string, [string, string]> = {
-    [BACKSTAGE_SOURCE]: ['Backstage', 'runs as user'],
-    [CLIENT_SOURCE]: ['Browser', 'runs in your browser'],
+    [BACKSTAGE_SOURCE]: ['Backstage actions', 'runs as user'],
+    [CLIENT_SOURCE]: [
+      'Backstage client tools',
+      'runs as user, in your browser',
+    ],
   };
   const groupLabel = (source: string) => groupLabels[source]?.[0] ?? source;
   const groupTag = (source: string) => groupLabels[source]?.[1] ?? 'MCP';

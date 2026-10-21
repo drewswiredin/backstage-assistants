@@ -323,7 +323,7 @@ export const assistantToolsModule = createFrontendModule({
 ```
 
 Add the module to the app's `features`, then give an assistant the tool by
-name in the editor's Tools section, under "Browser tools". The contract:
+name in the editor's Tools section, under "Backstage client tools". The contract:
 
 - `name` is `<namespace>__<tool>`; the namespace keeps a plugin's tools apart
   from Backstage actions and MCP servers. `description` (at most 4000
