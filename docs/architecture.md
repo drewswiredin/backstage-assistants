@@ -4,19 +4,19 @@
 
 ## Stack
 
-| Package                                                                      | Role                                                                                                                   |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `@assistant-ui/react`, `-core`, `-react-markdown`                            | Message and tool-call primitives; `useRemoteThreadListRuntime` is the one runtime for every assistant and conversation |
-| `@assistant-ui/react-ai-sdk`                                                 | `useAISDKRuntime` and `AssistantChatTransport`, the bridge from `useChat` to the runtime; `respondToApproval`          |
-| `ai`, `@ai-sdk/react`                                                        | `streamText` tool loop, UI message streaming, `toolApproval`, persistence hooks; `useChat` on the client               |
-| `@ai-sdk/openai`, `-anthropic`, `-azure`                                     | Provider factories selected by the configured `type`; OpenAI-compatible gateways use the `openai` factory              |
-| `@backstage/backend-plugin-api/alpha` (Actions), `@ai-sdk/mcp`               | Backstage actions run as the user; MCP servers run as a configured credential; both become AI SDK tools                |
-| `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react`         | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                               |
-| `@backstage/backend-plugin-api`, `backend-defaults`, `backend-openapi-utils` | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                       |
-| `coreServices.database` with `knex`                                          | The `threads`, `messages`, `assistants`, and `assistants_meta` tables on SQLite, Postgres, or MySQL                    |
-| `vector` (pgvector), `pg_trgm`, `ai` `embedMany`                             | The knowledge index module: hybrid semantic, fuzzy, and keyword retrieval in the plugin's Postgres database            |
-| `@backstage/plugin-signals-node`, `-react`                                   | Real-time working and unread indicators; the browser polls when the host has no Signals API                            |
-| `mermaid`, `remark-gfm`, `@material-ui/core` v4                              | Diagrams and GitHub-flavoured Markdown in replies; Backstage's component theme                                         |
+| Package                                                                      | Role                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@assistant-ui/react`, `-core`, `-react-markdown`                            | Message and tool-call primitives; `useRemoteThreadListRuntime` is the one runtime for every assistant and conversation                                                                 |
+| `@assistant-ui/react-ai-sdk`                                                 | `useAISDKRuntime` and `AssistantChatTransport`, the bridge from `useChat` to the runtime; `respondToApproval`; sends registered frontend tools as `tools` and runs them in the browser |
+| `ai`, `@ai-sdk/react`                                                        | `streamText` tool loop, UI message streaming, `toolApproval`, persistence hooks; `useChat` on the client                                                                               |
+| `@ai-sdk/openai`, `-anthropic`, `-azure`                                     | Provider factories selected by the configured `type`; OpenAI-compatible gateways use the `openai` factory                                                                              |
+| `@backstage/backend-plugin-api/alpha` (Actions), `@ai-sdk/mcp`               | Backstage actions run as the user; MCP servers run as a configured credential; both become AI SDK tools                                                                                |
+| `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react`         | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                                                                                               |
+| `@backstage/backend-plugin-api`, `backend-defaults`, `backend-openapi-utils` | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                                                                                       |
+| `coreServices.database` with `knex`                                          | The `threads`, `messages`, `assistants`, and `assistants_meta` tables on SQLite, Postgres, or MySQL                                                                                    |
+| `vector` (pgvector), `pg_trgm`, `ai` `embedMany`                             | The knowledge index module: hybrid semantic, fuzzy, and keyword retrieval in the plugin's Postgres database                                                                            |
+| `@backstage/plugin-signals-node`, `-react`                                   | Real-time working and unread indicators; the browser polls when the host has no Signals API                                                                                            |
+| `mermaid`, `remark-gfm`, `@material-ui/core` v4                              | Diagrams and GitHub-flavoured Markdown in replies; Backstage's component theme                                                                                                         |
 
 The thread and composer components from assistant-ui's registry template are vendored under `packages/assistants/src/collapsible/surface/react-ui/` so they stay editable.
 
@@ -27,7 +27,7 @@ flowchart LR
   RT["Browser runtime\ncollapsible/"]
   ED["Admin editor\ncollapsible/admin/"]
   RO["Router\nrouter.ts, manage.ts"]
-  TA["Tool assembly\nactions.ts, mcp.ts"]
+  TA["Tool assembly\nactions.ts, mcp.ts, clientTools.ts"]
   LP["AI SDK loop\nrouter.ts"]
   ST["Stores\nassistants.ts, threads.ts"]
   MP["MCP pool\nmcp.ts"]
@@ -49,18 +49,18 @@ flowchart LR
   KI --> DB
 ```
 
-| Node            | Module path                                                   | Owns                                                                          |
-| --------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Browser runtime | `packages/assistants/src/collapsible/`                        | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam        |
-| Admin editor    | `packages/assistants/src/collapsible/admin/`                  | The `assistant.manage` dialog and client-side delta-validation                |
-| Router          | `packages/assistants-backend/src/router.ts`, `manage.ts`      | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage` |
-| Tool assembly   | `packages/assistants-backend/src/actions.ts`, `mcp.ts`        | `allowedTools` to AI SDK tools; result capping                                |
-| AI SDK loop     | `packages/assistants-backend/src/router.ts`                   | `streamText`, the approval map, persistence on start and finish, signals      |
-| Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts` | `AssistantStore` with its snapshot; `ThreadService`, the only message writer  |
-| MCP pool        | `packages/assistants-backend/src/mcp.ts`                      | One client per server per process, the tool cache                             |
-| Knowledge index | `packages/assistants-backend-module-semantic-search/src/`     | The index refresh task and the `search-knowledge` action                      |
-| Database        | Backstage `backend.database`                                  | The four plugin tables, plus the two knowledge index tables on Postgres       |
-| LLM providers   | `packages/assistants-backend/src/config.ts`                   | The AI SDK provider registry built from config                                |
+| Node            | Module path                                                              | Owns                                                                                      |
+| --------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Browser runtime | `packages/assistants/src/collapsible/`                                   | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                    |
+| Admin editor    | `packages/assistants/src/collapsible/admin/`                             | The `assistant.manage` dialog and client-side delta-validation                            |
+| Router          | `packages/assistants-backend/src/router.ts`, `manage.ts`                 | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`             |
+| Tool assembly   | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts` | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping |
+| AI SDK loop     | `packages/assistants-backend/src/router.ts`                              | `streamText`, the approval map, persistence on start and finish, signals                  |
+| Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts`            | `AssistantStore` with its snapshot; `ThreadService`, the only message writer              |
+| MCP pool        | `packages/assistants-backend/src/mcp.ts`                                 | One client per server per process, the tool cache                                         |
+| Knowledge index | `packages/assistants-backend-module-semantic-search/src/`                | The index refresh task and the `search-knowledge` action                                  |
+| Database        | Backstage `backend.database`                                             | The four plugin tables, plus the two knowledge index tables on Postgres                   |
+| LLM providers   | `packages/assistants-backend/src/config.ts`                              | The AI SDK provider registry built from config                                            |
 
 ## Routes
 
@@ -90,7 +90,7 @@ Every route accepts user tokens only. `/chat` applies the per-assistant access p
 
 ## Chat turn
 
-The browser sends `{ assistantId, modelId, threadId?, reasoningLevel?, messages }`. The server persists the user message before streaming, so the conversation is durable the instant it is sent. A turn without `threadId` streams but is neither persisted, signalled, nor resumable.
+The browser sends `{ assistantId, modelId, threadId?, reasoningLevel?, messages, tools }`, where `tools` is every registered client tool's declaration (assistant-ui's transport adds `description` and JSON Schema `parameters`; the runtime's fetch wrapper stamps each tool's `attributes`). The server persists the user message before streaming, so the conversation is durable the instant it is sent. A turn without `threadId` streams but is neither persisted, signalled, nor resumable.
 
 ```mermaid
 sequenceDiagram
@@ -122,7 +122,7 @@ sequenceDiagram
   R-->>B: turn-finished signal
 ```
 
-Tool assembly splits `allowedTools` into bare action ids and `<serverId>__<tool>` entries; the server segment is the server id with characters outside `[A-Za-z0-9_-]` replaced by `_`. Action ids are intersected with `actions.list({ credentials })`; unknown names are logged and skipped. MCP entries come from the pool cache and run as the server's configured credential. `render_form` and `download_file` are always added. Non-image file parts are inlined as `<attachment>` text before the model call. `reasoningLevel` (`low`, `medium`, `high`, `max`) is translated per provider type in `config.ts`.
+Tool assembly splits `allowedTools` into bare action ids, `<serverId>__<tool>` entries whose prefix is a configured MCP server, and `<namespace>__<tool>` client tool names; the server segment is the server id with characters outside `[A-Za-z0-9_-]` replaced by `_`. Action ids are intersected with `actions.list({ credentials })`; unknown names are logged and skipped. MCP entries come from the pool cache and run as the server's configured credential. Client tools come from the request's `tools`: a declaration is offered when its name is a built-in (`render_form`, `download_file`) or in the allowlist, has the client-tool shape, collides with no server tool, and is within limits (30 per request, 4000-character description, 8 KB schema, `parameters` of type object); the rest are logged and dropped. Each becomes a tool with no `execute`. Client tool outputs arrive inside `messages` and are capped to `toolResultMaxChars` there, so the same budget applies before the model call and before persistence. Non-image file parts are inlined as `<attachment>` text before the model call. `reasoningLevel` (`low`, `medium`, `high`, `max`) is translated per provider type in `config.ts`.
 
 The loop runs `streamText` with `stopWhen: stepCountIs(maxSteps)` (default 10) and one `AbortController` per thread. Usage from the last `finish-step` rides the assistant message as `metadata.usage`, and `replaceMessages` stores the total in `threads.last_tokens`. Usage falls back to the turn's total when no step reported any. Errors stream as a readable error part with the real reason, capped at 300 characters. A failed or denied tool call returns a `{ _error: true, message }` result rather than throwing, so the loop continues; every tool result, error or not, is truncated to `toolResultMaxChars` (default 30000, `0` disables), keeping the head and tail around an elision marker.
 
@@ -168,7 +168,7 @@ A clean close with no `finishReason`, outside a form or approval pause, is label
 
 ## Human in the loop
 
-The approval gate is a global floor in config: `assistants.requireApproval` (action ids) ∪ each `mcp.servers.*.requireApproval` (tool names, folded in as `<serverId>__<tool>`). Per turn, the set is that floor ∩ the assistant's `allowedTools`. Each member gets a `toolApproval` entry, so the SDK emits `tool-approval-request` and skips `execute` until the user answers. Allow runs the tool under its normal identity; Deny returns an execution-denied result to the model. The gate withholds execution and never grants access; Backstage permissions still apply when an approved action invokes.
+The approval gate is a global floor in config: `assistants.requireApproval` (action ids and tool names) ∪ each `mcp.servers.*.requireApproval` (tool names, folded in as `<serverId>__<tool>`). Per turn, the set is that floor ∩ the assistant's `allowedTools`. Each server-tool member gets a `toolApproval` entry, so the SDK emits `tool-approval-request` and skips `execute` until the user answers. Allow runs the tool under its normal identity; Deny returns an execution-denied result to the model. Client tools are never in the map, because assistant-ui skips a frontend tool's `execute` for a call that carries a server approval; the browser gates them instead (below). The gate withholds execution and never grants access; Backstage permissions still apply when an approved action invokes.
 
 ```mermaid
 sequenceDiagram
@@ -188,32 +188,64 @@ sequenceDiagram
 
 **Always allow** records an approved response with `reason: always:<tool>`. The `toolApproval` predicate reads it back from the message history, so that tool runs unprompted for the rest of the conversation. The grant is per tool and survives reloads because it lives in the persisted messages. Several gated calls of one tool in a single step collapse into one card with a count; the lowest-index call leads and the rest mirror its decision.
 
-`render_form` and `download_file` are client-side tools with a schema and no server `execute`, so `streamText` yields to the browser. `render_form` renders through scaffolder's RJSF `Form` with the field registry from `formFieldsApiRef.loadFormFields()`; `ui:*` keys inside the schema are hoisted by `extractSchemaFromStep`. Submit returns `{ submitted: true, values }`; dismissal returns `{ submitted: false, cancelled: true }`. `download_file` renders a download chip. Neither is config-gated.
+### Client tools
 
-`sendAutomaticallyWhen` flushes the turn once every tool part in the latest step is settled and at least one is client-driven: a submitted form or an answered approval. A server tool truncated at `maxSteps` is never auto-resumed.
+A client tool is contributed by any frontend plugin or module with `AssistantClientToolBlueprint`, which attaches to the assistants page's `clientTools` input. The page registers each tool with assistant-ui (`useAssistantTool`): a tool with `execute` as `type: frontend`, one without as `type: human`. assistant-ui then sends the tool's schema with every `/chat` request, runs `execute` in the browser once the model's call is complete and the server stream has ended, and renders the tool's card for the call. `isAvailable` is resolved once per page load; an unavailable tool is registered disabled, so it is neither sent nor run.
+
+```mermaid
+sequenceDiagram
+  participant L as AI SDK loop
+  participant R as Browser runtime
+  participant C as Tool card
+  participant S as Downstream system
+  L-->>R: tool call, stream ends
+  alt not read-only, destructive, or in the floor
+    R->>C: human: approval
+    C-->>R: resume approved or declined
+  end
+  alt tool declares auth
+    R->>R: acquire silently
+    opt nothing
+      R->>C: human: connect
+      C->>C: click: acquire interactively
+      C-->>R: resume credential or dismissed
+    end
+  end
+  R->>S: execute(input, credential) as the user
+  S-->>R: output
+  R->>R: addToolOutput, auto-send
+  R->>L: POST /chat with the result
+```
+
+The runtime's `execute` wrapper runs the steps in order and returns a `{ _error: true, code, message }` result instead of throwing: `declined`, `not_authorized`, `timeout` (default 30 s, at most 120 s), `aborted` (the user stopped the turn), or `failed`. Approval precedes credential acquisition, so a declined call never prompts for a login. The prompts use assistant-ui's `human` interrupt: the card receives the request as `interrupt` and answers with `resume`. Connect runs the interactive acquisition in the click handler, so the provider's popup is never blocked, and hands the credential to the waiting `execute` through `resume`; the credential never enters a result, a request to the backend, or storage. The result is JSON round-tripped; a non-JSON value is a `failed` result. There is no Always allow for client tools. A prompt survives a page reload: assistant-ui re-runs a frontend tool call restored from history without a result, so the wrapper asks again (approval, then Connect if the credential is gone) and the turn resumes once answered.
+
+`render_form` and `download_file` are the plugin's own client tools, registered through the same blueprint. `render_form` has no `execute`: it renders through scaffolder's RJSF `Form` with the field registry from `formFieldsApiRef.loadFormFields()`, `ui:*` keys inside the schema are hoisted by `extractSchemaFromStep`, and submit returns `{ submitted: true, values }` while dismissal returns `{ submitted: false, cancelled: true }`. `download_file` renders a download chip from the call's input and its `execute` returns `{ delivered: true }`. Neither is config-gated.
+
+`sendAutomaticallyWhen` flushes the turn once every tool part in the latest step is settled and at least one is client-driven: a client tool's output, unless it records that the user stopped the turn, or an answered approval. A server tool truncated at `maxSteps` is never auto-resumed.
 
 ## Authorization
 
-| Order | Layer                       | Where                                                          | Rule                                                                                                                                                                                 |
-| ----- | --------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `assistant.use` permission  | Every user-facing route; the page via `usePermission`          | Denied callers get 403 and never load the surface                                                                                                                                    |
-| 2     | Per-assistant access policy | `/status` filter, `/chat`, `/threads` list, create, and status | `allowAuthenticated`, or `users` contains the caller, or `groups` meets `ownershipEntityRefs`; deny by default. The API defaults a missing policy to deny; the editor pre-fills open |
-| 3     | Tool selection              | Tool assembly                                                  | Backstage actions: `allowedTools` ∩ `actions.list(credentials)`, with per-resource checks at `invoke`. MCP tools: added directly, run as the server credential                       |
-| 4     | Approval gate               | `toolApproval` in the loop                                     | Floor ∩ `allowedTools`; a human checkpoint, not a permission                                                                                                                         |
+| Order | Layer                       | Where                                                          | Rule                                                                                                                                                                                                                                                 |
+| ----- | --------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `assistant.use` permission  | Every user-facing route; the page via `usePermission`          | Denied callers get 403 and never load the surface                                                                                                                                                                                                    |
+| 2     | Per-assistant access policy | `/status` filter, `/chat`, `/threads` list, create, and status | `allowAuthenticated`, or `users` contains the caller, or `groups` meets `ownershipEntityRefs`; deny by default. The API defaults a missing policy to deny; the editor pre-fills open                                                                 |
+| 3     | Tool selection              | Tool assembly                                                  | Backstage actions: `allowedTools` ∩ `actions.list(credentials)`, with per-resource checks at `invoke`. MCP tools: added directly, run as the server credential. Client tools: `allowedTools` ∩ the request's declarations, run in the user's browser |
+| 4     | Approval gate               | `toolApproval` in the loop; the runtime's `execute` wrapper    | Floor ∩ `allowedTools` for server tools; the floor plus every non-read-only or destructive tool for client tools; a human checkpoint, not a permission                                                                                               |
 
 `assistant.manage` gates `/manage/*`, `/capabilities`, and the gear. Both permissions live in `-common`, are registered with `coreServices.permissionsRegistry`, and are granted by the host's permission policy. Hiding the nav entry is the host app's job.
 
-| Call                             | Runs as                                                                 |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| `/chat`, `/threads*`, `/status`  | The signed-in user's token                                              |
-| Backstage action `execute`       | The calling user's credentials, via `actions.invoke`                    |
-| Built-in actions                 | On-behalf-of tokens for `search` and `techdocs`, minted from the caller |
-| `search-knowledge` result filter | An on-behalf-of `catalog` token minted from the caller                  |
-| Knowledge index refresh task     | The plugin's service credentials for `catalog` and `techdocs`           |
-| MCP tool `execute`               | The server's static `headers` or `env`; one identity for every user     |
-| `/capabilities` action list      | The admin's credentials, so assignable can exceed runnable              |
+| Call                             | Runs as                                                                                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `/chat`, `/threads*`, `/status`  | The signed-in user's token                                                                                                              |
+| Backstage action `execute`       | The calling user's credentials, via `actions.invoke`                                                                                    |
+| Built-in actions                 | On-behalf-of tokens for `search` and `techdocs`, minted from the caller                                                                 |
+| `search-knowledge` result filter | An on-behalf-of `catalog` token minted from the caller                                                                                  |
+| Knowledge index refresh task     | The plugin's service credentials for `catalog` and `techdocs`                                                                           |
+| MCP tool `execute`               | The server's static `headers` or `env`; one identity for every user                                                                     |
+| Client tool `execute`            | The user's browser, with a credential the user's own session or consent provides; the downstream system enforces the user's permissions |
+| `/capabilities` action list      | The admin's credentials, so assignable can exceed runnable                                                                              |
 
-A low-privilege user chatting with an assistant wired to a powerful MCP server gets that server's full configured access. Choose MCP servers and their credential scope deliberately.
+A low-privilege user chatting with an assistant wired to a powerful MCP server gets that server's full configured access. Choose MCP servers and their credential scope deliberately. A client tool gives the model only what the user already has, since it runs as the user; the browser decides which tools to declare, but the allowlist decides which are offered, and a user forging a declaration can only run code in their own browser with their own credentials.
 
 ## State and lifetime
 
@@ -235,6 +267,7 @@ A low-privilege user chatting with an assistant wired to a powerful MCP server g
 | Active assistant                | URL            | Per tab                           | `?assistant=<id>`, rewritten on each switch           | Survives reload                                                               | n/a                                            |
 | Nav icon status rows            | Browser memory | Per tab                           | `AssistantsNavIcon`'s own `useThreadStatus`           | Until unmount                                                                 | n/a                                            |
 | Scaffolder field registry       | Module memory  | Per tab                           | `render_form`'s first `loadFormFields()`              | Until reload                                                                  | n/a                                            |
+| Client tool prompts             | Browser memory | Per tool call                     | The runtime's `execute` wrapper via `human`           | Until answered or the turn stops; a reload re-runs the call and asks again    | n/a                                            |
 
 Turn state and the stream buffer are in the database, so `working`, Stop, and rejoining a running reply work on any replica. The abort handles live in process memory; a Stop received elsewhere reaches them through the heartbeat.
 
@@ -324,13 +357,15 @@ flowchart TB
   API["AssistantsApi\napi/AssistantsApi.ts"]
   DD["AssistantDetailDialog\ncollapsible/AssistantDetailDialog.tsx"]
   TS["useThreadStatus, StatusDot\ncollapsible/"]
-  CT["RenderFormTool, DownloadFileTool\ncollapsible/surface/"]
+  CT["ClientToolRegistrations, ClientToolCall\nclientTools/"]
+  BP["AssistantClientToolBlueprint\nclientTools/blueprint.ts"]
   NI["AssistantsNavIcon\nAssistantsNavIcon.tsx"]
   CP --> SP
   CP --> DD
   CP --> TS
   NI --> TS
-  CS --> CT
+  RP --> CT
+  BP -->|"clientTools input"| CP
   TS --> API
   CP --> HP
   CP --> AD
@@ -344,7 +379,7 @@ flowchart TB
 
 One runtime carries every conversation across all assistants; switching assistant or conversation never remounts it, so in-flight streams keep running. The thread-list adapter lists every thread over `/threads`; the page filters by the active assistant. New conversations are created only by the "+" control or the empty state's New chat button; typing never creates one. Deleting the active conversation lands on the assistant's most recent remaining one. Expanded, `SidePane` holds the assistant list, the conversation list, and the gear; collapsed, `CollapsiblePage` renders a 56 px rail with the same controls as icons. `?assistant=<id>` selects the initial assistant and follows every switch.
 
-The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRuntime`. Its `AssistantChatTransport` wraps the authed fetch to inject `assistantId`, `modelId`, and `reasoningLevel`, and copies the transport's `id` to `threadId`. When the request signal aborts it posts `/chat/cancel/:threadId`. The history adapter is load-only over `/threads/:id/messages`, and its `append` is a no-op. The thread-list adapter's `generateTitle` returns an empty stream because the server writes titles.
+The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRuntime`. Its `AssistantChatTransport` wraps the authed fetch to inject `assistantId`, `modelId`, and `reasoningLevel`, copies the transport's `id` to `threadId`, and stamps each client tool's `attributes` onto the `tools` the transport built. When the request signal aborts it posts `/chat/cancel/:threadId`. `ClientToolsProvider` wraps the page with the contributed tools and the approval floor from `/status`; `ClientToolRegistrations` registers them inside the runtime provider, so one registration serves every conversation. The history adapter is load-only over `/threads/:id/messages`, and its `append` is a no-op. The thread-list adapter's `generateTitle` returns an empty stream because the server writes titles.
 
 The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<ConversationSurfaceProps>`. The props are `composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, and `className`. The surface reads the ambient runtime and owns no transport, auth, or chrome. The composer's attachment adapter caps files at 7 MB.
 
@@ -372,7 +407,7 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 | `definition.title`, `description`, `color`, `ui`     | DB     | Editable content                                               | yes                             |
 | `definition.models`, `defaultModel`                  | DB     | Editable allowlist; empty means the full pool                  | yes                             |
 
-`/status` returns the browser-safe half: assistant summaries, each assistant's effective tools, the model pool, and the platform default. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the platform instructions followed by the prompt become `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
+`/status` returns the browser-safe half: assistant summaries, each assistant's effective tools (client tools by name only, described in the browser), the model pool, the platform default, and the approval floor's tool names. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the platform instructions followed by the prompt become `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
 
 A provider's `type` is `openai`, `anthropic`, `azure`, or `openai-compatible`; it selects the AI SDK factory, and `options` is spread verbatim into it. `openai`, `azure`, and `openai-compatible` models run on the chat-completions API. An MCP server's `transport` is `http` (default), `sse`, or `stdio`; `connectTimeoutMs` must be positive. A model id is `<providerId>:<model>`, resolved through the provider registry; the model segment may contain slashes. The pool is the union of every provider's `models[]`. The effective default is the stored one, else the platform default; with a restricted allowlist it is the stored one when listed, else the first entry.
 
@@ -401,13 +436,13 @@ sequenceDiagram
   E->>R: GET /status
 ```
 
-| Rule                       | Behaviour                                                                                                               |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Only live items addable    | A tool or model added relative to the previous row must exist in `/capabilities`, else `InputError`                     |
-| Pre-existing grandfathered | Entries already on the row are never re-checked                                                                         |
-| Removals always allowed    | Dropping any entry is free                                                                                              |
-| RED and AMBER              | RED: gone (action absent, model out of the pool, tool absent from a reachable server). AMBER: its server is unreachable |
-| Never auto-strip           | Save never removes stale entries; the admin prunes on demand                                                            |
+| Rule                       | Behaviour                                                                                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Only live items addable    | A tool or model added relative to the previous row must exist in `/capabilities`, else `InputError`; a client tool name is checked for shape, since its live set is the browser's registry |
+| Pre-existing grandfathered | Entries already on the row are never re-checked                                                                                                                                            |
+| Removals always allowed    | Dropping any entry is free                                                                                                                                                                 |
+| RED and AMBER              | RED: gone (action absent, model out of the pool, tool absent from a reachable server). AMBER: its server is unreachable                                                                    |
+| Never auto-strip           | Save never removes stale entries; the admin prunes on demand                                                                                                                               |
 
 Structural validation is strict: `title` and `prompt` non-empty, arrays of strings, `defaultModel` a string or null, `description` and `color` strings (`''` unsets), `ui` an object (`{}` is dropped), `access` optional and deny when absent, with `allowAuthenticated` a boolean. A changed `defaultModel` must be live or in the assistant's `models`. Create ignores any incoming `id`; `PUT` on an unknown id answers 404. `access.users` and `access.groups` are not checked for existence; a dangling ref grants nobody.
 
@@ -417,7 +452,7 @@ The editor is a `90vh` master-detail dialog: an alphabetical list on the left, o
 
 - Prompt, with the platform instructions read-only beneath it; description, colour with a live avatar preview, and per-assistant `ui` (placeholder, suggestions).
 - Models from the pool with a starred default; the first added becomes the default and removing it promotes the next.
-- Tools grouped by source, each with a run-as icon, an approval badge when in the floor, and stale flags with a prune control.
+- Tools grouped by source (Backstage, browser, each MCP server), each with a run-as icon, an approval badge when in the floor, and stale flags with a prune control. Client tools are offered from the tools registered in this browser; one no plugin registers any more is stale.
 - Access as an "Any signed-in user" row plus user and group rows from the catalog.
 - Save is dirty-tracked; switching away with edits asks "Discard changes?"; Duplicate clones to a "(copy)" title; Delete confirms.
 
@@ -458,4 +493,6 @@ The composer gauge shows `last_tokens` against the chosen model's `contextWindow
 - Anthropic tool-argument normalisation keys on provider `type`, never on the provider id.
 - Thread ownership is resolved before any side effect; a foreign thread is a plain 404.
 - `allowedTools` is explicit; an empty list yields only `render_form` and `download_file`, and there is no wildcard.
+- A client tool's credential is seen only by its `execute`: never a result, a request to the backend, a log, or storage.
+- A client tool that is not read-only or is destructive asks for approval on every call; nothing in config or the editor can turn that off.
 - A knowledge index result reaches the model only if the caller can read its entity in the catalog.

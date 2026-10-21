@@ -15,9 +15,9 @@ import type {
   CapabilitiesResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantManagePermission } from '@drewswiredin/backstage-plugin-assistants-common';
-import type { AssistantsConfig } from './config';
+import type { AssistantsConfig, McpServerConfig } from './config';
 import type { AssistantStore } from './assistants';
-import { mcpToolName, probeServerTools } from './mcp';
+import { mcpToolName, probeServerTools, splitAllowedTools } from './mcp';
 
 /**
  * The admin management surface for assistant DEFINITIONS — the `/manage/*` CRUD
@@ -233,13 +233,19 @@ function validateDelta(
   next: Pick<AssistantDefinition, 'allowedTools' | 'models' | 'defaultModel'>,
   previous: AssistantDefinition | undefined,
   capabilities: CapabilitiesResponse,
+  mcpServers: Map<string, McpServerConfig>,
 ): void {
   const tools = liveToolIds(capabilities);
   const modelIds = liveModelIds(capabilities);
 
+  // Client tools live in the browser, so the editor validates them against
+  // the registered set there; the server checks only their name shape.
+  const clientTools = new Set(
+    splitAllowedTools(next.allowedTools, mcpServers).clientToolNames,
+  );
   const prevTools = new Set(previous?.allowedTools ?? []);
   for (const t of next.allowedTools) {
-    if (!prevTools.has(t) && !tools.has(t)) {
+    if (!prevTools.has(t) && !tools.has(t) && !clientTools.has(t)) {
       throw new InputError(
         `Tool '${t}' is not currently available and cannot be added`,
       );
@@ -329,7 +335,12 @@ export function createManageRouter(
       const { credentials, user } = await requireAdmin(req);
       const def = parseDefinitionBody(req.body);
       const capabilities = await buildCapabilities(options, credentials);
-      validateDelta(def, undefined, capabilities);
+      validateDelta(
+        def,
+        undefined,
+        capabilities,
+        options.assistants.mcpServers,
+      );
       const created = await assistantStore.create(def, user.userEntityRef);
       logger.info('assistant created', {
         id: created.id,
@@ -351,7 +362,7 @@ export function createManageRouter(
       }
       const def = parseDefinitionBody(req.body);
       const capabilities = await buildCapabilities(options, credentials);
-      validateDelta(def, previous, capabilities);
+      validateDelta(def, previous, capabilities, options.assistants.mcpServers);
       // Carry the immutable id; the store preserves creation audit + stamps the
       // editor/timestamp.
       const updated = await assistantStore.update(

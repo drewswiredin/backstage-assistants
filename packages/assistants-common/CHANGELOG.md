@@ -3,6 +3,18 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- The client tool contract: `ClientToolAttributes`, `ClientToolDeclaration`, `ClientToolError`, `ClientToolErrorCode`, `CLIENT_TOOL_NAME_PATTERN`, `BUILTIN_CLIENT_TOOLS`, `CLIENT_TOOL_LIMITS`, and `isClientToolName`.
+- `StatusResponse.requireApproval`: the global approval floor as tool names.
+- `ToolSummary.source` is `client` for a tool that runs in the user's browser.
+
+### Changed
+
+- `PLATFORM_INSTRUCTIONS` tell the model that a tool result with `_error: true` is a failure to explain, not retry, and what each `code` means.
+
 ## 0.12.0 - 2026-10-14
 
 ### Added

@@ -5,7 +5,7 @@
 // ******************************************************************
 
 /**
- * Request body for `POST /chat`. Tools/actions are never accepted from the client — they are resolved server-side per turn.
+ * Request body for `POST /chat`. Server tools (Backstage actions, MCP tools) are resolved server-side per turn and never accepted from the client; `tools` carries only client tool declarations, which the backend filters to the assistant\'s allowlist.
  * @public
  */
 export interface ChatRequest {
@@ -29,6 +29,10 @@ export interface ChatRequest {
    * The conversation as a non-empty array of UI messages. The internal shape of each message is intentionally not over-constrained here.
    */
   messages: Array<any>;
+  /**
+   * Client tool declarations keyed by tool name, as assistant-ui\'s transport sends every registered frontend tool: `description`, JSON Schema `parameters`, and the plugin\'s `attributes`. Offered to the model without `execute` when the name is a built-in or in the assistant\'s allowlist; the browser runs the tool.
+   */
+  tools?: { [key: string]: any };
 }
 
 /**

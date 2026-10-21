@@ -17,7 +17,7 @@ export interface ToolSummary {
    */
   description?: string;
   /**
-   * `backstage` for Backstage actions, or the MCP server id.
+   * `backstage` for Backstage actions, `client` for a client tool run in the user\'s browser, or the MCP server id.
    */
   source?: string;
 }

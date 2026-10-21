@@ -40,6 +40,7 @@ import {
   type ThreadListState,
 } from '@assistant-ui/react';
 import type {
+  ClientToolAttributes,
   ModelId,
   ModelOption,
   ReasoningLevel,
@@ -65,6 +66,12 @@ import {
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { JsonObject } from '@backstage/types';
 import { makeRuntimeHook } from './useAssistantRuntime';
+import {
+  ClientToolsProvider,
+  useClientTools,
+} from '../clientTools/ClientToolsProvider';
+import { ClientToolRegistrations } from '../clientTools/ClientToolRegistrations';
+import type { AssistantClientTool } from '../clientTools/types';
 import { StatusDot } from './StatusDot';
 import {
   useThreadStatus,
@@ -347,7 +354,15 @@ const REASONING_LABELS: Record<ReasoningLevel, string> = {
  *
  * @public
  */
-export function CollapsiblePage() {
+/**
+ * The Assistants page. `clientTools` are the tools contributed through
+ * `AssistantClientToolBlueprint`, collected by the page extension.
+ */
+export function CollapsiblePage({
+  clientTools = [],
+}: {
+  clientTools?: ReadonlyArray<AssistantClientTool<any, any>>;
+}) {
   const api = useApi(assistantsApiRef);
   const [searchParams] = useSearchParams();
   const requestedAssistant = searchParams.get('assistant');
@@ -391,11 +406,16 @@ export function CollapsiblePage() {
   const initialAssistantId =
     assistants.find(a => a.id === requestedAssistant)?.id ?? assistants[0].id;
   return (
-    <CollapsibleChat
-      status={status.value}
-      initialAssistantId={initialAssistantId}
-      refreshStatus={status.retry}
-    />
+    <ClientToolsProvider
+      tools={clientTools}
+      requireApproval={status.value.requireApproval}
+    >
+      <CollapsibleChat
+        status={status.value}
+        initialAssistantId={initialAssistantId}
+        refreshStatus={status.retry}
+      />
+    </ClientToolsProvider>
   );
 }
 
@@ -488,6 +508,14 @@ function ChatRuntime({
     () => createThreadListAdapter(api, () => activeAssistantIdRef.current),
     [api],
   );
+  // The registered client tools' attributes, read live by the transport.
+  const { tools: clientTools } = useClientTools();
+  const clientToolAttributesRef = useRef<Record<string, ClientToolAttributes>>(
+    {},
+  );
+  clientToolAttributesRef.current = Object.fromEntries(
+    clientTools.map(t => [t.name, t.attributes]),
+  );
   const runtimeHook = useMemo(
     () =>
       makeRuntimeHook({
@@ -496,6 +524,7 @@ function ChatRuntime({
         getActiveAssistantId: () => activeAssistantIdRef.current,
         modelIdRef,
         reasoningLevelRef,
+        getClientToolAttributes: () => clientToolAttributesRef.current,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, baseUrl],
@@ -504,6 +533,9 @@ function ChatRuntime({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      {/* Registers every client tool with assistant-ui: schema to the model,
+          execute in the browser, card in the conversation. */}
+      <ClientToolRegistrations />
       <ChatChrome
         runtime={runtime}
         status={status}

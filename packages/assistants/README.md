@@ -208,12 +208,14 @@ export const SidebarContent = NavContentBlueprint.make({
 The plugin itself is the default export of the `./alpha` subpath. The package
 root exports what a host app needs to integrate with it:
 
-| Export                                                          | Purpose                                                                                 |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `rootRouteRef`                                                  | Route ref for the `/assistants` page.                                                   |
-| `assistantsApiRef`                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.      |
-| `AssistantsNavIcon`                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none. |
-| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types) | The client interface and its row/patch shapes.                                          |
+| Export                                                                                                   | Purpose                                                                                 |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `rootRouteRef`                                                                                           | Route ref for the `/assistants` page.                                                   |
+| `assistantsApiRef`                                                                                       | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.      |
+| `AssistantsNavIcon`                                                                                      | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none. |
+| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                          | The client interface and its row/patch shapes.                                          |
+| `AssistantClientToolBlueprint`, `clientToolDataRef`                                                      | Contribute a client tool (see [Client tools](#client-tools)).                           |
+| `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps` (types) | The client tool contract.                                                               |
 
 ### Chat panel
 
@@ -235,8 +237,8 @@ root exports what a host app needs to integrate with it:
 
 ### Generative UI
 
-Two client-side tools render components in the conversation. Both are always
-available and need no config:
+Two built-in client tools render components in the conversation. Both are
+always available and need no config:
 
 - `render_form`: an inline form; the submitted values become the tool result.
 - `download_file`: a download chip for a text file the assistant generates
@@ -258,6 +260,99 @@ A scaffolder template's parameters render as-is, `ui:field` and `ui:options`
 included, so an assistant can show a template's own form in the conversation and
 run the template with the submitted values. The backend README covers
 [the actions that flow needs](https://github.com/drewswiredin/backstage-assistants/tree/main/packages/assistants-backend#run-a-scaffolder-template-from-the-conversation).
+
+### Client tools
+
+A client tool runs in the user's browser with the user's own credentials, so
+an assistant can use a system the frontend already talks to as the user
+(a Kubernetes cluster, Azure DevOps, GitHub, an internal API behind the
+user's OAuth session). Any plugin or app module contributes one with
+`AssistantClientToolBlueprint`; the assistants plugin sends its declaration
+to the backend on every turn, runs its `execute` when the model calls it, and
+returns the result to the model. The credential never leaves the browser.
+
+```ts
+import { createFrontendModule } from '@backstage/frontend-plugin-api';
+import { microsoftAuthApiRef } from '@backstage/core-plugin-api';
+import { AssistantClientToolBlueprint } from '@drewswiredin/backstage-plugin-assistants';
+
+const recentBuilds = AssistantClientToolBlueprint.make({
+  name: 'recent-builds',
+  params: defineParams =>
+    defineParams<{ project: string; top?: number }, { builds: unknown[] }>({
+      name: 'azure-devops__get_recent_builds',
+      title: 'Recent builds',
+      description: 'The latest Azure DevOps builds of a project.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          project: { type: 'string' },
+          top: { type: 'number', description: 'How many; default 10.' },
+        },
+        required: ['project'],
+      },
+      attributes: { readOnly: true },
+      auth: {
+        kind: 'oauth',
+        system: 'Azure DevOps',
+        apiRef: microsoftAuthApiRef,
+        scopes: ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'],
+      },
+      execute: async ({ project, top = 10 }, { credential, signal }) => {
+        const res = await fetch(
+          `https://dev.azure.com/my-org/${project}/_apis/build/builds?$top=${top}&api-version=7.1`,
+          { headers: { Authorization: `Bearer ${credential}` }, signal },
+        );
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const { value } = await res.json();
+        return {
+          builds: value.map((b: any) => ({
+            id: b.id,
+            status: b.status,
+            result: b.result,
+          })),
+        };
+      },
+    }),
+});
+
+export const assistantToolsModule = createFrontendModule({
+  pluginId: 'assistants',
+  extensions: [recentBuilds],
+});
+```
+
+Add the module to the app's `features`, then give an assistant the tool by
+name in the editor's Tools section, under "Browser tools". The contract:
+
+- `name` is `<namespace>__<tool>`; the namespace keeps a plugin's tools apart
+  from Backstage actions and MCP servers. `description` (at most 4000
+  characters) and `inputSchema` (a JSON Schema object, at most 8 KB) are what
+  the model sees.
+- `attributes.readOnly` and `destructive` mirror Backstage action attributes.
+  A tool that is not read-only, or is destructive, asks the user for approval
+  on every call; there is no "always allow". A read-only tool asks when the
+  backend's `requireApproval` names it.
+- `auth` is optional. `oauth` names a Backstage OAuth API and scopes; `custom`
+  supplies an `acquire({ apis, interactive })` for a plugin that manages its
+  own credentials (for example Kubernetes' auth-provider API). The runtime
+  acquires silently first; when that yields nothing it shows a Connect
+  control and acquires on the click, so no popup is blocked. The credential
+  reaches only `execute`.
+- `execute(input, { apis, credential, signal })` returns a JSON-serializable
+  result. `apis` is the app's API holder, so a tool can call any frontend API
+  (`catalogApiRef`, a plugin's own API) rather than fetch directly. A thrown
+  error, a timeout (`timeoutMs`, default 30 s), a declined approval, or a
+  dismissed Connect each become an `{ _error: true, code, message }` result
+  the model explains.
+- `render` is optional for a tool with `execute` (the call otherwise shows
+  its input and output) and required for a tool without one, whose card
+  supplies the result with `addResult`; that is how `render_form` works.
+- `isAvailable({ apis })` hides a tool that cannot work in this app.
+
+Keep results small and explicit: return the fields the model needs, never a
+raw object dump, and never a secret. Everything a tool returns is untrusted
+input to the model.
 
 ### Dependency versions
 

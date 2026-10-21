@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
-import { RenderFormTool } from './RenderFormTool';
+import { RenderForm } from './renderForm';
 
 // Each mount of the scaffolder Form records the uiSchema it was handed: pickers
 // read `ui:options` once, on mount, so the first mount's spec is the one that sticks.
@@ -29,7 +29,7 @@ jest.mock('@backstage/plugin-scaffolder-react', () => ({
   SecretsContextProvider: ({ children }: { children: unknown }) => children,
 }));
 
-const Render = RenderFormTool.unstable_tool.render as any;
+const Render = RenderForm as any;
 
 const jsonSchema = {
   type: 'object',

@@ -19,6 +19,7 @@
  * @packageDocumentation
  */
 
+export * from './clientTools';
 export * from './permissions';
 export * from './platformInstructions';
 
@@ -70,9 +71,10 @@ export interface ToolSummary {
   /** Human-readable description of what the tool does (for tooltips/detail). */
   description?: string;
   /**
-   * Where the tool comes from: `"backstage"` for built-in Backstage actions
-   * (run as the calling user), or the configured MCP server id for MCP tools.
-   * Used to group tools by source in the UI.
+   * Where the tool comes from: `"backstage"` for Backstage actions (run as the
+   * calling user), `"client"` for a client tool (run in the user's browser),
+   * or the configured MCP server id for MCP tools. Used to group tools by
+   * source in the UI.
    */
   source?: string;
 }
@@ -107,9 +109,10 @@ export interface AssistantSummary {
   /** This assistant's default `provider:model` selection. */
   defaultModel?: ModelId;
   /**
-   * The tools (Backstage actions) available to the caller for this assistant —
-   * its allowlist intersected with the actions this user may see. Name +
-   * description; no schemas.
+   * The tools available to the caller for this assistant: its allowlist
+   * intersected with the actions this user may see, its MCP tools, and the
+   * client tools it allows (name only; the browser holds their descriptions).
+   * No schemas.
    */
   tools?: ToolSummary[];
   /** The assistant's UI options. */
@@ -182,6 +185,13 @@ export interface StatusResponse {
   models: ModelOption[];
   /** The platform default `provider:model` selection. */
   defaultModel: ModelId;
+  /**
+   * The global approval floor as tool names (`assistants.requireApproval` ∪
+   * each MCP server's `requireApproval`, namespaced). The browser gates a
+   * client tool named here before running it; server tools are gated in the
+   * loop.
+   */
+  requireApproval: string[];
 }
 
 /**
@@ -239,9 +249,10 @@ export interface AssistantDefinition {
   /** Who may converse with this assistant. Never leaves the backend. */
   access: AssistantAccess;
   /**
-   * Unified tool allowlist: bare Backstage action ids (run as the user) and
+   * Unified tool allowlist: bare Backstage action ids (run as the user),
    * namespaced `<serverId>__<tool>` MCP tools (run as the configured server
-   * credential). Resolved at `/chat` by splitting each entry; unknown entries
+   * credential), and `<namespace>__<tool>` client tools (run in the user's
+   * browser). Resolved at `/chat` by splitting each entry; unknown entries
    * are tolerated (skipped).
    */
   allowedTools: string[];

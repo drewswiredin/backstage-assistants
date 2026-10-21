@@ -6,7 +6,10 @@ import {
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
-import type { ToolSummary } from '@drewswiredin/backstage-plugin-assistants-common';
+import {
+  CLIENT_TOOL_NAME_PATTERN,
+  type ToolSummary,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import type { McpServerConfig } from './config';
 import { truncateToolResult } from './truncateToolResult';
 
@@ -64,25 +67,32 @@ function sanitizeServerId(serverId: string): string {
 }
 
 /**
- * Splits an assistant's unified `allowedTools` into bare Backstage action ids
- * and per-server MCP tool selections.
+ * Splits an assistant's unified `allowedTools` into bare Backstage action ids,
+ * per-server MCP tool selections, and client tool names.
  *
  * An entry is treated as an MCP tool when it is `<serverId>__<tool>` and
  * `<serverId>` (in its {@link mcpToolName}-sanitized form) matches a configured
- * server in `servers`; the remainder is the bare tool name. Everything else —
- * including a namespaced entry whose server prefix is unknown — is returned as a
- * bare action id, so unknown entries are tolerated downstream (an unknown action
- * id is logged + skipped by {@link selectAssistantActions}; an unknown MCP tool
- * name is simply not connected).
+ * server in `servers`; the remainder is the bare tool name. A namespaced entry
+ * whose prefix is not a configured server and whose shape is
+ * `<namespace>__<tool>` is a client tool, offered when the browser declares
+ * it. Everything else is returned as a bare action id, so unknown entries are
+ * tolerated downstream (an unknown action id is logged + skipped by
+ * {@link selectAssistantActions}; an unknown MCP tool name is simply not
+ * connected; an undeclared client tool is simply not offered).
  *
- * Returns the bare action-id list plus one {@link ResolvedMcpSelection} per
+ * Returns the bare action-id list, one {@link ResolvedMcpSelection} per
  * referenced server with its per-server tool allowlist assembled from the
- * matching entries (so only the named tools on each server are exposed).
+ * matching entries (so only the named tools on each server are exposed), and
+ * the client tool names.
  */
 export function splitAllowedTools(
   allowedTools: string[],
   servers: Map<string, McpServerConfig>,
-): { actionIds: string[]; mcpSelections: ResolvedMcpSelection[] } {
+): {
+  actionIds: string[];
+  mcpSelections: ResolvedMcpSelection[];
+  clientToolNames: string[];
+} {
   // Map a sanitized server id back to its config + raw id, for prefix matching.
   const bySanitized = new Map<string, McpServerConfig>();
   for (const server of servers.values()) {
@@ -90,6 +100,7 @@ export function splitAllowedTools(
   }
 
   const actionIds: string[] = [];
+  const clientToolNames: string[] = [];
   // Preserve first-seen server order; collect each server's allowlisted tools.
   const selByServerId = new Map<
     string,
@@ -111,6 +122,10 @@ export function splitAllowedTools(
         sel.tools.push(toolName);
         continue;
       }
+      if (CLIENT_TOOL_NAME_PATTERN.test(entry)) {
+        clientToolNames.push(entry);
+        continue;
+      }
     }
     // Not a known-server namespaced tool → a bare action id (tolerated).
     actionIds.push(entry);
@@ -122,6 +137,7 @@ export function splitAllowedTools(
       server,
       tools,
     })),
+    clientToolNames,
   };
 }
 

@@ -23,18 +23,20 @@ import {
 import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
+  ClientToolAttributes,
   ModelId,
   ReasoningLevel,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
+import { shouldSendAutomatically } from './autoSend';
 import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
 import { createHistoryAdapter } from './threadListAdapter';
 
 /**
- * True when an assistant turn legitimately paused for the user (a `render_form`
- * to fill or a tool approval to answer), so a missing `finishReason` there is a
- * normal hand-off, not a cut-off.
+ * True when an assistant turn legitimately paused for the user (a client tool
+ * running or waiting on the user, or a tool approval to answer), so a missing
+ * `finishReason` there is a normal hand-off, not a cut-off.
  */
 function awaitingHumanInput(message: {
   parts?: ReadonlyArray<{ type?: string; state?: string }>;
@@ -60,15 +62,22 @@ interface RuntimeHookOptions {
    * chosen model has no reasoning control. Also a ref, for the same reason.
    */
   reasoningLevelRef: RefObject<ReasoningLevel | undefined>;
+  /**
+   * The registered client tools' attributes by name. assistant-ui sends each
+   * tool's schema as `tools`; the attributes ride along so the backend can
+   * tell what a tool does to its system.
+   */
+  getClientToolAttributes: () => Record<string, ClientToolAttributes>;
 }
 
 /**
  * Wraps the authed fetch to inject the per-turn fields the backend `/chat`
- * expects. `AssistantChatTransport` builds the body (with the thread's `id` and
- * `messages`); we add `assistantId` + `modelId` (+ `reasoningLevel` when the
- * chosen model offers one) and copy `id -> threadId`. `getAssistantId` is read
- * per request so each thread targets its OWN assistant (one runtime spans all
- * assistants).
+ * expects. `AssistantChatTransport` builds the body (with the thread's `id`,
+ * `messages`, and the registered client tools as `tools`); we add
+ * `assistantId` + `modelId` (+ `reasoningLevel` when the chosen model offers
+ * one), copy `id -> threadId`, and stamp each client tool's `attributes` onto
+ * its declaration. `getAssistantId` is read per request so each thread targets
+ * its OWN assistant (one runtime spans all assistants).
  */
 function createInjectingFetch(
   baseFetch: typeof fetch,
@@ -76,6 +85,7 @@ function createInjectingFetch(
   getAssistantId: () => AssistantId,
   modelIdRef: RefObject<ModelId>,
   reasoningLevelRef: RefObject<ReasoningLevel | undefined>,
+  getClientToolAttributes: () => Record<string, ClientToolAttributes>,
 ): typeof fetch {
   return async (input, init) => {
     let nextInit = init;
@@ -91,6 +101,22 @@ function createInjectingFetch(
         }
         if (typeof body.id === 'string' && body.threadId === undefined) {
           body.threadId = body.id;
+        }
+        const tools = body.tools;
+        if (tools && typeof tools === 'object') {
+          const attributes = getClientToolAttributes();
+          for (const [name, declaration] of Object.entries(
+            tools as Record<string, unknown>,
+          )) {
+            if (
+              declaration &&
+              typeof declaration === 'object' &&
+              attributes[name]
+            ) {
+              (declaration as Record<string, unknown>).attributes =
+                attributes[name];
+            }
+          }
         }
         // The composer Stop aborts THIS request's signal (only on stop — not on
         // navigate-away/reload/unmount). Tell the backend to abort the
@@ -124,8 +150,15 @@ function createInjectingFetch(
  * the server says the thread is working.
  */
 export function makeRuntimeHook(options: RuntimeHookOptions) {
-  const { api, baseUrl, getActiveAssistantId, modelIdRef, reasoningLevelRef } =
-    options;
+  const {
+    api,
+    baseUrl,
+    getActiveAssistantId,
+    modelIdRef,
+    reasoningLevelRef,
+    getClientToolAttributes,
+  } = options;
+  const isClientTool = (name: string) => name in getClientToolAttributes();
 
   return function useRuntimeHook() {
     const threadChatId = useAuiState(state => state.threadListItem.id);
@@ -161,6 +194,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
             () => assistantIdRef.current,
             modelIdRef,
             reasoningLevelRef,
+            getClientToolAttributes,
           ),
           resumable: {
             // Reconnect by the THREAD id — the backend buffers the in-flight SSE
@@ -208,58 +242,11 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
           markTurnEnded(message.id, 'disconnected');
         }
       },
-      // Auto-send the turn back to the server when a client-driven tool step is
-      // resolved — so the conversation continues without the user pressing send.
-      // Two cases, both scoped to the LATEST step (parts after the final
-      // `step-start`) so this fires exactly once: after the server continues, the
-      // resolved parts are in a prior step and no longer match (otherwise they'd
-      // keep matching → infinite re-send).
-      //   1. `render_form` submitted/cancelled (a client-side tool whose result
-      //      the form UI supplies via addResult).
-      //   2. A DETERMINISTIC approval gate (`toolApproval`) the user answered:
-      //      the tool part moves to `approval-responded`, and we must send so the
-      //      backend runs the approved tool (or records the denial). addToolApproval
-      //      Response only flushes when this predicate is true (see AI SDK chat.ts).
-      // We never fire while a part is still `approval-requested` (awaiting the
-      // user) or mid-stream, and we require a client-resolved part (form or
-      // approval) so a SERVER tool truncated at maxSteps is never auto-resumed
-      // (which could run away).
-      sendAutomaticallyWhen: ({ messages }) => {
-        const last = messages[messages.length - 1];
-        if (!last || last.role !== 'assistant') return false;
-        const parts = (last.parts ?? []) as Array<{
-          type?: string;
-          state?: string;
-        }>;
-        const lastStepStart = parts.reduce(
-          (idx, p, i) => (p.type === 'step-start' ? i : idx),
-          -1,
-        );
-        const latestStepTools = parts
-          .slice(lastStepStart + 1)
-          .filter(
-            p => typeof p.type === 'string' && p.type.startsWith('tool-'),
-          );
-        if (latestStepTools.length === 0) return false;
-        // Every tool in the step must be client-settled — nothing still streaming,
-        // awaiting input, or awaiting the user's approval decision.
-        const allSettled = latestStepTools.every(
-          p =>
-            p.state === 'output-available' ||
-            p.state === 'output-error' ||
-            p.state === 'approval-responded',
-        );
-        if (!allSettled) return false;
-        const formResolved = latestStepTools.some(
-          p =>
-            p.type === 'tool-render_form' &&
-            (p.state === 'output-available' || p.state === 'output-error'),
-        );
-        const approvalResolved = latestStepTools.some(
-          p => p.state === 'approval-responded',
-        );
-        return formResolved || approvalResolved;
-      },
+      // Auto-send the turn back to the server once a client-settled tool step
+      // is resolved (a client tool's result, or an answered approval), so the
+      // conversation continues without the user pressing send. See autoSend.ts.
+      sendAutomaticallyWhen: ({ messages }) =>
+        shouldSendAutomatically(messages, isClientTool),
     });
     // Composer file/image upload. A single, stateless adapter that always attaches
     // and always sends (the provider is the source of truth for what a model can

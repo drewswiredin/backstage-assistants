@@ -23,4 +23,8 @@ export interface StatusResponse {
    * The default `provider:model` selection.
    */
   defaultModel: string;
+  /**
+   * The global approval floor as tool names. The browser gates a client tool named here before running it.
+   */
+  requireApproval: Array<string>;
 }

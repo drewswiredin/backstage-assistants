@@ -9,6 +9,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import StarIcon from '@material-ui/icons/Star';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
+import { useClientTools } from '../clientTools/ClientToolsProvider';
 import {
   AssistantAvatar,
   resolveAssistantColor,
@@ -164,6 +165,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const BACKSTAGE_SOURCE = 'backstage';
+const CLIENT_SOURCE = 'client';
 
 /** The tool's source for grouping: explicit `source`, else the MCP namespace
  * prefix in the name, else Backstage. */
@@ -198,6 +200,7 @@ export const AssistantDetailDialog: FC<{
 }> = ({ assistant, open, onClose }) => {
   const classes = useStyles();
   const theme = useTheme();
+  const { tools: clientTools } = useClientTools();
   if (!assistant) {
     return null;
   }
@@ -214,12 +217,25 @@ export const AssistantDetailDialog: FC<{
       if (arr) arr.push(t);
       else map.set(key, [t]);
     }
-    return [...map.entries()].sort(([a], [b]) => {
-      if (a === BACKSTAGE_SOURCE) return -1;
-      if (b === BACKSTAGE_SOURCE) return 1;
-      return a.localeCompare(b);
-    });
+    const ranks: Record<string, number> = {
+      [BACKSTAGE_SOURCE]: 0,
+      [CLIENT_SOURCE]: 1,
+    };
+    const rank = (s: string) => ranks[s] ?? 2;
+    return [...map.entries()].sort(
+      ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b),
+    );
   })();
+  // Client tools are described in the browser, not by `/status`.
+  const clientDescriptions = new Map(
+    clientTools.map(t => [t.name, t.description]),
+  );
+  const groupLabels: Record<string, [string, string]> = {
+    [BACKSTAGE_SOURCE]: ['Backstage', 'runs as user'],
+    [CLIENT_SOURCE]: ['Browser', 'runs in your browser'],
+  };
+  const groupLabel = (source: string) => groupLabels[source]?.[0] ?? source;
+  const groupTag = (source: string) => groupLabels[source]?.[1] ?? 'MCP';
 
   return (
     <Dialog
@@ -267,33 +283,34 @@ export const AssistantDetailDialog: FC<{
             </Typography>
           ) : (
             toolGroups.map(([source, groupTools]) => {
-              const isBackstage = source === BACKSTAGE_SOURCE;
               return (
                 <div key={source} className={classes.toolGroup}>
                   <div className={classes.groupHead}>
                     <span className={classes.groupName}>
-                      {isBackstage ? 'Backstage' : source}
+                      {groupLabel(source)}
                     </span>
-                    <span className={classes.groupTag}>
-                      {isBackstage ? 'runs as user' : 'MCP'}
-                    </span>
+                    <span className={classes.groupTag}>{groupTag(source)}</span>
                     <span className={classes.groupCount}>
                       {groupTools.length}
                     </span>
                   </div>
                   <ul className={classes.list}>
-                    {groupTools.map(t => (
-                      <li key={t.name} className={classes.row}>
-                        <span className={classes.itemName}>
-                          {toolDisplayName(t.name)}
-                        </span>
-                        {t.description && (
-                          <Tooltip title={t.description} placement="top-end">
-                            <InfoOutlinedIcon className={classes.infoIcon} />
-                          </Tooltip>
-                        )}
-                      </li>
-                    ))}
+                    {groupTools.map(t => {
+                      const description =
+                        t.description ?? clientDescriptions.get(t.name);
+                      return (
+                        <li key={t.name} className={classes.row}>
+                          <span className={classes.itemName}>
+                            {toolDisplayName(t.name)}
+                          </span>
+                          {description && (
+                            <Tooltip title={description} placement="top-end">
+                              <InfoOutlinedIcon className={classes.infoIcon} />
+                            </Tooltip>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               );

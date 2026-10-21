@@ -172,7 +172,7 @@ export const spec = {
           },
           "source": {
             "type": "string",
-            "description": "`backstage` for Backstage actions, or the MCP server id."
+            "description": "`backstage` for Backstage actions, `client` for a client tool run in the user's browser, or the MCP server id."
           }
         }
       },
@@ -182,7 +182,8 @@ export const spec = {
         "required": [
           "assistants",
           "models",
-          "defaultModel"
+          "defaultModel",
+          "requireApproval"
         ],
         "properties": {
           "assistants": {
@@ -202,12 +203,19 @@ export const spec = {
           "defaultModel": {
             "type": "string",
             "description": "The default `provider:model` selection."
+          },
+          "requireApproval": {
+            "type": "array",
+            "description": "The global approval floor as tool names. The browser gates a client tool named here before running it.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
       "ChatRequest": {
         "type": "object",
-        "description": "Request body for `POST /chat`. Tools/actions are never accepted from the client — they are resolved server-side per turn.",
+        "description": "Request body for `POST /chat`. Server tools (Backstage actions, MCP tools) are resolved server-side per turn and never accepted from the client; `tools` carries only client tool declarations, which the backend filters to the assistant's allowlist.",
         "required": [
           "assistantId",
           "modelId",
@@ -244,6 +252,13 @@ export const spec = {
             "minItems": 1,
             "description": "The conversation as a non-empty array of UI messages. The internal shape of each message is intentionally not over-constrained here.",
             "items": {
+              "type": "object"
+            }
+          },
+          "tools": {
+            "type": "object",
+            "description": "Client tool declarations keyed by tool name, as assistant-ui's transport sends every registered frontend tool: `description`, JSON Schema `parameters`, and the plugin's `attributes`. Offered to the model without `execute` when the name is a built-in or in the assistant's allowlist; the browser runs the tool.",
+            "additionalProperties": {
               "type": "object"
             }
           }

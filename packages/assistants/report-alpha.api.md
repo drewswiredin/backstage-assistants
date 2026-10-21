@@ -6,16 +6,23 @@
 import { AnyApiFactory } from '@backstage/frontend-plugin-api';
 import { AnyRouteRefParams } from '@backstage/frontend-plugin-api';
 import { ApiFactory } from '@backstage/frontend-plugin-api';
+import type { ApiHolder } from '@backstage/core-plugin-api';
+import type { ApiRef } from '@backstage/core-plugin-api';
+import type { ClientToolAttributes } from '@drewswiredin/backstage-plugin-assistants-common';
+import type { ComponentType } from 'react';
 import { ConfigurableExtensionDataRef } from '@backstage/frontend-plugin-api';
 import { ExtensionBlueprintParams } from '@backstage/frontend-plugin-api';
 import { ExtensionDataRef } from '@backstage/frontend-plugin-api';
 import { ExtensionInput } from '@backstage/frontend-plugin-api';
 import { IconElement } from '@backstage/frontend-plugin-api';
+import { JsonObject } from '@backstage/types';
 import { JSX as JSX_2 } from 'react';
+import type { OAuthApi } from '@backstage/core-plugin-api';
 import { OverridableExtensionDefinition } from '@backstage/frontend-plugin-api';
 import { OverridableFrontendPlugin } from '@backstage/frontend-plugin-api';
 import { RouteRef } from '@backstage/core-plugin-api';
 import { RouteRef as RouteRef_2 } from '@backstage/frontend-plugin-api';
+import type { ToolCallMessagePartProps } from '@assistant-ui/react';
 
 // @public
 const _default: OverridableFrontendPlugin<
@@ -39,16 +46,44 @@ const _default: OverridableFrontendPlugin<
         params: ApiFactory<TApi, TImpl, TDeps>,
       ) => ExtensionBlueprintParams<AnyApiFactory>;
     }>;
+    'assistant-client-tool:assistants/download-file': OverridableExtensionDefinition<{
+      kind: 'assistant-client-tool';
+      name: 'download-file';
+      config: {};
+      configInput: {};
+      output: ExtensionDataRef<
+        AssistantClientTool<any, any>,
+        'assistants.client-tool',
+        {}
+      >;
+      inputs: {};
+      params: <TInput extends JsonObject, TOutput = unknown>(
+        tool: AssistantClientTool<TInput, TOutput>,
+      ) => ExtensionBlueprintParams<AssistantClientTool<any, any>>;
+    }>;
+    'assistant-client-tool:assistants/render-form': OverridableExtensionDefinition<{
+      kind: 'assistant-client-tool';
+      name: 'render-form';
+      config: {};
+      configInput: {};
+      output: ExtensionDataRef<
+        AssistantClientTool<any, any>,
+        'assistants.client-tool',
+        {}
+      >;
+      inputs: {};
+      params: <TInput extends JsonObject, TOutput = unknown>(
+        tool: AssistantClientTool<TInput, TOutput>,
+      ) => ExtensionBlueprintParams<AssistantClientTool<any, any>>;
+    }>;
     'page:assistants': OverridableExtensionDefinition<{
-      kind: 'page';
-      name: undefined;
       config: {
         path: string | undefined;
         title: string | undefined;
       };
       configInput: {
-        path?: string | undefined;
-        title?: string | undefined;
+        path?: string | undefined | undefined;
+        title?: string | undefined | undefined;
       };
       output:
         | ExtensionDataRef<string, 'core.routing.path', {}>
@@ -105,7 +140,21 @@ const _default: OverridableFrontendPlugin<
             internal: false;
           }
         >;
+        clientTools: ExtensionInput<
+          ConfigurableExtensionDataRef<
+            AssistantClientTool<any, any>,
+            'assistants.client-tool',
+            {}
+          >,
+          {
+            singleton: false;
+            optional: false;
+            internal: false;
+          }
+        >;
       };
+      kind: 'page';
+      name: undefined;
       params: {
         path: string;
         title?: string;
@@ -121,7 +170,8 @@ export default _default;
 
 // Warnings were encountered during analysis:
 //
-// /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/permissions.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
+// src/alpha.d.ts:23:9 - (ae-forgotten-export) The symbol "AssistantClientTool" needs to be exported by the entry point alpha.d.ts
+// /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 
 // (No @packageDocumentation comment for this package)
 ```

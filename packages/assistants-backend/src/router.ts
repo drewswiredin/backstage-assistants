@@ -17,12 +17,11 @@ import {
   generateText,
   convertToModelMessages,
   stepCountIs,
-  tool,
-  jsonSchema,
   toUIMessageStream,
   pipeUIMessageStreamToResponse,
   UI_MESSAGE_STREAM_HEADERS,
   type ModelMessage,
+  type Tool,
   type UIMessage,
 } from 'ai';
 import type {
@@ -41,6 +40,11 @@ import {
   isPolicyAccessible,
 } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
+import {
+  capClientToolOutputs,
+  readClientToolDeclarations,
+  selectClientTools,
+} from './clientTools';
 import {
   buildMcpTools,
   cachedServerToolsRaw,
@@ -561,10 +565,14 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
               sel.tools,
             ),
           ),
+          // Client tools are declared and described in the browser; the
+          // backend knows only the allowlisted names.
+          ...split.clientToolNames.map(name => ({ name, source: 'client' })),
         ],
       })),
       models: assistants.models,
       defaultModel: assistants.defaultModel,
+      requireApproval: [...assistants.requireApproval],
     };
 
     res.json(status);
@@ -584,14 +592,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 2. The request body shape (assistantId/modelId present + non-empty,
     //    messages a non-empty array) is already validated by the OpenAPI router
     //    against `src/schema/openapi.yaml`, so no hand-checks are needed here.
-    const { assistantId, modelId, threadId, messages, reasoningLevel } =
-      req.body as {
-        assistantId: string;
-        modelId: string;
-        threadId?: string;
-        messages: unknown[];
-        reasoningLevel?: ReasoningLevel;
-      };
+    const { assistantId, modelId, threadId, reasoningLevel } = req.body as {
+      assistantId: string;
+      modelId: string;
+      threadId?: string;
+      reasoningLevel?: ReasoningLevel;
+    };
+    let messages = req.body.messages as unknown[];
 
     // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
     //    per-turn access decision reflects edits/deletes immediately, even on a
@@ -656,7 +663,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //    each entry into bare Backstage action ids and per-server MCP tool
     //    selections (deriving which servers to connect from the namespaced
     //    prefixes; unknown entries are tolerated — see splitAllowedTools).
-    const { actionIds, mcpSelections } = splitAllowedTools(
+    const { actionIds, mcpSelections, clientToolNames } = splitAllowedTools(
       assistant.allowedTools,
       assistants.mcpServers,
     );
@@ -679,7 +686,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       logger,
       assistants.toolResultMaxChars,
     );
-    const tools = {
+    const serverTools: Record<string, Tool> = {
       ...actionsToTools(
         selected,
         actions,
@@ -687,110 +694,33 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         assistants.toolResultMaxChars,
       ),
       ...mcpTools,
-      // Interactive form tool — a CLIENT-side tool (no `execute`): the model
-      // calls it with an RJSF form spec, streamText emits the call and yields,
-      // the frontend renders the form, and the user's submitted values come back
-      // as the tool result (human-in-the-loop) so the turn continues. Generic:
-      // use any time structured / multi-field / multiple-choice input is needed.
-      render_form: tool({
-        description:
-          'Render an interactive form for the user to fill, instead of asking ' +
-          'multiple questions in chat. Provide `jsonSchema` (a standard JSON ' +
-          'Schema describing the fields — use enums for dropdowns, `required`, ' +
-          'types, etc.) and optionally `uiSchema` (RJSF widgets/ordering), ' +
-          '`title`, and `submitLabel`. The form is shown in the chat; the user ' +
-          'fills and submits it and you receive their values as the tool result. ' +
-          'Use whenever you need structured, multi-field, multiple-choice, or ' +
-          'complex input. ' +
-          'The form renders Backstage scaffolder field extensions: set a ' +
-          "property's `uiSchema` `ui:field` to a picker to get a real Backstage " +
-          'widget instead of a plain input. Built-in pickers: `OwnerPicker` and ' +
-          '`OwnedEntityPicker` (catalog owner/entity), `EntityPicker` and ' +
-          '`MultiEntityPicker` (catalog entities; filter via `ui:options.catalogFilter`), ' +
-          '`EntityNamePicker`, `EntityTagsPicker`, `MyGroupsPicker`, ' +
-          '`RepoUrlPicker` / `RepoBranchPicker` / `RepoOwnerPicker` (SCM repo ' +
-          'location). Any custom field the app has registered works the same way ' +
-          'by its name. When reusing a scaffolder template, you can pass that ' +
-          "template's parameter block as `jsonSchema` as-is — `ui:field` / " +
-          '`ui:options` embedded inside the schema properties (the template ' +
-          'convention) are handled automatically; you do not need to split them ' +
-          'into `uiSchema` yourself. ' +
-          'The result is `{ submitted: true, values: {...} }` when ' +
-          'the user submits, or `{ submitted: false, cancelled: true }` if they ' +
-          'dismiss it — in which case do not assume any values; ask again or ' +
-          'proceed without them.',
-        inputSchema: jsonSchema<{
-          jsonSchema: Record<string, unknown>;
-          uiSchema?: Record<string, unknown>;
-          title?: string;
-          submitLabel?: string;
-        }>({
-          type: 'object',
-          properties: {
-            jsonSchema: {
-              type: 'object',
-              description:
-                'A JSON Schema (RJSF) describing the form fields to collect.',
-            },
-            uiSchema: {
-              type: 'object',
-              description:
-                'Optional RJSF uiSchema (widgets, ordering, ui:field, etc.).',
-            },
-            title: { type: 'string', description: 'Optional form heading.' },
-            submitLabel: {
-              type: 'string',
-              description: 'Optional submit button label (default "Submit").',
-            },
-          },
-          required: ['jsonSchema'],
-          additionalProperties: false,
-        }),
-        // No `execute`: resolved on the client via the form's submit (addResult).
-      }),
-      // Generative download tool — a CLIENT-side tool (no `execute`): the model
-      // calls it with file content, the frontend (DownloadFileTool) renders a
-      // download chip and acknowledges it. Lets the assistant hand back a generated
-      // artifact (CSV/JSON/code/etc.) as a saveable file instead of inline text.
-      download_file: tool({
-        description:
-          'Deliver a downloadable file to the user. Use when the user asks for a ' +
-          'file, export, or download, or when a downloadable artifact is more ' +
-          'useful than inline text (e.g. a CSV, JSON, Markdown, code, or config ' +
-          'file you generated). Provide `filename` (with extension), `content` ' +
-          '(the COMPLETE file text), and optionally `mimeType`. The file appears ' +
-          'in the chat as a download chip the user can save or copy — put the full ' +
-          'content in `content`, do not also paste it into your message.',
-        inputSchema: jsonSchema<{
-          filename: string;
-          content: string;
-          mimeType?: string;
-        }>({
-          type: 'object',
-          properties: {
-            filename: {
-              type: 'string',
-              description: 'File name including extension, e.g. "report.csv".',
-            },
-            content: {
-              type: 'string',
-              description: 'The complete file contents, as text.',
-            },
-            mimeType: {
-              type: 'string',
-              description:
-                'Optional MIME type, e.g. "text/csv". Inferred from the ' +
-                'filename extension when omitted.',
-            },
-          },
-          required: ['filename', 'content'],
-          additionalProperties: false,
-        }),
-        // No `execute`: rendered + acknowledged on the client (DownloadFileTool).
-      }),
     };
 
-    // 6c. Deterministic approval gate. The approval set is GLOBAL now: the
+    // 6c. Client tools: declared by the browser on this request (assistant-ui
+    //     sends every registered frontend tool's schema as `tools`), filtered
+    //     to the built-ins plus this assistant's allowlisted names, and added
+    //     WITHOUT `execute` so streamText emits the call and yields to the
+    //     browser, which runs the tool with the user's own credentials and
+    //     returns the result on the next request. `render_form` and
+    //     `download_file` are client tools too.
+    const clientTools = selectClientTools({
+      declared: readClientToolDeclarations(req.body),
+      allowed: clientToolNames,
+      reserved: new Set(Object.keys(serverTools)),
+      logger,
+    });
+    const tools = { ...serverTools, ...clientTools.tools };
+
+    // Client tool results arrive inside the conversation rather than through
+    // an `execute`, so the one result budget is applied to them here, before
+    // the model sees them and before the turn is persisted.
+    messages = capClientToolOutputs(
+      messages,
+      new Set(Object.keys(clientTools.tools)),
+      assistants.toolResultMaxChars,
+    );
+
+    // 6d. Deterministic approval gate. The approval set is GLOBAL now: the
     //     platform `requireApproval` floor (top-level action ids ∪ per-server
     //     namespaced `<serverId>__<tool>`) intersected with THIS assistant's
     //     `allowedTools`. Every tool in that intersection gets an entry in the
@@ -800,6 +730,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     was declined). This is code-enforced — not a prompt the model can
     //     ignore. Names that don't resolve to a built tool are logged and
     //     skipped.
+    //
+    //     Client tools are not in the map: the browser gates them before it
+    //     runs them (assistant-ui skips a frontend tool's `execute` for a call
+    //     that carries a server approval), using the same floor from /status.
     //
     //     The predicate also honours a standing "always allow <tool>" grant: the
     //     surface's "Always allow" button records an approved tool-approval-
@@ -846,7 +780,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       };
       const gated: string[] = [];
       for (const name of approvalSet) {
-        if (name in tools) {
+        if (name in serverTools) {
           // A function, not a static status: skip the prompt once a standing
           // grant exists.
           toolApproval[name] = (_input, opts) =>
@@ -856,7 +790,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           gated.push(name);
         }
       }
-      const missing = approvalSet.filter(n => !gated.includes(n));
+      // Client tools are gated in the browser, so they are never "missing".
+      const missing = approvalSet.filter(
+        n => !gated.includes(n) && !clientToolNames.includes(n),
+      );
       if (missing.length > 0) {
         logger.warn(
           `requireApproval lists tool(s) not available to assistant '${
@@ -936,11 +873,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           turnAborts.delete(threadId);
           void noteFinished(user.userEntityRef, threadId, assistantId);
         }
+        // A provider rejection carries its body on the AI SDK's APICallError;
+        // the message alone ("Provider returned error") says nothing.
+        const responseBody = (error as { responseBody?: unknown })
+          ?.responseBody;
         logger.error('chat turn errored', {
           requestId,
           assistantId,
           modelId,
           error: error instanceof Error ? error.message : String(error),
+          ...(typeof responseBody === 'string'
+            ? { responseBody: responseBody.slice(0, 2000) }
+            : {}),
         });
       },
     });

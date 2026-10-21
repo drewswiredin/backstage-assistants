@@ -7,10 +7,14 @@
 import {
   AssistantDefinition,
   CapabilitiesResponse,
+  CLIENT_TOOL_NAME_PATTERN,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /** Sentinel `allowedTools` source for built-in Backstage actions. */
 export const BACKSTAGE_SOURCE = 'backstage';
+
+/** Sentinel source for client tools, which run in the user's browser. */
+export const CLIENT_SOURCE = 'client';
 
 /** The `<serverId>__<tool>` namespace separator for MCP tools. */
 export const MCP_SEP = '__';
@@ -115,16 +119,34 @@ export function liveToolIds(caps: CapabilitiesResponse): Set<string> {
 }
 
 /**
+ * True for an `allowedTools` entry that names a client tool: the
+ * `<namespace>__<tool>` shape with a namespace that is not a configured MCP
+ * server. Client tools live in the browser, so their live set is the
+ * registered tools, not `/capabilities`.
+ */
+export function isClientToolId(
+  id: string,
+  caps: CapabilitiesResponse,
+): boolean {
+  return (
+    CLIENT_TOOL_NAME_PATTERN.test(id) &&
+    !caps.mcpServers.some(s => s.id === toolSourceOf(id))
+  );
+}
+
+/**
  * Partition an assistant's `allowedTools` into the ids that resolve to a live
  * capability vs. the STALE ones that don't, classifying each stale id:
- *  - RED ('gone'): its source is a reachable MCP server, or it's a bare action
- *    id absent from the live action list — the item is definitively gone.
+ *  - RED ('gone'): its source is a reachable MCP server, it's a bare action
+ *    id absent from the live action list, or it's a client tool no plugin
+ *    registers — the item is definitively gone.
  *  - AMBER ('unverifiable'): its source is an MCP server that is currently
  *    unreachable, so we can't confirm whether the tool still exists.
  */
 export function partitionTools(
   allowedTools: string[],
   caps: CapabilitiesResponse,
+  clientToolIds: ReadonlySet<string> = new Set(),
 ): { live: Set<string>; stale: StaleTool[] } {
   const live = liveToolIds(caps);
   const unreachableServers = new Set(
@@ -133,11 +155,11 @@ export function partitionTools(
   const liveSet = new Set<string>();
   const stale: StaleTool[] = [];
   for (const id of allowedTools) {
-    if (live.has(id)) {
+    if (live.has(id) || (isClientToolId(id, caps) && clientToolIds.has(id))) {
       liveSet.add(id);
       continue;
     }
-    const source = toolSourceOf(id);
+    const source = isClientToolId(id, caps) ? CLIENT_SOURCE : toolSourceOf(id);
     const reason: StaleReason =
       source !== BACKSTAGE_SOURCE && unreachableServers.has(source)
         ? 'unverifiable'

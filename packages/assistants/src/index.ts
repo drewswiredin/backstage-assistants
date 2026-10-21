@@ -14,3 +14,12 @@ export { assistantsApiRef } from './api';
 export type { AssistantsApi, ConversationStatusRow, ThreadPatch } from './api';
 /** Nav-rail icon with a live working/unread status dot (for a host's custom nav). */
 export { AssistantsNavIcon } from './AssistantsNavIcon';
+/** Contribute a tool that runs in the user's browser, with their own credentials. */
+export { AssistantClientToolBlueprint, clientToolDataRef } from './clientTools';
+export type {
+  AssistantClientTool,
+  ClientToolAuthRequirement,
+  ClientToolContext,
+  ClientToolInterrupt,
+  ClientToolRenderProps,
+} from './clientTools';

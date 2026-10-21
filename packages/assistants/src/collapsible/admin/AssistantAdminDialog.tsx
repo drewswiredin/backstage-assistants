@@ -51,6 +51,7 @@ import {
 import { AccessList } from './AccessList';
 import { ModelsTransfer } from './ModelsTransfer';
 import { ToolsTransfer } from './ToolsTransfer';
+import { useClientTools } from '../../clientTools/ClientToolsProvider';
 import { SuggestionsEditor } from './SuggestionsEditor';
 import { PlatformInstructions } from './PlatformInstructions';
 import {
@@ -474,6 +475,9 @@ export function AssistantAdminDialog({
   const [capabilities, setCapabilities] = useState<
     CapabilitiesResponse | undefined
   >();
+  // Client tools are registered in the browser; the picker offers them
+  // from the same registry the runtime uses.
+  const { tools: clientTools } = useClientTools();
 
   // Selection + the editable draft of the selected assistant.
   // `selectedId` is the persisted id, or '' for a not-yet-saved new/dup draft.
@@ -846,6 +850,7 @@ export function AssistantAdminDialog({
             </Typography>
             <ToolsTransfer
               capabilities={capabilities}
+              clientTools={clientTools}
               allowedTools={draft.allowedTools}
               onChange={allowedTools => patch({ allowedTools })}
             />

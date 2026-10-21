@@ -2,6 +2,7 @@ import { createApp } from '@backstage/frontend-defaults';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
 import assistantsPlugin from '@drewswiredin/backstage-plugin-assistants/alpha';
+import { clientToolsModule } from './modules/clientTools';
 import { navModule } from './modules/nav';
 import { signInModule } from './modules/signIn';
 
@@ -12,6 +13,8 @@ export default createApp({
     catalogPlugin,
     signalsPlugin,
     assistantsPlugin,
+    // Demo client tools (browser info, clipboard, a connect flow).
+    clientToolsModule,
     navModule,
     signInModule,
   ],

@@ -11,5 +11,5 @@ export default assistantsPlugin;
 
 // Warnings were encountered during analysis:
 //
-// /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/permissions.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
+// /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```

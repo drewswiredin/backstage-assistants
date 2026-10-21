@@ -1,7 +1,9 @@
 /**
  * The Tools section: the assigned tools grouped by source (Backstage
- * runs-as-you actions first, then one group per MCP server) over an "＋ Add tool"
- * picker drawn from the live `/capabilities` inventory. The picker groups
+ * runs-as-you actions first, then the browser's client tools, then one group
+ * per MCP server) over an "＋ Add tool" picker drawn from the live
+ * `/capabilities` inventory plus the client tools registered in this browser.
+ * The picker groups
  * addable tools the same way (✓ reachable / ⚠ unreachable) and only offers live
  * items. Each
  * assigned row leads with a "runs as" icon (👤 the calling user for Backstage
@@ -19,12 +21,19 @@ import ErrorIcon from '@material-ui/icons/Error';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import PersonOutlineIcon from '@material-ui/icons/PersonOutline';
+import WebOutlinedIcon from '@material-ui/icons/WebOutlined';
 import VpnKeyOutlinedIcon from '@material-ui/icons/VpnKeyOutlined';
 import GavelOutlinedIcon from '@material-ui/icons/GavelOutlined';
-import { CapabilitiesResponse } from '@drewswiredin/backstage-plugin-assistants-common';
+import {
+  CapabilitiesResponse,
+  CLIENT_TOOL_NAME_PATTERN,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssignList, AssignOption, AssignRow } from './AssignList';
+import type { AssistantClientTool } from '../../clientTools/types';
+import { clientToolNeedsApproval } from '../../clientTools/runClientTool';
 import {
   BACKSTAGE_SOURCE,
+  CLIENT_SOURCE,
   mcpToolId,
   bareToolName,
   partitionTools,
@@ -69,6 +78,13 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/** How a stale row names its source. */
+function staleSourceLabel(source: string): string {
+  if (source === BACKSTAGE_SOURCE) return 'action';
+  if (source === CLIENT_SOURCE) return 'browser tool';
+  return source;
+}
+
 /** Per-source display + reachability metadata for the picker group headers. */
 interface SourceMeta {
   heading: string;
@@ -79,9 +95,21 @@ interface SourceMeta {
 
 /**
  * The leading "runs as" indicator for a tool row: Backstage actions run as the
- * calling user; MCP tools run as the server's shared configured credential.
+ * calling user; client tools run in the user's browser; MCP tools run as the
+ * server's shared configured credential.
  */
 function runAsIcon(source: string, className: string): ReactNode {
+  if (source === CLIENT_SOURCE) {
+    return (
+      <Tooltip title="Runs in your browser as you (client tool).">
+        <WebOutlinedIcon
+          role="img"
+          aria-label="Runs in your browser as you (client tool)"
+          className={className}
+        />
+      </Tooltip>
+    );
+  }
   if (source === BACKSTAGE_SOURCE) {
     return (
       <Tooltip title="Runs as you (Backstage action).">
@@ -106,20 +134,30 @@ function runAsIcon(source: string, className: string): ReactNode {
 
 export function ToolsTransfer({
   capabilities,
+  clientTools = [],
   allowedTools,
   onChange,
 }: {
   capabilities: CapabilitiesResponse;
+  /** The client tools registered in this browser. */
+  clientTools?: ReadonlyArray<AssistantClientTool<any, any>>;
   allowedTools: string[];
   onChange: (next: string[]) => void;
 }) {
   const classes = useStyles();
 
   const selected = useMemo(() => new Set(allowedTools), [allowedTools]);
-  const approvalSet = useMemo(
-    () => new Set(capabilities.requireApproval),
-    [capabilities.requireApproval],
-  );
+  // The approval floor plus every browser tool that asks on its own account
+  // (not read-only, or destructive), so the gavel means the same thing for
+  // every tool kind.
+  const approvalSet = useMemo(() => {
+    const floor = new Set(capabilities.requireApproval);
+    const set = new Set(floor);
+    for (const t of clientTools) {
+      if (clientToolNeedsApproval(t, floor)) set.add(t.name);
+    }
+    return set;
+  }, [capabilities.requireApproval, clientTools]);
 
   // Source metadata + a tool-id → {label, description, source} lookup + the
   // grouped addable options (live, not-yet-assigned).
@@ -152,6 +190,34 @@ export function ToolsTransfer({
       }
     }
 
+    // Built-ins are always offered and never assigned, so they stay out of
+    // the picker.
+    const contributed = clientTools.filter(t =>
+      CLIENT_TOOL_NAME_PATTERN.test(t.name),
+    );
+    if (contributed.length > 0) {
+      meta.set(CLIENT_SOURCE, {
+        heading: 'Browser tools',
+        reachable: true,
+        isBackstage: true,
+      });
+    }
+    for (const t of contributed) {
+      lookup.set(t.name, {
+        label: t.name,
+        description: t.description,
+        source: CLIENT_SOURCE,
+      });
+      if (!selected.has(t.name)) {
+        opts.push({
+          id: t.name,
+          label: t.name,
+          group: CLIENT_SOURCE,
+          secondary: t.description,
+        });
+      }
+    }
+
     const servers = [...capabilities.mcpServers].sort((x, y) =>
       x.id.localeCompare(y.id),
     );
@@ -180,11 +246,15 @@ export function ToolsTransfer({
       }
     }
     return { sources: meta, byId: lookup, options: opts };
-  }, [capabilities, selected]);
+  }, [capabilities, clientTools, selected]);
 
+  const clientToolIds = useMemo(
+    () => new Set(clientTools.map(t => t.name)),
+    [clientTools],
+  );
   const { live, stale } = useMemo(
-    () => partitionTools(allowedTools, capabilities),
-    [allowedTools, capabilities],
+    () => partitionTools(allowedTools, capabilities, clientToolIds),
+    [allowedTools, capabilities, clientToolIds],
   );
 
   // Assigned rows grouped by source — Backstage (runs-as-you) first, then MCP
@@ -198,7 +268,10 @@ export function ToolsTransfer({
         return {
           id,
           label: info?.label ?? bareToolName(id),
-          secondary: source === BACKSTAGE_SOURCE ? undefined : source,
+          secondary:
+            source === BACKSTAGE_SOURCE || source === CLIENT_SOURCE
+              ? undefined
+              : source,
           icon: runAsIcon(source, classes.runAs),
           group: source,
         };
@@ -210,9 +283,7 @@ export function ToolsTransfer({
         label: bareToolName(s.id),
         tone: gone ? 'error' : 'warning',
         secondary: gone
-          ? `${
-              s.source === BACKSTAGE_SOURCE ? 'action' : s.source
-            } — no longer available`
+          ? `${staleSourceLabel(s.source)} — no longer available`
           : `${s.source} unreachable — unverifiable`,
         icon: gone ? (
           <ErrorIcon className={classes.staleIconGone} />
@@ -224,10 +295,13 @@ export function ToolsTransfer({
     });
     // Group order: Backstage first, then MCP servers by id, then any leftover
     // (e.g. a removed server). Stable sort preserves within-group order.
-    const rank = new Map<string, number>([[BACKSTAGE_SOURCE, 0]]);
+    const rank = new Map<string, number>([
+      [BACKSTAGE_SOURCE, 0],
+      [CLIENT_SOURCE, 1],
+    ]);
     [...capabilities.mcpServers]
       .sort((a, b) => a.id.localeCompare(b.id))
-      .forEach((s, i) => rank.set(s.id, i + 1));
+      .forEach((s, i) => rank.set(s.id, i + 2));
     const rankOf = (g?: string) =>
       g && rank.has(g) ? (rank.get(g) as number) : Number.MAX_SAFE_INTEGER;
     return [...liveRows, ...staleRows].sort(

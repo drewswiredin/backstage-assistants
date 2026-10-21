@@ -55,6 +55,9 @@ export interface AssistantSummary {
 export const assistantUsePermission: BasicPermission;
 
 // @public
+export const BUILTIN_CLIENT_TOOLS: readonly string[];
+
+// @public
 export interface CapabilitiesResponse {
   actions: CapabilityAction[];
   mcpServers: McpServerCapability[];
@@ -67,6 +70,53 @@ export interface CapabilityAction {
   description?: string;
   id: string;
 }
+
+// @public
+export const CLIENT_TOOL_LIMITS: {
+  readonly maxPerRequest: 30;
+  readonly maxDescriptionChars: 4000;
+  readonly maxSchemaChars: 8192;
+};
+
+// @public
+export const CLIENT_TOOL_NAME_PATTERN: RegExp;
+
+// @public
+export interface ClientToolAttributes {
+  destructive?: boolean;
+  idempotent?: boolean;
+  readOnly: boolean;
+}
+
+// @public
+export interface ClientToolDeclaration {
+  attributes?: ClientToolAttributes;
+  description?: string;
+  parameters: Record<string, unknown>;
+}
+
+// @public
+export interface ClientToolError {
+  code: ClientToolErrorCode;
+  _error: true;
+  message: string;
+}
+
+// @public
+export type ClientToolErrorCode =
+  /** The user declined the approval prompt. */
+  | 'declined'
+  /** The user did not connect the system the tool needs. */
+  | 'not_authorized'
+  /** The tool ran past its time budget. */
+  | 'timeout'
+  /** The user stopped the turn while the tool was running. */
+  | 'aborted'
+  /** The tool threw. */
+  | 'failed';
+
+// @public
+export function isClientToolName(name: string): boolean;
 
 // @public
 export interface McpServerCapability {
@@ -105,6 +155,7 @@ export interface StatusResponse {
   assistants: AssistantSummary[];
   defaultModel: ModelId;
   models: ModelOption[];
+  requireApproval: string[];
 }
 
 // @public
@@ -127,5 +178,5 @@ export interface UiOptions {
 
 // Warnings were encountered during analysis:
 //
-// /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/permissions.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
+// /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```

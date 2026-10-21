@@ -365,7 +365,7 @@ per-user permissions still apply when an approved Backstage action invokes.
 
 ## Forms and downloads in the conversation
 
-Two built-in client-side tools are always available and need no config.
+Two built-in client tools are always available and need no config.
 `render_form` renders an inline RJSF form for structured, multi-field, or
 multiple-choice input; the user fills and submits, and the values flow back as
 the tool result. Forms render Backstage scaffolder field extensions (owner,
@@ -373,8 +373,38 @@ entity, and repo pickers, plus any custom field the host app has registered),
 so the model can reuse a scaffolder template's parameter block verbatim.
 `download_file` hands a generated text file (CSV, JSON, Markdown, code, SVG)
 back as a download chip in the conversation. `render_form` pauses the turn the
-way the approval gate does until the user submits or dismisses; both survive a
-page reload.
+way the approval gate does until the user submits or dismisses, and a pending
+form survives a page reload.
+
+## Client tools: run in the browser as the user
+
+Some systems authenticate in the browser, as the user: a Kubernetes cluster
+behind a cloud identity, Azure DevOps or GitHub through the user's own OAuth
+session, anything the frontend already calls with a per-user token. A
+**client tool** lets an assistant use such a system with the user's own
+permissions. A frontend plugin or module contributes the tool through
+`AssistantClientToolBlueprint` (see the
+[frontend README](../assistants#client-tools)); the browser declares it on
+every `/chat` request, this backend offers it to the model with no `execute`,
+and the browser runs it when the model calls it. The result returns as the
+tool output; the credential never leaves the browser, and client tools are
+never exposed over MCP.
+
+Nothing is configured here. Give an assistant a client tool by adding its
+`<namespace>__<tool>` name to the assistant's tools in the editor, which
+offers every tool registered in the app; an assistant offers only the client
+tools it allows, whatever the browser declares. The backend also drops a
+declaration whose name is not `<namespace>__<tool>`, collides with a server
+tool, or exceeds 4000 description characters or 8 KB of schema, and offers at
+most 30 per request. Client tool results are capped to `toolResultMaxChars`
+like every other tool result.
+
+A client tool that is not read-only, or is destructive, asks the user for
+approval on every call, with no "always allow"; a read-only one asks when its
+name is in [`requireApproval`](#require-approval-before-a-tool-runs). A tool
+that needs a credential the user has not granted shows a **Connect** control
+in the conversation; dismissing it returns a `not_authorized` result the
+model explains instead of retrying.
 
 ## Platform instructions
 
@@ -608,7 +638,7 @@ after that. Deleting an assistant leaves its users' conversations in `threads`
 and `messages`; they no longer appear in the UI. Provider API keys and MCP secrets live only in config.
 
 Untrusted content and prompt injection: everything a tool returns (TechDocs
-pages, catalog entity fields, MCP results) is untrusted input to the model,
+pages, catalog entity fields, MCP results, client tool results) is untrusted input to the model,
 and a page an assistant reads can carry instructions the model may follow. The
 approval gate (`requireApproval` and `mcp.servers.<id>.requireApproval`) is
 the enforced checkpoint: a listed tool never runs without an explicit Allow in
@@ -617,7 +647,14 @@ list every write-capable action (`register-entity`, `unregister-entity`,
 `execute-template`, and any MCP tool that mutates) there. Backstage permissions
 still apply to each approved Backstage action, since it runs as the calling
 user. An approved MCP tool runs with its server's configured credential, so
-Backstage permissions do not limit it.
+Backstage permissions do not limit it. A client tool runs in the user's browser
+with the user's own credential for that system, so it can do only what the
+user can; one that writes always asks first.
+
+The browser declares client tools on each `/chat` request and the backend
+offers only the ones in the assistant's allowlist, so a user cannot attach
+tools an admin did not assign. A forged declaration could only make the model
+call code in that user's own browser with that user's own credentials.
 
 ## Reference
 
@@ -632,7 +669,7 @@ All keys sit under `assistants`. `assistants.semanticSearch` belongs to the
 | `maxSteps`                                | `10`       | Max tool-call steps per turn.                                                                                                                                            |
 | `builtinActions`                          | `false`    | Register built-in catalog/TechDocs read tools.                                                                                                                           |
 | `toolResultMaxChars`                      | `30000`    | Max chars of a single tool result (head+tail truncation; `0` disables).                                                                                                  |
-| `requireApproval`                         | `[]`       | Action ids gated by Allow / Deny in the conversation.                                                                                                                    |
+| `requireApproval`                         | `[]`       | Action ids, MCP tool names, and client tool names gated by Allow / Deny in the conversation.                                                                             |
 | `requestBodyLimit`                        | `10mb`     | JSON body limit for every plugin request, sized for `/chat` attachments.                                                                                                 |
 | `providers.<id>.type`                     | required   | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                               |
 | `providers.<id>.apiKey`                   | required   | Provider key (secret).                                                                                                                                                   |
@@ -681,25 +718,25 @@ All routes are under `/api/assistants`. `/status`, `/chat`, and the thread
 list, create, and status routes also apply the per-assistant access policy;
 every conversation route is scoped to the owning user.
 
-| Route                           | Permission         | Purpose                                                     |
-| ------------------------------- | ------------------ | ----------------------------------------------------------- |
-| `GET /status`                   | `assistant.use`    | Accessible assistants, model pool and defaults, tool lists. |
-| `POST /chat`                    | `assistant.use`    | Run a turn; streams the reply.                              |
-| `GET /chat/resume/:threadId`    | `assistant.use`    | Rejoin an in-flight reply's stream.                         |
-| `POST /chat/cancel/:threadId`   | `assistant.use`    | Stop an in-flight reply.                                    |
-| `GET /threads`                  | `assistant.use`    | List the caller's conversations; `?assistantId=` filters.   |
-| `POST /threads`                 | `assistant.use`    | Create a conversation.                                      |
-| `GET /threads/status`           | `assistant.use`    | Working, unread, and token count per conversation.          |
-| `GET /threads/:id`              | `assistant.use`    | One conversation.                                           |
-| `PATCH /threads/:id`            | `assistant.use`    | Rename, pin, archive, or change model or reasoning level.   |
-| `DELETE /threads/:id`           | `assistant.use`    | Delete a conversation and its messages.                     |
-| `POST /threads/:id/read`        | `assistant.use`    | Mark a conversation read.                                   |
-| `GET /threads/:id/messages`     | `assistant.use`    | A conversation's messages.                                  |
-| `GET /capabilities`             | `assistant.manage` | Assignable inventory for the editor.                        |
-| `GET /manage/assistants`        | `assistant.manage` | All assistant definitions.                                  |
-| `POST /manage/assistants`       | `assistant.manage` | Create an assistant.                                        |
-| `PUT /manage/assistants/:id`    | `assistant.manage` | Replace an assistant definition.                            |
-| `DELETE /manage/assistants/:id` | `assistant.manage` | Delete an assistant.                                        |
+| Route                           | Permission         | Purpose                                                                                 |
+| ------------------------------- | ------------------ | --------------------------------------------------------------------------------------- |
+| `GET /status`                   | `assistant.use`    | Accessible assistants, model pool and defaults, tool lists, the approval floor's names. |
+| `POST /chat`                    | `assistant.use`    | Run a turn; streams the reply. `tools` carries client tool declarations.                |
+| `GET /chat/resume/:threadId`    | `assistant.use`    | Rejoin an in-flight reply's stream.                                                     |
+| `POST /chat/cancel/:threadId`   | `assistant.use`    | Stop an in-flight reply.                                                                |
+| `GET /threads`                  | `assistant.use`    | List the caller's conversations; `?assistantId=` filters.                               |
+| `POST /threads`                 | `assistant.use`    | Create a conversation.                                                                  |
+| `GET /threads/status`           | `assistant.use`    | Working, unread, and token count per conversation.                                      |
+| `GET /threads/:id`              | `assistant.use`    | One conversation.                                                                       |
+| `PATCH /threads/:id`            | `assistant.use`    | Rename, pin, archive, or change model or reasoning level.                               |
+| `DELETE /threads/:id`           | `assistant.use`    | Delete a conversation and its messages.                                                 |
+| `POST /threads/:id/read`        | `assistant.use`    | Mark a conversation read.                                                               |
+| `GET /threads/:id/messages`     | `assistant.use`    | A conversation's messages.                                                              |
+| `GET /capabilities`             | `assistant.manage` | Assignable inventory for the editor.                                                    |
+| `GET /manage/assistants`        | `assistant.manage` | All assistant definitions.                                                              |
+| `POST /manage/assistants`       | `assistant.manage` | Create an assistant.                                                                    |
+| `PUT /manage/assistants/:id`    | `assistant.manage` | Replace an assistant definition.                                                        |
+| `DELETE /manage/assistants/:id` | `assistant.manage` | Delete an assistant.                                                                    |
 
 ### Admin API
 

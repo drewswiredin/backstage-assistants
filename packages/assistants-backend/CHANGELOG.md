@@ -3,6 +3,19 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `POST /chat` accepts `tools`: the client tools the browser registers, each a description, a JSON Schema, and `attributes`. A declared tool is offered to the model without `execute` when it is a built-in or named in the assistant's `allowedTools`, its name is `<namespace>__<tool>`, it collides with no server tool, and it is within the limits (30 per request, 4000-character description, 8192-character schema). Everything else is dropped and logged. Client tool results are capped to the same budget as server tool results.
+- `GET /status` returns `requireApproval`, the global approval floor, so the browser can gate a client tool named there.
+- `allowedTools` accepts `<namespace>__<tool>` client tool names; the editor validates them in the browser, and `/status` lists them with `source: "client"`.
+- The log line for a provider error carries the provider's response body.
+
+### Changed
+
+- `render_form` and `download_file` are declared by the frontend like any other client tool; the backend no longer defines them. Requires frontend 0.16.0.
+
 ## 0.17.7 - 2026-10-15
 
 ### Changed

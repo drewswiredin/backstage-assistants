@@ -3,6 +3,17 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `AssistantClientToolBlueprint`: a plugin or module registers a tool that runs in the browser as the signed-in user. A tool declares `attributes` (`readOnly`, `destructive`, `idempotent`), and may declare `auth` (`oauth` through a Backstage OAuth API ref, or a `custom` acquirer), `render`, `isAvailable`, and `timeoutMs`. A tool that is not read-only, is destructive, or is named in the global `requireApproval` asks for approval before every call; a tool that needs a credential shows a Connect control first. Credentials never leave the browser. Only tools in the assistant's allowlist are offered.
+- The assistant editor lists registered client tools under "Browser tools" and marks those that ask for approval; the details dialog groups them under "Browser".
+
+### Changed
+
+- `render_form` and `download_file` are client tools registered through the blueprint, with their descriptions and schemas in this package. Requires backend 0.18.0.
+
 ## 0.15.4 - 2026-10-15
 
 ### Fixed
