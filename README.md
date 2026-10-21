@@ -58,6 +58,11 @@ their server's configured credential.
 - **MCP servers.** Give an assistant tools outside Backstage. Each server runs
   under the one credential you configure for it, shared by everyone who uses
   the assistant.
+- **Tools from your own plugins.** A frontend plugin can contribute tools
+  that run in the browser as the user, with the user's own credentials, so an
+  assistant can reach a system the portal already talks to as them (a
+  Kubernetes cluster, a repository host behind their OAuth session). A tool
+  that writes asks before every call.
 - **Approval gate.** Require an Allow in the conversation before the actions
   you choose run (Always allow covers the rest of that conversation); nothing is gated by default and nothing runs behind
   the user's back.

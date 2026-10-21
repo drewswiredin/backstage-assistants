@@ -13,7 +13,7 @@
 | `@backstage/backend-plugin-api/alpha` (Actions), `@ai-sdk/mcp`       | Backstage actions run as the user; MCP servers run as a configured credential; both become AI SDK tools                                                                                |
 | `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react` | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                                                                                               |
 | `@backstage/backend-plugin-api`, `backend-openapi-utils`             | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                                                                                       |
-| `coreServices.database` with `knex`                                  | The `threads`, `messages`, `assistants`, and `assistants_meta` tables on SQLite, Postgres, or MySQL                                                                                    |
+| `coreServices.database` with `knex`                                  | The `threads`, `messages`, `stream_chunks`, `assistants`, and `assistants_meta` tables on SQLite, Postgres, or MySQL                                                                   |
 | `vector` (pgvector), `pg_trgm`, `ai` `embedMany`                     | The knowledge index module: hybrid semantic, fuzzy, and keyword retrieval in the plugin's Postgres database                                                                            |
 | `@backstage/plugin-signals-node`, `-react`                           | Real-time working and unread indicators; the browser polls when the host has no Signals API                                                                                            |
 | `mermaid`, `remark-gfm`, `@material-ui/core` v4                      | Diagrams and GitHub-flavoured Markdown in replies; Backstage's component theme                                                                                                         |
@@ -59,7 +59,7 @@ flowchart LR
 | Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts`            | `AssistantStore` with its snapshot; `ThreadService`, the only message writer              |
 | MCP pool        | `packages/assistants-backend/src/mcp.ts`                                 | One client per server per process, the tool cache                                         |
 | Knowledge index | `packages/assistants-backend-module-semantic-search/src/`                | The index refresh task and the `search-knowledge` action                                  |
-| Database        | Backstage `backend.database`                                             | The four plugin tables, plus the two knowledge index tables on Postgres                   |
+| Database        | Backstage `backend.database`                                             | The five plugin tables, plus the two knowledge index tables on Postgres                   |
 | LLM providers   | `packages/assistants-backend/src/config.ts`                              | The AI SDK provider registry built from config                                            |
 
 ## Routes
@@ -68,7 +68,7 @@ Every route accepts user tokens only. `/chat` applies the per-assistant access p
 
 | Method | Path                     | Gate               | Reads                                                                                                      | Writes                                                                        | Signals                              |
 | ------ | ------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
-| GET    | `/status`                | `assistant.use`    | snapshot, `actions.list`, MCP tool cache                                                                   |                                                                               |                                      |
+| GET    | `/status`                | `assistant.use`    | snapshot, `actions.list`, MCP tool cache, the config floor                                                 |                                                                               |                                      |
 | POST   | `/chat`                  | `assistant.use`    | assistant row (DB), thread row, `actions.list`, pool                                                       | `messages`, `threads` `updated_at`, `model`, `last_tokens`, turn state, title | turn-started, turn-finished, updated |
 | GET    | `/chat/resume/:threadId` | `assistant.use`    | thread row, `stream_chunks`                                                                                |                                                                               |                                      |
 | POST   | `/chat/cancel/:threadId` | `assistant.use`    | `threads` turn state, abort handle                                                                         | `turn_cancel_requested`                                                       | turn-finished                        |
@@ -389,23 +389,23 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 
 ## Config and database seam
 
-| Field                                                | Owner  | Why                                                            | Browser                         |
-| ---------------------------------------------------- | ------ | -------------------------------------------------------------- | ------------------------------- |
-| `providers.*.apiKey`                                 | config | Secret                                                         | no                              |
-| `providers.*` (`type`, `baseUrl`, `options`)         | config | Platform wiring                                                | no                              |
-| `providers.*.models[].contextWindow`, `reasoning`    | config | Per-model facts the picker and gauge need                      | yes                             |
-| `providers.*.models[].maxOutputTokens`               | config | Output ceiling passed to `streamText`                          | no                              |
-| `mcp.servers.*.headers`, `env`                       | config | Secret                                                         | no                              |
-| `mcp.servers.*` connection, `connectTimeoutMs`       | config | Platform wiring                                                | no                              |
-| `mcp.connectTimeoutMs`                               | config | Platform default for every server                              | no                              |
-| `requireApproval`, `mcp.servers.*.requireApproval`   | config | Safety floor; not weakenable at runtime                        | badge only, via `/capabilities` |
-| `maxSteps`, `toolResultMaxChars`, `requestBodyLimit` | config | Runtime guards                                                 | no                              |
-| `defaultModel`, `builtinActions`                     | config | Platform default; opt-in built-in actions                      | `defaultModel` only             |
-| `semanticSearch.embeddingModel`, `schedule`          | config | Platform wiring; the model's provider key stays in `providers` | no                              |
-| `definition.prompt`, `access`                        | DB     | Editable content and assignment                                | no; `/manage` only              |
-| `definition.allowedTools`                            | DB     | Editable assignment                                            | as tool summaries               |
-| `definition.title`, `description`, `color`, `ui`     | DB     | Editable content                                               | yes                             |
-| `definition.models`, `defaultModel`                  | DB     | Editable allowlist; empty means the full pool                  | yes                             |
+| Field                                                | Owner  | Why                                                            | Browser                                        |
+| ---------------------------------------------------- | ------ | -------------------------------------------------------------- | ---------------------------------------------- |
+| `providers.*.apiKey`                                 | config | Secret                                                         | no                                             |
+| `providers.*` (`type`, `baseUrl`, `options`)         | config | Platform wiring                                                | no                                             |
+| `providers.*.models[].contextWindow`, `reasoning`    | config | Per-model facts the picker and gauge need                      | yes                                            |
+| `providers.*.models[].maxOutputTokens`               | config | Output ceiling passed to `streamText`                          | no                                             |
+| `mcp.servers.*.headers`, `env`                       | config | Secret                                                         | no                                             |
+| `mcp.servers.*` connection, `connectTimeoutMs`       | config | Platform wiring                                                | no                                             |
+| `mcp.connectTimeoutMs`                               | config | Platform default for every server                              | no                                             |
+| `requireApproval`, `mcp.servers.*.requireApproval`   | config | Safety floor; not weakenable at runtime                        | names via `/status`; badge via `/capabilities` |
+| `maxSteps`, `toolResultMaxChars`, `requestBodyLimit` | config | Runtime guards                                                 | no                                             |
+| `defaultModel`, `builtinActions`                     | config | Platform default; opt-in built-in actions                      | `defaultModel` only                            |
+| `semanticSearch.embeddingModel`, `schedule`          | config | Platform wiring; the model's provider key stays in `providers` | no                                             |
+| `definition.prompt`, `access`                        | DB     | Editable content and assignment                                | no; `/manage` only                             |
+| `definition.allowedTools`                            | DB     | Editable assignment                                            | as tool summaries                              |
+| `definition.title`, `description`, `color`, `ui`     | DB     | Editable content                                               | yes                                            |
+| `definition.models`, `defaultModel`                  | DB     | Editable allowlist; empty means the full pool                  | yes                                            |
 
 `/status` returns the browser-safe half: assistant summaries, each assistant's effective tools (client tools by name only, described in the browser), the model pool, the platform default, and the approval floor's tool names. Full definitions reach only the editor over `/manage/assistants`. `/chat` merges both halves: the platform instructions followed by the prompt become `instructions`, the pool resolves the model, and the floor becomes `toolApproval`.
 

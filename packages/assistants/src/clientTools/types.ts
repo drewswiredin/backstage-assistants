@@ -84,7 +84,7 @@ export interface AssistantClientTool<
   name: string;
   /** Shown instead of the name in approval and connect prompts. */
   title?: string;
-  /** What the tool does, for the model. At most 1000 characters. */
+  /** What the tool does, for the model. At most 4000 characters. */
   description: string;
   /** JSON Schema (`type: object`) of the input, at most 8 KB serialized. */
   inputSchema: JsonObject;

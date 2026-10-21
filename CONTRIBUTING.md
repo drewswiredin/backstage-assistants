@@ -21,14 +21,15 @@ module needs.
 
 ## Commands
 
-| Command               | What it does                                    |
-| --------------------- | ----------------------------------------------- |
-| `yarn start`          | Dev app (frontend + backend) with `.env` loaded |
-| `yarn tsc`            | Typecheck the whole repo                        |
-| `yarn lint:all`       | Lint every package                              |
-| `yarn prettier:check` | Formatting check                                |
-| `yarn test`           | Unit tests                                      |
-| `yarn build:all`      | Build every package                             |
+| Command                              | What it does                                        |
+| ------------------------------------ | --------------------------------------------------- |
+| `yarn start`                         | Dev app (frontend + backend) with `.env` loaded     |
+| `yarn tsc`                           | Typecheck the whole repo                            |
+| `yarn lint:all`                      | Lint every package                                  |
+| `yarn prettier:check`                | Formatting check                                    |
+| `yarn test`                          | Unit tests                                          |
+| `yarn build:all`                     | Build every package                                 |
+| `yarn dedupe --check '@backstage/*'` | One copy of every Backstage package in the lockfile |
 
 Run all of them before opening a pull request.
 

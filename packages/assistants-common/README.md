@@ -40,6 +40,27 @@ Types:
   `CapabilityAction` and `McpServerCapability`.
 - `AssistantId`, `ModelId` (`<providerId>:<model>`), `ReasoningLevel` and the
   `REASONING_LEVELS` constant (`low`, `medium`, `high`, `max`).
+- `StatusResponse.requireApproval`: the global approval floor as tool names,
+  which the browser uses to gate client tools.
+
+Client tools (the browser-to-backend contract for tools that run in the
+user's browser; the blueprint itself is in the frontend package):
+
+- `ClientToolAttributes` (`readOnly`, `destructive`, `idempotent`) and
+  `ClientToolDeclaration`, the per-request declaration (`description`,
+  JSON Schema `parameters`, `attributes`).
+- `ClientToolError` and `ClientToolErrorCode` (`declined`, `not_authorized`,
+  `timeout`, `aborted`, `failed`): the `_error` result a client tool returns
+  instead of throwing.
+- `CLIENT_TOOL_NAME_PATTERN` (`<namespace>__<tool>`), `BUILTIN_CLIENT_TOOLS`
+  (`render_form`, `download_file`), `CLIENT_TOOL_LIMITS` (30 per request,
+  4000-character description, 8192-character schema), and
+  `isClientToolName`.
+
+Platform instructions:
+
+- `PLATFORM_INSTRUCTIONS`: the fixed text the backend sends before every
+  assistant's prompt; the editor shows it read-only.
 
 ## License
 

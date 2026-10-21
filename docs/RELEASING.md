@@ -19,7 +19,21 @@ git checkout main
 git merge --ff-only dev
 ```
 
-## 1. Version and changelog
+## 1. Backstage ranges
+
+```bash
+yarn backstage-cli versions:bump
+yarn dedupe --check '@backstage/*'
+```
+
+Every `@backstage/*` range in the published packages must match the current
+Backstage release, or a consumer on that release installs a second copy of
+each lagging package (`^0.0.x` ranges match one version only). The bump also
+moves `backstage.json`; move the "Backstage N or later" floor in the READMEs
+and add "Backstage dependency ranges track the N release line" to each
+changed package's changelog. CI runs the dedupe check.
+
+## 2. Version and changelog
 
 1. Bump `version` in each `package.json` that changes, `-common`
    first. When `-common` bumps, update the range the frontend and backend declare
@@ -28,15 +42,15 @@ git merge --ff-only dev
    version and date.
 3. `yarn install` to refresh the lockfile.
 
-## 2. Verify
+## 3. Verify
 
 ```bash
 yarn tsc && yarn lint:all && yarn prettier:check && yarn test && yarn build:all
 ```
 
-## 3. Pack and inspect
+## 4. Pack and inspect
 
-Per package:
+Per package (`*.tgz` is gitignored):
 
 ```bash
 cd packages/<p>
@@ -49,7 +63,7 @@ In the extracted `package.json`:
 - no dependency value starts with `patch:` or `workspace:`;
 - `exports` (and `main`, `types`) point at `dist/`, not `src/`.
 
-## 4. Publish from the tarball
+## 5. Publish from the tarball
 
 ```bash
 npm publish ./drewswiredin-backstage-plugin-<p>-<version>.tgz --access public
@@ -65,7 +79,7 @@ Verify each:
 npm view @drewswiredin/backstage-plugin-<p>@<version> exports main
 ```
 
-## 5. Commit and tag
+## 6. Commit and tag
 
 ```bash
 git commit -s -m "chore(release): common X, backend Y, frontend Z, semantic search S"
@@ -82,7 +96,7 @@ git push origin dev
 Tags are annotated so `--follow-tags` pushes them. One tag per published
 package; skip the tag for a package that did not publish.
 
-## 6. Consumer check
+## 7. Consumer check
 
 In a throwaway directory, install what the registry serves and prove it loads
 and bundles:

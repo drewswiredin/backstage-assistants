@@ -19,6 +19,8 @@ Pairs with the frontend plugin
 - [Add an MCP server](#add-an-mcp-server)
 - [Require approval before a tool runs](#require-approval-before-a-tool-runs)
 - [Forms and downloads in the conversation](#forms-and-downloads-in-the-conversation)
+- [Client tools: run in the browser as the user](#client-tools-run-in-the-browser-as-the-user)
+- [Platform instructions](#platform-instructions)
 - [Run a scaffolder template from the conversation](#run-a-scaffolder-template-from-the-conversation)
 - [Grant assistant.use and assistant.manage](#grant-assistantuse-and-assistantmanage)
 - [Run in production](#run-in-production)
@@ -576,8 +578,9 @@ status every 5 seconds, so indicators clear without that delivery.
 Migrations are forward-only and run at startup. Upgrade the backend before or
 with the database; a backend older than the database's newest migration fails
 at startup with knex's "migration directory is corrupt". Back up the four
-tables (`assistants`, `assistants_meta`, `threads`, `messages`) together before
-upgrading.
+durable tables (`assistants`, `assistants_meta`, `threads`, `messages`)
+together before upgrading; `stream_chunks` holds only in-flight replies and
+needs no backup.
 
 ### Logs
 
@@ -585,14 +588,17 @@ upgrading.
   `defaultModel`, `builtinActions`, and `assistants` counts.
 - Per turn, at info: `chat turn started`, then `chat turn finished` or
   `chat turn aborted (stop)`; a failure logs `chat turn errored` at error with
-  the provider's message.
+  the provider's message and, for a provider error, the response body.
 - Warnings to expect: `Assistant action '<name>' is not available; skipping`
   (an `allowedTools` entry the actions service does not expose),
   `MCP server '<id>' tool listing failed: ...` (the last-known tool list stays
   in place), `requireApproval lists tool(s) not available to assistant '<id>':
 ...` (a gated tool the assistant has that did not resolve this turn),
-  `MCP server '<id>' not connected; '<tool>' skipped this turn`, and
-  `auto-title failed` (the conversation keeps its current title).
+  `MCP server '<id>' not connected; '<tool>' skipped this turn`,
+  `client tool '<name>' dropped: <reason>` (a browser declaration the backend
+  will not offer: not in the allowlist, a bad name, a server-tool collision,
+  or over a size limit), and `auto-title failed` (the conversation keeps its
+  current title).
 - At info, per turn with a gate: `Approval gate active for assistant '<id>'`.
 - A provider failure reaches the conversation as `The assistant couldn't finish
 this turn: <reason>` and logs `chat stream error surfaced to client`.
@@ -617,7 +623,7 @@ Prompts and access policies never reach the chat surface; only the
 `mcp.servers.*.headers` are secret: redacted in logs, API responses, and the
 DevTools config view. The browser receives only a projection over
 `GET /status`: titles, descriptions, the model pool and defaults, the resolved
-tool list (name and description), and `ui`.
+tool list (name and description), the approval floor's tool names, and `ui`.
 
 What leaves the cluster: per turn the backend sends the configured model
 provider the platform instructions and the assistant's system prompt, the full conversation history
@@ -628,9 +634,10 @@ caller's identity (user entity ref, groups, credentials) is not sent to the
 provider. MCP servers receive only the tool arguments the model produces,
 under the server's configured static credential.
 
-What is stored: four tables in the plugin database: `assistants`
+What is stored: five tables in the plugin database: `assistants`
 (`definition_json`, including the prompt and access policy), `assistants_meta`
-(the seed-once marker), `threads`, and `messages`. Every message (user text,
+(the seed-once marker), `threads`, `messages`, and `stream_chunks`, which
+holds a running reply's stream for 60 seconds after the turn completes. Every message (user text,
 attachments, assistant output, and tool results truncated at
 `toolResultMaxChars`, default 30000) persists in `messages.content_json` until
 the user deletes the conversation, which is a hard delete; nothing is retained

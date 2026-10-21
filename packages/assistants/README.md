@@ -208,14 +208,14 @@ export const SidebarContent = NavContentBlueprint.make({
 The plugin itself is the default export of the `./alpha` subpath. The package
 root exports what a host app needs to integrate with it:
 
-| Export                                                                                                   | Purpose                                                                                 |
-| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `rootRouteRef`                                                                                           | Route ref for the `/assistants` page.                                                   |
-| `assistantsApiRef`                                                                                       | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.      |
-| `AssistantsNavIcon`                                                                                      | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none. |
-| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                          | The client interface and its row/patch shapes.                                          |
-| `AssistantClientToolBlueprint`, `clientToolDataRef`                                                      | Contribute a client tool (see [Client tools](#client-tools)).                           |
-| `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps` (types) | The client tool contract.                                                               |
+| Export                                                                                                                          | Purpose                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `rootRouteRef`                                                                                                                  | Route ref for the `/assistants` page.                                                                         |
+| `assistantsApiRef`                                                                                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.                            |
+| `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none.                       |
+| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                |
+| `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                 |
+| `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps`, `ClientToolInterrupt` (types) | The client tool contract; `ClientToolInterrupt` is the approval or connect prompt a custom `render` receives. |
 
 ### Chat panel
 
