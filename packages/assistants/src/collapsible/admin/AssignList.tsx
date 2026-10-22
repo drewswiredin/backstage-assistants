@@ -37,6 +37,8 @@ export interface AssignRow {
   tone?: RowTone;
   /** Optional leading icon. */
   icon?: ReactNode;
+  /** A row that cannot be removed (no remove control). */
+  locked?: boolean;
   /** Group key for the grouped assigned list (first-seen order is preserved). */
   group?: string;
 }
@@ -307,16 +309,18 @@ export function AssignList({
       {renderRowAction && (
         <span className={classes.action}>{renderRowAction(row)}</span>
       )}
-      <Tooltip title="Remove">
-        <IconButton
-          size="small"
-          className={classes.action}
-          aria-label={`Remove ${row.label}`}
-          onClick={() => onRemove(row.id)}
-        >
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
+      {!row.locked && (
+        <Tooltip title="Remove">
+          <IconButton
+            size="small"
+            className={classes.action}
+            aria-label={`Remove ${row.label}`}
+            onClick={() => onRemove(row.id)}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
     </div>
   );
 

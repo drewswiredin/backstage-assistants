@@ -22,6 +22,7 @@ export interface AssistantDefinition {
   defaultModel: ModelId | null;
   description?: string;
   id: AssistantId;
+  isDefault?: boolean;
   models: ModelId[];
   prompt: string;
   title: string;
@@ -45,6 +46,7 @@ export interface AssistantSummary {
   defaultModel?: ModelId;
   description?: string;
   id: AssistantId;
+  isDefault?: boolean;
   models?: ModelId[];
   title: string;
   tools?: ToolSummary[];
@@ -153,6 +155,7 @@ export type ReasoningLevel = 'low' | 'medium' | 'high' | 'max';
 // @public
 export interface StatusResponse {
   assistants: AssistantSummary[];
+  defaultAssistant?: AssistantId;
   defaultModel: ModelId;
   models: ModelOption[];
   requireApproval: string[];

@@ -110,15 +110,12 @@ export default createApp({
 });
 ```
 
-To pin the assistant it talks to (the first accessible one otherwise):
-
-```yaml
-app:
-  extensions:
-    - app-root-wrapper:app/assistants-panel:
-        config:
-          assistant: platform
-```
+The panel opens the default assistant, the one every signed-in user gets
+(designated in the editor with "Make default"). A user who can access more
+than one assistant picks another from the menu on the assistant's name in the
+panel header; the pick is remembered in that browser and starts a fresh
+conversation. If the picked assistant goes away, the panel falls back to the
+default.
 
 `Ctrl+/` (`⌘/` on macOS) toggles the panel. Hide (the chevron, `Esc`, or a
 click on the page) collapses it to a strip at the right edge with the
@@ -185,7 +182,10 @@ On first start the backend seeds one assistant, open to every signed-in user,
 with the three built-in read tools. Open `/assistants` and talk to it.
 
 Users with the `assistant.manage` permission see a gear in the chat sidebar
-that opens the editor to create, edit, and delete assistants. Under
+that opens the editor to create, edit, and delete assistants, and to choose
+the default assistant with "Make default". Exactly one assistant is the
+default: it is open to every signed-in user, listed first, and cannot be
+deleted or restricted until another is made the default. Under
 create-app's default allow-all permission policy every signed-in user holds
 both `assistant.use` and `assistant.manage`; grant them to the right users in
 your permission policy, as described in the

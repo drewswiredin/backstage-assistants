@@ -9,7 +9,6 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { AppRootWrapperBlueprint } from '@backstage/plugin-app-react';
 import { RiRobot2Line } from '@remixicon/react';
-import { z } from 'zod';
 import { rootRouteRef, threadRouteRef } from './routes';
 import { assistantsApiRef, AssistantsClient } from './api';
 import { AssistantClientToolBlueprint, clientToolDataRef } from './clientTools';
@@ -112,27 +111,20 @@ export default createFrontendPlugin({
  * createApp({ features: [assistantsPlugin, assistantsPanelModule] });
  * ```
  *
- * `config.assistant` on `app-root-wrapper:app/assistants-panel` pins the
- * assistant.
+ * The panel opens the default assistant (designated in the editor) until the
+ * user picks another accessible one.
  *
  * @public
  */
 export const assistantsPanelModule = createFrontendModule({
   pluginId: 'app',
   extensions: [
-    AppRootWrapperBlueprint.makeWithOverrides({
+    AppRootWrapperBlueprint.make({
       name: 'assistants-panel',
-      configSchema: {
-        assistant: z.string().optional(),
-      },
-      factory(originalFactory, { config }) {
-        return originalFactory({
-          component: ({ children }) => (
-            <AssistantsPanel assistant={config.assistant}>
-              {children}
-            </AssistantsPanel>
-          ),
-        });
+      params: {
+        component: ({ children }) => (
+          <AssistantsPanel>{children}</AssistantsPanel>
+        ),
       },
     }),
   ],

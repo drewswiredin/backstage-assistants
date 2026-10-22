@@ -129,6 +129,12 @@ export interface AssistantsApi {
 
   /** Delete an assistant (`DELETE /manage/assistants/:id`). */
   deleteAssistant(id: AssistantId): Promise<void>;
+
+  /**
+   * Designate the default assistant (`PUT /manage/assistants/:id/default`).
+   * Opens it to every signed-in user; returns the persisted definition.
+   */
+  setDefaultAssistant(id: AssistantId): Promise<AssistantDefinition>;
 }
 
 /**
@@ -251,6 +257,13 @@ export class AssistantsClient implements AssistantsApi {
     await this.requestJson(`/manage/assistants/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+  }
+
+  async setDefaultAssistant(id: AssistantId): Promise<AssistantDefinition> {
+    return this.requestJson<AssistantDefinition>(
+      `/manage/assistants/${encodeURIComponent(id)}/default`,
+      { method: 'PUT' },
+    );
   }
 
   private async toError(response: Response): Promise<Error> {

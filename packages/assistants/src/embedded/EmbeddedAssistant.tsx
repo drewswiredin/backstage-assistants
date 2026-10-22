@@ -12,12 +12,19 @@ import { usePermission } from '@backstage/plugin-permission-react';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   Button,
+  ButtonBase,
   IconButton,
   LinearProgress,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Tooltip,
   Typography,
 } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
+import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
+import CheckIcon from '@material-ui/icons/Check';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import CloseIcon from '@material-ui/icons/Close';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
@@ -49,6 +56,7 @@ import {
 } from '../collapsible/threadListAdapter';
 import { makeRuntimeHook } from '../collapsible/useAssistantRuntime';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
+import { resolvePanelAssistant } from '../panel/panelStorage';
 
 /**
  * One conversation outside the Assistants page: the assistant's defaults for
@@ -63,8 +71,13 @@ import { useThreadStatus } from '../collapsible/useThreadStatus';
  * over; a prop change alone never remounts, so a stream is never cut.
  */
 export interface EmbeddedAssistantProps {
-  /** Pin an assistant by id; the first accessible one otherwise. */
+  /**
+   * The user's pick, when still accessible; else the default assistant
+   * (`/status`), else the first accessible one.
+   */
   assistantId?: string;
+  /** The user picked another assistant in the header menu. */
+  onAssistantChange: (assistantId: string) => void;
   /** The conversation to show (a server thread id), or none. */
   threadId?: string;
   /** The conversation's server id once it exists. */
@@ -104,6 +117,20 @@ const useStyles = makeStyles(theme => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontWeight: 600,
+  },
+  // The assistant name as a menu trigger when there is more than one.
+  picker: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5, 0.5, 0.5, 0),
+    borderRadius: theme.shape.borderRadius,
+    textAlign: 'left',
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
   },
   body: {
     flex: 1,
@@ -167,8 +194,11 @@ export function EmbeddedAssistant(props: EmbeddedAssistantProps) {
     );
   }
   const assistants = status.value.assistants;
-  const assistant =
-    assistants.find(a => a.id === props.assistantId) ?? assistants[0];
+  const assistant = resolvePanelAssistant(
+    assistants,
+    props.assistantId,
+    status.value.defaultAssistant,
+  );
   if (!assistant) {
     return (
       <div className={classes.root}>
@@ -201,6 +231,7 @@ function EmbeddedChat({
   onNew,
   onHide,
   onClose,
+  onAssistantChange,
 }: EmbeddedAssistantProps & {
   status: StatusResponse;
   assistant: AssistantSummary;
@@ -241,6 +272,7 @@ function EmbeddedChat({
       onNew={onNew}
       onHide={onHide}
       onClose={onClose}
+      onAssistantChange={onAssistantChange}
     />
   );
 }
@@ -256,6 +288,7 @@ function EmbeddedRuntime({
   onNew,
   onHide,
   onClose,
+  onAssistantChange,
 }: {
   api: AssistantsApi;
   baseUrl: string;
@@ -267,6 +300,7 @@ function EmbeddedRuntime({
   onNew: () => void;
   onHide: () => void;
   onClose: () => void;
+  onAssistantChange: (assistantId: string) => void;
 }) {
   // The assistant's default when the pool still offers it, else the
   // platform default (an assistant can outlive a model it was given).
@@ -332,6 +366,7 @@ function EmbeddedRuntime({
         onNew={onNew}
         onHide={onHide}
         onClose={onClose}
+        onAssistantChange={onAssistantChange}
       />
     </AssistantRuntimeProvider>
   );
@@ -350,6 +385,7 @@ function EmbeddedChrome({
   onNew,
   onHide,
   onClose,
+  onAssistantChange,
 }: {
   runtime: AssistantRuntime;
   api: AssistantsApi;
@@ -363,8 +399,12 @@ function EmbeddedChrome({
   onNew: () => void;
   onHide: () => void;
   onClose: () => void;
+  onAssistantChange: (assistantId: string) => void;
 }) {
   const classes = useStyles();
+  // The assistant picker, offered only when there is a choice.
+  const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
+  const canPick = status.assistants.length > 1;
 
   // The runtime's view of the one thread: its server id (set by the first
   // send, or the remembered one once listed) and its saved model.
@@ -409,10 +449,58 @@ function EmbeddedChrome({
   return (
     <div className={classes.root}>
       <div className={classes.header}>
-        <AssistantAvatar color={assistant.color} size={24} />
-        <Typography variant="subtitle2" className={classes.title}>
-          {assistant.title}
-        </Typography>
+        {canPick ? (
+          <>
+            <ButtonBase
+              className={classes.picker}
+              onClick={e => setPickerAnchor(e.currentTarget)}
+              aria-haspopup="menu"
+              aria-label={`Assistant: ${assistant.title}. Choose another`}
+            >
+              <AssistantAvatar color={assistant.color} size={24} />
+              <Typography variant="subtitle2" className={classes.title}>
+                {assistant.title}
+              </Typography>
+              <ArrowDropDownIcon fontSize="small" color="action" />
+            </ButtonBase>
+            <Menu
+              anchorEl={pickerAnchor}
+              open={pickerAnchor !== null}
+              onClose={() => setPickerAnchor(null)}
+              getContentAnchorEl={null}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            >
+              {status.assistants.map(a => (
+                <MenuItem
+                  key={a.id}
+                  selected={a.id === assistant.id}
+                  onClick={() => {
+                    setPickerAnchor(null);
+                    if (a.id !== assistant.id) onAssistantChange(a.id);
+                  }}
+                >
+                  <ListItemIcon>
+                    <AssistantAvatar color={a.color} size={22} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={a.title}
+                    secondary={a.isDefault ? 'Default' : undefined}
+                  />
+                  {a.id === assistant.id && (
+                    <CheckIcon fontSize="small" color="action" />
+                  )}
+                </MenuItem>
+              ))}
+            </Menu>
+          </>
+        ) : (
+          <>
+            <AssistantAvatar color={assistant.color} size={24} />
+            <Typography variant="subtitle2" className={classes.title}>
+              {assistant.title}
+            </Typography>
+          </>
+        )}
         {remoteId && (
           <Tooltip title="New chat">
             <IconButton size="small" onClick={onNew} aria-label="New chat">

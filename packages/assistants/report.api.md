@@ -80,6 +80,7 @@ export interface AssistantsApi {
   markThreadRead(threadId: string): Promise<void>;
   patchThread(threadId: string, patch: ThreadPatch): Promise<void>;
   requestJson<T = void>(path: string, init?: RequestInit): Promise<T>;
+  setDefaultAssistant(id: AssistantId): Promise<AssistantDefinition>;
   updateAssistant(
     id: AssistantId,
     definition: AssistantDefinition,

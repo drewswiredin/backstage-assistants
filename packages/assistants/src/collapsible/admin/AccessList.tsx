@@ -74,9 +74,12 @@ const anyIcon = <PeopleAltOutlinedIcon fontSize="small" />;
 export function AccessList({
   access,
   onChange,
+  lockAnySignedIn = false,
 }: {
   access: AssistantAccess;
   onChange: (next: AssistantAccess) => void;
+  /** The default assistant: "Any signed-in user" stays on. */
+  lockAnySignedIn?: boolean;
 }) {
   const catalogApi = useApi(catalogApiRef);
 
@@ -124,7 +127,12 @@ export function AccessList({
   const rows: AssignRow[] = useMemo(() => {
     const result: AssignRow[] = [];
     if (access.allowAuthenticated) {
-      result.push({ id: ANY_AUTH, label: ANY_AUTH_LABEL, icon: anyIcon });
+      result.push({
+        id: ANY_AUTH,
+        label: ANY_AUTH_LABEL,
+        icon: anyIcon,
+        locked: lockAnySignedIn,
+      });
     }
     for (const ref of access.users) {
       result.push({ id: ref, label: refLabel(ref), icon: personIcon });
@@ -133,7 +141,7 @@ export function AccessList({
       result.push({ id: ref, label: refLabel(ref), icon: groupIcon });
     }
     return result;
-  }, [access]);
+  }, [access, lockAnySignedIn]);
 
   // Picker options: Any-signed-in (unless on) + catalog refs not yet assigned.
   const options: AssignOption[] = useMemo(() => {
@@ -180,7 +188,9 @@ export function AccessList({
 
   const remove = (id: string) => {
     if (id === ANY_AUTH) {
-      onChange({ ...access, allowAuthenticated: false });
+      if (!lockAnySignedIn) {
+        onChange({ ...access, allowAuthenticated: false });
+      }
       return;
     }
     onChange({

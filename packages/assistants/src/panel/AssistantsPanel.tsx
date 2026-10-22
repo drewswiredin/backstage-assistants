@@ -26,8 +26,10 @@ import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { rootRouteRef, threadRouteRef } from '../routes';
 import {
   clampPanelWidth,
+  loadPanelAssistant,
   loadPanelThread,
   loadPanelWidth,
+  savePanelAssistant,
   savePanelThread,
   savePanelWidth,
 } from './panelStorage';
@@ -156,14 +158,7 @@ const useStyles = makeStyles(theme => ({
  * On the Assistants page itself, for a user without `assistant.use`, and
  * while the backend lists no assistant, the wrapper renders the page alone.
  */
-export function AssistantsPanel({
-  children,
-  assistant,
-}: {
-  children: ReactNode;
-  /** A configured assistant id; the first accessible one otherwise. */
-  assistant?: string;
-}) {
+export function AssistantsPanel({ children }: { children: ReactNode }) {
   const classes = useStyles();
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('xs'));
@@ -189,6 +184,10 @@ export function AssistantsPanel({
   // surface on New / hand-off (a thread id change alone never remounts).
   const [remoteId, setRemoteId] = useState<string | undefined>(loadPanelThread);
   const [session, setSession] = useState(0);
+  // The assistant the user picked in the panel; the default one otherwise.
+  const [pickedAssistant, setPickedAssistant] = useState<string | undefined>(
+    loadPanelAssistant,
+  );
 
   const onAssistantsPage = (() => {
     const root = rootRoute?.();
@@ -251,6 +250,16 @@ export function AssistantsPanel({
     setRemoteId(undefined);
     setSession(s => s + 1);
   }, []);
+  // Switching assistant starts fresh under the new one; the old chat stays in
+  // history.
+  const pickAssistant = useCallback(
+    (id: string) => {
+      savePanelAssistant(id);
+      setPickedAssistant(id);
+      forgetThread();
+    },
+    [forgetThread],
+  );
 
   const openFull = useCallback(
     (id: string | undefined, assistantId: string) => {
@@ -362,10 +371,11 @@ export function AssistantsPanel({
               <Suspense fallback={<LinearProgress />}>
                 <EmbeddedAssistant
                   key={session}
-                  assistantId={assistant}
+                  assistantId={pickedAssistant}
                   threadId={remoteId}
                   clientTools={clientTools}
                   onThreadChange={rememberThread}
+                  onAssistantChange={pickAssistant}
                   onOpenFull={openFull}
                   onNew={forgetThread}
                   onHide={hide}

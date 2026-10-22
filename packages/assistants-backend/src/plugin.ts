@@ -109,6 +109,16 @@ export const assistantsPlugin = createBackendPlugin({
         });
         await assistantStore.runMigrations();
         await assistantStore.seedOnce();
+        const defaultState = await assistantStore.ensureDefault();
+        if (defaultState === 'designated') {
+          logger.info(
+            'default assistant designated: the oldest assistant open to every signed-in user',
+          );
+        } else if (defaultState === 'none') {
+          logger.warn(
+            'no default assistant: none is open to every signed-in user; designate one in the editor',
+          );
+        }
 
         const router = await createRouter({
           logger,

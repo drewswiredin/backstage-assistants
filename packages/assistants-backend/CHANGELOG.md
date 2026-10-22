@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- The default assistant: exactly one assistant is the one every signed-in user gets. `PUT /manage/assistants/:id/default` designates it and opens its access to any signed-in user in the same transaction; it cannot be deleted or restricted (`allowAuthenticated: false`) until another is designated. The seeded assistant is the default from first start; an upgraded deployment designates its oldest assistant already open to every signed-in user, or none, with a warning, until an admin designates one. `/status` carries `defaultAssistant` and lists it first with `isDefault: true`; `GET /manage/assistants` carries `defaultAssistant` and `isDefault` on each definition. The designation lives in `assistants_meta`; no migration.
+
 ## 0.18.1 - 2026-10-21
 
 ### Changed

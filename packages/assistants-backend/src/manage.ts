@@ -222,6 +222,22 @@ function parseDefinitionBody(
 }
 
 /**
+ * The default assistant is the one every signed-in user gets, so a write that
+ * would close it (`allowAuthenticated: false`) is refused. Designate another
+ * default first; then this one can be restricted like any other.
+ */
+export function assertDefaultStaysOpen(
+  previous: Pick<AssistantDefinition, 'isDefault'> | undefined,
+  next: Pick<AssistantDefinition, 'access'>,
+): void {
+  if (previous?.isDefault && !next.access.allowAuthenticated) {
+    throw new InputError(
+      'The default assistant is open to every signed-in user. Make another assistant the default before restricting this one.',
+    );
+  }
+}
+
+/**
  * Delta liveness validation: every tool/model that is NEWLY added relative to
  * `previous` must be live in `capabilities`. Pre-existing assignments are
  * grandfathered (never re-checked) and removals are always free. On create,
@@ -323,7 +339,28 @@ export function createManageRouter(
     (async () => {
       await requireAdmin(req);
       const assistants = await assistantStore.listAll();
-      res.json({ assistants });
+      res.json({
+        assistants,
+        defaultAssistant: assistants.find(a => a.isDefault)?.id,
+      });
+    })().catch(next);
+  });
+
+  // PUT /manage/assistants/:id/default — designate the default assistant.
+  // Opens it to every signed-in user; there is exactly one default.
+  router.put('/manage/assistants/:id/default', (req, res, next) => {
+    (async () => {
+      const { user } = await requireAdmin(req);
+      const id = req.params.id;
+      const updated = await assistantStore.setDefault(id, user.userEntityRef);
+      if (!updated) {
+        throw new NotFoundError(`Assistant '${id}' not found`);
+      }
+      logger.info('default assistant designated', {
+        id,
+        by: user.userEntityRef,
+      });
+      res.json(updated);
     })().catch(next);
   });
 
@@ -361,6 +398,7 @@ export function createManageRouter(
         throw new NotFoundError(`Assistant '${id}' not found`);
       }
       const def = parseDefinitionBody(req.body);
+      assertDefaultStaysOpen(previous, def);
       const capabilities = await buildCapabilities(options, credentials);
       validateDelta(def, previous, capabilities, options.assistants.mcpServers);
       // Carry the immutable id; the store preserves creation audit + stamps the
@@ -379,11 +417,17 @@ export function createManageRouter(
   });
 
   // DELETE /manage/assistants/:id — hard delete. The seed marker is NOT cleared
-  // (the default is never resurrected).
+  // (the seeded assistant is never resurrected). The default assistant cannot
+  // be deleted; designate another first.
   router.delete('/manage/assistants/:id', (req, res, next) => {
     (async () => {
       const { user } = await requireAdmin(req);
       const id = req.params.id;
+      if ((await assistantStore.getById(id))?.isDefault) {
+        throw new InputError(
+          'The default assistant cannot be deleted. Make another assistant the default first.',
+        );
+      }
       const deleted = await assistantStore.delete(id);
       if (!deleted) {
         throw new NotFoundError(`Assistant '${id}' not found`);

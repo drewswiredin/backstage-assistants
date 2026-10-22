@@ -5,6 +5,10 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- `StatusResponse.defaultAssistant`, and `isDefault` on `AssistantSummary` and `AssistantDefinition`: the default assistant, the one every signed-in user gets.
+
 ### Changed
 
 - Backstage dependency ranges track the 1.56 release line.

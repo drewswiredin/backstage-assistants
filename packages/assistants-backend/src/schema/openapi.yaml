@@ -120,6 +120,11 @@ components:
             $ref: '#/components/schemas/ToolSummary'
         ui:
           $ref: '#/components/schemas/UiOptions'
+        isDefault:
+          type: boolean
+          description: >-
+            True for the default assistant, the one every signed-in user gets
+            and the panel opens until the user picks another.
     ToolSummary:
       type: object
       required:
@@ -158,6 +163,11 @@ components:
         defaultModel:
           type: string
           description: The default `provider:model` selection.
+        defaultAssistant:
+          type: string
+          description: >-
+            The default assistant's id, open to every signed-in user and
+            listed first. Absent only when none is designated.
         requireApproval:
           type: array
           description: >-

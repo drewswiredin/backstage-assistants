@@ -90,10 +90,16 @@ the model count, the default model id, the `builtinActions` flag, and the
 assistant count.
 
 The first start seeds one assistant, open to every signed-in user, with the
-three built-in read tools; open `/assistants` and talk to it. Assistants
-(title, description, prompt, access, tools, models) are created, edited, and
-deleted in the editor (the gear in the chat sidebar), never in
-`app-config.yaml`. Under create-app's default allow-all permission policy every
+three built-in read tools, and makes it the default assistant; open
+`/assistants` and talk to it. Assistants (title, description, prompt, access,
+tools, models) are created, edited, and deleted in the editor (the gear in the
+chat sidebar), never in `app-config.yaml`. Exactly one assistant is the
+default: the one every signed-in user gets and the panel opens first. "Make
+default" in the editor designates it and opens its access to any signed-in
+user; it cannot be deleted or restricted until another is made the default.
+A deployment upgraded from a version without the designation gets its oldest
+assistant already open to everyone as the default, or a `no default
+assistant` warning in the log until an admin designates one. Under create-app's default allow-all permission policy every
 signed-in user can use and manage assistants; see
 [Grant assistant.use and assistant.manage](#grant-assistantuse-and-assistantmanage)
 to gate either.
@@ -725,30 +731,32 @@ All routes are under `/api/assistants`. `/status`, `/chat`, and the thread
 list, create, and status routes also apply the per-assistant access policy;
 every conversation route is scoped to the owning user.
 
-| Route                           | Permission         | Purpose                                                                                 |
-| ------------------------------- | ------------------ | --------------------------------------------------------------------------------------- |
-| `GET /status`                   | `assistant.use`    | Accessible assistants, model pool and defaults, tool lists, the approval floor's names. |
-| `POST /chat`                    | `assistant.use`    | Run a turn; streams the reply. `tools` carries client tool declarations.                |
-| `GET /chat/resume/:threadId`    | `assistant.use`    | Rejoin an in-flight reply's stream.                                                     |
-| `POST /chat/cancel/:threadId`   | `assistant.use`    | Stop an in-flight reply.                                                                |
-| `GET /threads`                  | `assistant.use`    | List the caller's conversations; `?assistantId=` filters.                               |
-| `POST /threads`                 | `assistant.use`    | Create a conversation.                                                                  |
-| `GET /threads/status`           | `assistant.use`    | Working, unread, and token count per conversation.                                      |
-| `GET /threads/:id`              | `assistant.use`    | One conversation.                                                                       |
-| `PATCH /threads/:id`            | `assistant.use`    | Rename, pin, archive, or change model or reasoning level.                               |
-| `DELETE /threads/:id`           | `assistant.use`    | Delete a conversation and its messages.                                                 |
-| `POST /threads/:id/read`        | `assistant.use`    | Mark a conversation read.                                                               |
-| `GET /threads/:id/messages`     | `assistant.use`    | A conversation's messages.                                                              |
-| `GET /capabilities`             | `assistant.manage` | Assignable inventory for the editor.                                                    |
-| `GET /manage/assistants`        | `assistant.manage` | All assistant definitions.                                                              |
-| `POST /manage/assistants`       | `assistant.manage` | Create an assistant.                                                                    |
-| `PUT /manage/assistants/:id`    | `assistant.manage` | Replace an assistant definition.                                                        |
-| `DELETE /manage/assistants/:id` | `assistant.manage` | Delete an assistant.                                                                    |
+| Route                                | Permission         | Purpose                                                                                                     |
+| ------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `GET /status`                        | `assistant.use`    | Accessible assistants (the default first), model pool and defaults, tool lists, the approval floor's names. |
+| `POST /chat`                         | `assistant.use`    | Run a turn; streams the reply. `tools` carries client tool declarations.                                    |
+| `GET /chat/resume/:threadId`         | `assistant.use`    | Rejoin an in-flight reply's stream.                                                                         |
+| `POST /chat/cancel/:threadId`        | `assistant.use`    | Stop an in-flight reply.                                                                                    |
+| `GET /threads`                       | `assistant.use`    | List the caller's conversations; `?assistantId=` filters.                                                   |
+| `POST /threads`                      | `assistant.use`    | Create a conversation.                                                                                      |
+| `GET /threads/status`                | `assistant.use`    | Working, unread, and token count per conversation.                                                          |
+| `GET /threads/:id`                   | `assistant.use`    | One conversation.                                                                                           |
+| `PATCH /threads/:id`                 | `assistant.use`    | Rename, pin, archive, or change model or reasoning level.                                                   |
+| `DELETE /threads/:id`                | `assistant.use`    | Delete a conversation and its messages.                                                                     |
+| `POST /threads/:id/read`             | `assistant.use`    | Mark a conversation read.                                                                                   |
+| `GET /threads/:id/messages`          | `assistant.use`    | A conversation's messages.                                                                                  |
+| `GET /capabilities`                  | `assistant.manage` | Assignable inventory for the editor.                                                                        |
+| `GET /manage/assistants`             | `assistant.manage` | All assistant definitions.                                                                                  |
+| `POST /manage/assistants`            | `assistant.manage` | Create an assistant.                                                                                        |
+| `PUT /manage/assistants/:id`         | `assistant.manage` | Replace an assistant definition.                                                                            |
+| `DELETE /manage/assistants/:id`      | `assistant.manage` | Delete an assistant (not the default).                                                                      |
+| `PUT /manage/assistants/:id/default` | `assistant.manage` | Make an assistant the default; opens it to every signed-in user.                                            |
 
 ### Admin API
 
 The editor is backed by `GET /capabilities` and the `/manage/assistants`
-endpoints (`GET` and `POST` on the collection, `PUT` and `DELETE` by id) under `/api/assistants`, all gated by
+endpoints (`GET` and `POST` on the collection, `PUT` and `DELETE` by id, and
+`PUT .../:id/default`) under `/api/assistants`, all gated by
 `assistant.manage` (403 for callers who lack it). `GET /capabilities` returns
 the live, assignable inventory (Backstage actions, the model pool, each MCP
 server's reachability and tools, and the approval gate) that feeds the

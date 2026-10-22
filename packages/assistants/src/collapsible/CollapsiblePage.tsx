@@ -380,7 +380,9 @@ export function CollapsiblePage() {
   // (and the active-assistant fallback handles a now-deleted active assistant).
   const status = useAsyncRetry(() => api.getStatus(), [api]);
 
-  if (canUse.loading || status.loading) {
+  // A refetch (the editor's `retry` after a save) keeps the page up: only the
+  // first load shows progress, so the open editor is never unmounted.
+  if (canUse.loading || (status.loading && !status.value)) {
     return <Progress />;
   }
   if (!canUse.allowed) {

@@ -36,6 +36,14 @@ const SNAPSHOT_TTL_MS = 60_000;
 const SEED_MARKER_KEY = 'seeded';
 
 /**
+ * The default assistant's id in `assistants_meta`: the one every signed-in
+ * user gets and the panel opens until the user picks another. A single key,
+ * so there is never more than one. Designating forces the assistant open
+ * (`allowAuthenticated: true`); it cannot be deleted or closed while default.
+ */
+const DEFAULT_ASSISTANT_KEY = 'default_assistant';
+
+/**
  * The default assistant inserted by the seed-once on first init. Neutral title,
  * a short helpful prompt, no color; `allowAuthenticated` true with no
  * users/groups; `defaultModel` null (→ platform default); `models` empty (full
@@ -57,6 +65,8 @@ export type AuditRef = string;
 export class AssistantStore {
   /** RAW definitions by id — the synchronously-read snapshot. */
   private snapshot = new Map<string, AssistantDefinition>();
+  /** The default assistant's id, read with the snapshot; undefined when none. */
+  private defaultId: string | undefined;
   /** Epoch ms of the last snapshot rebuild; drives the lazy TTL refresh. */
   private lastRefresh = 0;
   /** In-flight refresh, so concurrent reads share one DB round-trip. */
@@ -104,6 +114,12 @@ export class AssistantStore {
   list(): AssistantDefinition[] {
     this.maybeRefresh();
     return [...this.snapshot.values()];
+  }
+
+  /** The default assistant's id (snapshot read), or undefined when none. */
+  getDefaultId(): string | undefined {
+    this.maybeRefresh();
+    return this.defaultId;
   }
 
   // ---- Derived-at-read -----------------------------------------------------
@@ -167,6 +183,9 @@ export class AssistantStore {
     if (assistant.ui !== undefined) {
       summary.ui = assistant.ui;
     }
+    if (assistant.id === this.defaultId) {
+      summary.isDefault = true;
+    }
     return summary;
   }
 
@@ -178,15 +197,90 @@ export class AssistantStore {
    */
   async listAll(): Promise<AssistantDefinition[]> {
     const rows = await this.db('assistants').orderBy('title', 'asc');
+    const defaultId = await this.readDefaultId();
     return rows
       .map(toDefinition)
-      .filter((d): d is AssistantDefinition => d !== null);
+      .filter((d): d is AssistantDefinition => d !== null)
+      .map(d => (d.id === defaultId ? { ...d, isDefault: true } : d));
   }
 
   /** A single full definition by id (authoritative DB read), or null. */
   async getById(id: string): Promise<AssistantDefinition | null> {
     const row = await this.db('assistants').where({ id }).first();
-    return row ? toDefinition(row) : null;
+    if (!row) return null;
+    const def = toDefinition(row);
+    if (def && def.id === (await this.readDefaultId())) {
+      def.isDefault = true;
+    }
+    return def;
+  }
+
+  /**
+   * Designate the default assistant. Opens it to every signed-in user in the
+   * same transaction (`allowAuthenticated: true`, stamped with the acting
+   * admin), since the default is by definition the one everyone gets.
+   * Returns the persisted definition, or null when no row matches. The
+   * snapshot is rebuilt write-through.
+   */
+  async setDefault(
+    id: string,
+    by: AuditRef,
+  ): Promise<AssistantDefinition | null> {
+    const existing = await this.getById(id);
+    if (!existing) {
+      return null;
+    }
+    const now = new Date().toISOString();
+    const opened: AssistantDefinition = {
+      ...existing,
+      access: { ...existing.access, allowAuthenticated: true },
+      updated_by: by,
+      updated_at: now,
+    };
+    delete opened.isDefault;
+    await this.db.transaction(async trx => {
+      await trx('assistants').where({ id }).update(toRow(opened));
+      const marker = await trx('assistants_meta')
+        .where({ key: DEFAULT_ASSISTANT_KEY })
+        .first();
+      if (marker) {
+        await trx('assistants_meta')
+          .where({ key: DEFAULT_ASSISTANT_KEY })
+          .update({ value: id });
+      } else {
+        await trx('assistants_meta').insert({
+          key: DEFAULT_ASSISTANT_KEY,
+          value: id,
+        });
+      }
+    });
+    await this.refresh();
+    return { ...opened, isDefault: true };
+  }
+
+  /**
+   * Make sure a default is designated: keep a valid one; else designate the
+   * oldest assistant already open to every signed-in user (an upgrade from a
+   * version without the designation changes nobody's access); else none, for
+   * an admin to designate. Called once at init, after the seed.
+   */
+  async ensureDefault(): Promise<'kept' | 'designated' | 'none'> {
+    const current = await this.readDefaultId();
+    if (
+      current &&
+      (await this.db('assistants').where({ id: current }).first())
+    ) {
+      return 'kept';
+    }
+    const rows = await this.db('assistants').orderBy('created_at', 'asc');
+    const open = rows
+      .map(toDefinition)
+      .find(d => d !== null && d.access.allowAuthenticated);
+    if (!open) {
+      return 'none';
+    }
+    await this.setDefault(open.id, 'system:upgrade');
+    return 'designated';
   }
 
   /**
@@ -247,6 +341,11 @@ export class AssistantStore {
    * cleared, so the default is never resurrected.
    */
   async delete(id: string): Promise<boolean> {
+    if (id === (await this.readDefaultId())) {
+      throw new Error(
+        'The default assistant cannot be deleted; designate another default first',
+      );
+    }
     const count = await this.db('assistants').where({ id }).delete();
     await this.refresh();
     return count > 0;
@@ -288,12 +387,17 @@ export class AssistantStore {
     };
 
     // Mark first (insert-or-ignore semantics via existence check above) so a
-    // race or partial failure never double-seeds. Both writes share a txn.
+    // race or partial failure never double-seeds. The seeded assistant is the
+    // default from day one. All writes share a txn.
     await this.db.transaction(async trx => {
       await trx('assistants').insert(toRow(def));
       await trx('assistants_meta').insert({
         key: SEED_MARKER_KEY,
         value: now,
+      });
+      await trx('assistants_meta').insert({
+        key: DEFAULT_ASSISTANT_KEY,
+        value: id,
       });
     });
     await this.refresh();
@@ -322,8 +426,20 @@ export class AssistantStore {
         next.set(def.id, def);
       }
     }
+    const defaultId = await this.readDefaultId();
     this.snapshot = next;
+    // A dangling designation (row gone) counts as none.
+    this.defaultId = defaultId && next.has(defaultId) ? defaultId : undefined;
     this.lastRefresh = Date.now();
+  }
+
+  /** The designated default id from `assistants_meta`, or undefined. */
+  private async readDefaultId(): Promise<string | undefined> {
+    const marker = await this.db('assistants_meta')
+      .where({ key: DEFAULT_ASSISTANT_KEY })
+      .first();
+    const value = marker?.value;
+    return typeof value === 'string' && value ? value : undefined;
   }
 
   /**
@@ -358,7 +474,15 @@ export class AssistantStore {
  * `id`/`title` mirror to columns; audit columns are written separately.
  */
 function toRow(def: AssistantDefinition): Record<string, unknown> {
-  const { created_by, created_at, updated_by, updated_at, ...content } = def;
+  const {
+    created_by,
+    created_at,
+    updated_by,
+    updated_at,
+    isDefault,
+    ...content
+  } = def;
+  void isDefault; // derived from `assistants_meta`, never stored in the row
   return {
     id: def.id,
     title: def.title,

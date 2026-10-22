@@ -7,9 +7,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- The panel: a floating button in the lower right of every page opens a side panel with one quick conversation, using the assistant's own suggestions and defaults; the page content makes room for it. "Open in Assistants" moves the conversation to the full page. It is `assistantsPanelModule`, a module for the `app` plugin that the app adds to its features; `config.assistant` on `app-root-wrapper:app/assistants-panel` pins the assistant. Hide (the chevron, `Esc`, or a click on the page) collapses it to a strip at the right edge; Close (the x) brings the button back; either way the conversation is kept. `Ctrl+/` toggles it, the left edge resizes it, and the last conversation is remembered per browser. Contributed client tools, approvals, forms, and attachments work in the panel as on the page.
+- The panel: a floating button in the lower right of every page opens a side panel with one quick conversation, using the assistant's own suggestions and defaults; the page content makes room for it. "Open in Assistants" moves the conversation to the full page. It is `assistantsPanelModule`, a module for the `app` plugin that the app adds to its features. It opens the default assistant; a user with access to more than one picks another from the menu on the assistant's name, and the pick is remembered per browser. Hide (the chevron, `Esc`, or a click on the page) collapses it to a strip at the right edge; Close (the x) brings the button back; either way the conversation is kept. `Ctrl+/` toggles it, the left edge resizes it, and the last conversation is remembered per browser. Contributed client tools, approvals, forms, and attachments work in the panel as on the page.
 - `threadRouteRef`: `/assistants/threads/:threadId` opens one conversation on the page. A conversation the caller cannot see lands on the normal page with a notice.
 - `clientToolsApiRef`: the registry of contributed client tools, read by every surface that runs a conversation.
+- The editor's "Make default" designates the default assistant, shown with a Default chip. The default assistant's "Any signed-in user" access is locked on, and it cannot be deleted until another is made the default. Requires backend 0.19.0.
 
 ### Changed
 

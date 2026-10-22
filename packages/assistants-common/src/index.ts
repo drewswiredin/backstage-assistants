@@ -117,6 +117,11 @@ export interface AssistantSummary {
   tools?: ToolSummary[];
   /** The assistant's UI options. */
   ui?: UiOptions;
+  /**
+   * True for the default assistant: the one every signed-in user gets, which
+   * the panel opens until the user picks another. `/status` lists it first.
+   */
+  isDefault?: boolean;
 }
 
 /**
@@ -185,6 +190,12 @@ export interface StatusResponse {
   models: ModelOption[];
   /** The platform default `provider:model` selection. */
   defaultModel: ModelId;
+  /**
+   * The default assistant's id: open to every signed-in user, so always in
+   * `assistants`. Absent only when an upgraded deployment has no assistant
+   * open to all and an admin has not designated one yet.
+   */
+  defaultAssistant?: AssistantId;
   /**
    * The global approval floor as tool names (`assistants.requireApproval` ∪
    * each MCP server's `requireApproval`, namespaced). The browser gates a
@@ -276,6 +287,12 @@ export interface AssistantDefinition {
   updated_by?: string;
   /** Audit: ISO-8601 last-edit timestamp (present in the manage view). */
   updated_at?: string;
+  /**
+   * True for the default assistant (present in the manage view). Derived from
+   * the store's single designation, never written through the definition:
+   * `PUT /manage/assistants/:id/default` designates.
+   */
+  isDefault?: boolean;
 }
 
 /**

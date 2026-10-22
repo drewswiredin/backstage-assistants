@@ -37,6 +37,9 @@ import AddIcon from '@material-ui/icons/Add';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditIcon from '@material-ui/icons/Edit';
+import StarIcon from '@material-ui/icons/Star';
+import StarBorderIcon from '@material-ui/icons/StarBorder';
+import Chip from '@material-ui/core/Chip';
 import {
   AssistantDefinition,
   CapabilitiesResponse,
@@ -498,6 +501,8 @@ export function AssistantAdminDialog({
   } | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<AssistantDefinition | null>(null);
+  const [pendingDefault, setPendingDefault] =
+    useState<AssistantDefinition | null>(null);
 
   const dirty = useMemo(
     () => (draft ? isDirty(draft, baseline) : false),
@@ -716,6 +721,39 @@ export function AssistantAdminDialog({
     }
   };
 
+  // ---- Make default ----
+
+  // Designate the selected assistant as the default. The server opens it to
+  // every signed-in user; the list and the draft follow.
+  const handleMakeDefault = async (target: AssistantDefinition) => {
+    setPendingDefault(null);
+    try {
+      const saved = await api.setDefaultAssistant(target.id);
+      setList(prev =>
+        sortByTitle(
+          prev.map(a =>
+            a.id === saved.id ? saved : { ...a, isDefault: undefined },
+          ),
+        ),
+      );
+      if (selectedId === saved.id) {
+        selectInto(saved.id, saved);
+      }
+      alertApi.post({
+        message: `“${saved.title}” is now the default assistant.`,
+        severity: 'success',
+        display: 'transient',
+      });
+      onChanged?.();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to set the default assistant.';
+      alertApi.post({ message, severity: 'error', display: 'transient' });
+    }
+  };
+
   // ---- Render ----
 
   const renderForm = () => {
@@ -821,7 +859,14 @@ export function AssistantAdminDialog({
               <AccessList
                 access={draft.access}
                 onChange={access => patch({ access })}
+                lockAnySignedIn={draft.isDefault === true}
               />
+              {draft.isDefault && (
+                <Typography variant="caption" color="textSecondary">
+                  The default assistant is open to every signed-in user. Make
+                  another assistant the default to restrict this one.
+                </Typography>
+              )}
             </div>
           </div>
 
@@ -878,6 +923,27 @@ export function AssistantAdminDialog({
             </Typography>
           )}
           <span className={classes.footerSpacer} />
+          {selectedId && (
+            <Tooltip
+              title={
+                draft.isDefault
+                  ? 'The default assistant: every signed-in user gets it'
+                  : 'Make this the assistant every signed-in user gets'
+              }
+            >
+              <span>
+                <Button
+                  startIcon={
+                    draft.isDefault ? <StarIcon /> : <StarBorderIcon />
+                  }
+                  onClick={() => setPendingDefault(draft)}
+                  disabled={saving || dirty || draft.isDefault === true}
+                >
+                  {draft.isDefault ? 'Default' : 'Make default'}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
           <Button
             startIcon={<FileCopyOutlinedIcon />}
             onClick={guardedDuplicate}
@@ -886,13 +952,23 @@ export function AssistantAdminDialog({
             Duplicate
           </Button>
           {selectedId && (
-            <Button
-              startIcon={<DeleteOutlineIcon />}
-              onClick={() => setPendingDelete(draft)}
-              disabled={saving}
+            <Tooltip
+              title={
+                draft.isDefault
+                  ? 'Make another assistant the default first'
+                  : ''
+              }
             >
-              Delete
-            </Button>
+              <span>
+                <Button
+                  startIcon={<DeleteOutlineIcon />}
+                  onClick={() => setPendingDelete(draft)}
+                  disabled={saving || draft.isDefault === true}
+                >
+                  Delete
+                </Button>
+              </span>
+            </Tooltip>
           )}
           <Button
             variant="contained"
@@ -983,6 +1059,14 @@ export function AssistantAdminDialog({
                     primary={`${a.title}${isSelected && dirty ? ' •' : ''}`}
                     primaryTypographyProps={{ noWrap: true }}
                   />
+                  {a.isDefault && (
+                    <Chip
+                      size="small"
+                      label="Default"
+                      icon={<StarIcon />}
+                      variant="outlined"
+                    />
+                  )}
                 </ListItem>
               );
             })}
@@ -1031,6 +1115,15 @@ export function AssistantAdminDialog({
         destructive
         onConfirm={confirmDiscard}
         onCancel={() => setPendingSelect(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingDefault !== null}
+        title={`Make “${pendingDefault?.title ?? ''}” the default assistant?`}
+        message="Every signed-in user gets the default assistant, and the panel opens it until a user picks another. This opens its access to any signed-in user."
+        confirmLabel="Make default"
+        onConfirm={() => pendingDefault && handleMakeDefault(pendingDefault)}
+        onCancel={() => setPendingDefault(null)}
       />
 
       <ConfirmDialog
