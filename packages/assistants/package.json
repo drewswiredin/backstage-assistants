@@ -24,12 +24,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./alpha": "./src/alpha.tsx",
+    "./home": "./src/home.tsx",
     "./package.json": "./package.json"
   },
   "typesVersions": {
     "*": {
       "alpha": [
         "src/alpha.tsx"
+      ],
+      "home": [
+        "src/home.tsx"
       ],
       "package.json": [
         "package.json"
@@ -91,13 +95,20 @@
     "zod": "^4.0.0"
   },
   "peerDependencies": {
+    "@backstage/plugin-home-react": "^0.1.43",
     "@types/react": "^18.0.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.30.2"
   },
+  "peerDependenciesMeta": {
+    "@backstage/plugin-home-react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@backstage/cli": "^0.36.7",
+    "@backstage/plugin-home-react": "^0.1.43",
     "@testing-library/react": "^14.3.1",
     "@types/react": "^18.0.0",
     "react": "^18.0.0",

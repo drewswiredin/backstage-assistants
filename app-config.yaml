@@ -10,6 +10,15 @@ app:
     - page:catalog:
         config:
           path: /
+    # The home page, with the "Ask the assistant" composer card placed.
+    - page:home:
+        config:
+          defaultConfig:
+            - component: AskAssistant
+              column: 0
+              row: 0
+              width: 12
+              height: 1
 
 organization:
   name: My Company

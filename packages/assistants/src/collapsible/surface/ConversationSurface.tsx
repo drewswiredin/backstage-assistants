@@ -11,6 +11,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import type { ProfileInfo } from '@backstage/core-plugin-api';
 import {
@@ -60,6 +61,8 @@ const AvatarColorContext = createContext<string | undefined>(undefined);
 const ComposerInfoContext = createContext<{
   contextWindow?: number;
   used?: number;
+  /** The host's model and effort pickers, rendered in the composer's second row. */
+  controls?: ReactNode;
 }>({});
 
 const useStyles = makeStyles(theme => ({
@@ -260,7 +263,7 @@ const useStyles = makeStyles(theme => ({
  */
 function ComposerWithGauge() {
   const classes = useStyles();
-  const { contextWindow, used } = useContext(ComposerInfoContext);
+  const { contextWindow, used, controls } = useContext(ComposerInfoContext);
   const color = useContext(AvatarColorContext) ?? DEFAULT_AVATAR_COLOR;
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -300,6 +303,7 @@ function ComposerWithGauge() {
       <Composer.Input ref={inputRef} className={classes.composerInput} />
       <div className={classes.composerRow2}>
         <Composer.AddAttachment />
+        {controls}
         {over && (
           <Typography
             variant="caption"
@@ -425,6 +429,12 @@ export interface ConversationSurfaceProps {
   usedTokens?: number;
   /** Host layout escape hatch (applied alongside the themed thread host). */
   className?: string;
+  /**
+   * The model and reasoning pickers (`ModelControls`), rendered in the
+   * composer next to the attachment button, so every surface offers them in
+   * the same place.
+   */
+  composerControls?: ReactNode;
 }
 
 /**
@@ -448,6 +458,7 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
     contextWindow,
     usedTokens,
     className,
+    composerControls,
   } = props;
   const classes = useStyles();
   const theme = useTheme();
@@ -509,7 +520,9 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
   }
 
   return (
-    <ComposerInfoContext.Provider value={{ contextWindow, used: usedTokens }}>
+    <ComposerInfoContext.Provider
+      value={{ contextWindow, used: usedTokens, controls: composerControls }}
+    >
       <AvatarColorContext.Provider value={resolvedColor}>
         <div
           className={`${classes.threadHost} ${className ?? ''}`}

@@ -26,6 +26,7 @@ import {
 import AddIcon from '@material-ui/icons/Add';
 import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
 import CheckIcon from '@material-ui/icons/Check';
+import HistoryIcon from '@material-ui/icons/History';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import CloseIcon from '@material-ui/icons/Close';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
@@ -36,6 +37,7 @@ import {
 } from '@assistant-ui/react';
 import {
   assistantUsePermission,
+  REASONING_LEVELS,
   type AssistantSummary,
   type ClientToolAttributes,
   type ModelId,
@@ -50,6 +52,7 @@ import {
 import { ClientToolRegistrations } from '../clientTools/ClientToolRegistrations';
 import type { AssistantClientTool } from '../clientTools/types';
 import { ConversationSurface } from '../collapsible/surface';
+import { ModelControls } from '../collapsible/surface/ModelControls';
 import { AssistantAvatar } from '../collapsible/surface/AssistantAvatar';
 import {
   createSingleThreadAdapter,
@@ -80,12 +83,18 @@ export interface EmbeddedAssistantProps {
   assistantId?: string;
   /** The user picked another assistant in the header menu. */
   onAssistantChange: (assistantId: string) => void;
+  /** The user picked an earlier conversation from the history menu. */
+  onThreadPick: (remoteId: string) => void;
   /**
    * Whether the surface is in view. Only a surface in view focuses its
    * conversation (marking it read); a hidden one leaves a reply that lands
    * unread, so the button and the strip can show it.
    */
   active: boolean;
+  /** A first message to send as soon as the conversation is ready. */
+  initialPrompt?: string;
+  /** The initial prompt went out (the host clears it). */
+  onInitialPromptSent?: () => void;
   /** The conversation to show (a server thread id), or none. */
   threadId?: string;
   /** The conversation's server id once it exists. */
@@ -171,6 +180,19 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/** "just now", "5m ago", "3h ago", "2d ago", else the date. */
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 60_000) return 'just now';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 export function EmbeddedAssistant(props: EmbeddedAssistantProps) {
   const classes = useStyles();
   const api = useApi(assistantsApiRef);
@@ -240,7 +262,10 @@ function EmbeddedChat({
   onHide,
   onClose,
   onAssistantChange,
+  onThreadPick,
   active,
+  initialPrompt,
+  onInitialPromptSent,
 }: EmbeddedAssistantProps & {
   status: StatusResponse;
   assistant: AssistantSummary;
@@ -282,7 +307,10 @@ function EmbeddedChat({
       onHide={onHide}
       onClose={onClose}
       onAssistantChange={onAssistantChange}
+      onThreadPick={onThreadPick}
       active={active}
+      initialPrompt={initialPrompt}
+      onInitialPromptSent={onInitialPromptSent}
     />
   );
 }
@@ -299,7 +327,10 @@ function EmbeddedRuntime({
   onHide,
   onClose,
   onAssistantChange,
+  onThreadPick,
   active,
+  initialPrompt,
+  onInitialPromptSent,
 }: {
   api: AssistantsApi;
   baseUrl: string;
@@ -312,7 +343,10 @@ function EmbeddedRuntime({
   onHide: () => void;
   onClose: () => void;
   onAssistantChange: (assistantId: string) => void;
+  onThreadPick: (remoteId: string) => void;
   active: boolean;
+  initialPrompt?: string;
+  onInitialPromptSent?: () => void;
 }) {
   // The assistant's default when the pool still offers it, else the
   // platform default (an assistant can outlive a model it was given).
@@ -378,13 +412,17 @@ function EmbeddedRuntime({
         defaultModel={defaultModel}
         remoteIdRef={remoteIdRef}
         modelIdRef={modelIdRef}
+        reasoningLevelRef={reasoningLevelRef}
         onThreadChange={onThreadChange}
         onOpenFull={onOpenFull}
         onNew={onNew}
         onHide={onHide}
         onClose={onClose}
         onAssistantChange={onAssistantChange}
+        onThreadPick={onThreadPick}
         active={active}
+        initialPrompt={initialPrompt}
+        onInitialPromptSent={onInitialPromptSent}
       />
     </AssistantRuntimeProvider>
   );
@@ -398,13 +436,17 @@ function EmbeddedChrome({
   defaultModel,
   remoteIdRef,
   modelIdRef,
+  reasoningLevelRef,
   onThreadChange,
   onOpenFull,
   onNew,
   onHide,
   onClose,
   onAssistantChange,
+  onThreadPick,
   active,
+  initialPrompt,
+  onInitialPromptSent,
 }: {
   runtime: AssistantRuntime;
   api: AssistantsApi;
@@ -413,13 +455,17 @@ function EmbeddedChrome({
   defaultModel: ModelId;
   remoteIdRef: React.MutableRefObject<string | undefined>;
   modelIdRef: React.MutableRefObject<ModelId>;
+  reasoningLevelRef: React.MutableRefObject<ReasoningLevel | undefined>;
   onThreadChange: (remoteId: string) => void;
   onOpenFull: (remoteId: string | undefined, assistantId: string) => void;
   onNew: () => void;
   onHide: () => void;
   onClose: () => void;
   onAssistantChange: (assistantId: string) => void;
+  onThreadPick: (remoteId: string) => void;
   active: boolean;
+  initialPrompt?: string;
+  onInitialPromptSent?: () => void;
 }) {
   const classes = useStyles();
   // The assistant picker, offered only when there is a choice.
@@ -431,7 +477,42 @@ function EmbeddedChrome({
   const [remoteId, setRemoteId] = useState<string | undefined>(
     remoteIdRef.current,
   );
+  // The model and effort for this conversation: the thread's saved choice,
+  // else the assistant's default; changed from the composer and PATCHed.
+  const allowedModels = useMemo<ModelId[]>(
+    () => assistant.models ?? status.models.map(m => m.id),
+    [assistant.models, status.models],
+  );
+  const [modelId, setModelId] = useState<ModelId>(defaultModel);
+  const [reasoningLevel, setReasoningLevel] = useState<
+    ReasoningLevel | undefined
+  >(undefined);
+  const reasons = (id: ModelId) =>
+    status.models.find(m => m.id === id)?.reasoning === true;
+  const handleModelChange = (next: ModelId) => {
+    setModelId(next);
+    modelIdRef.current = next;
+    const level = reasons(next) ? reasoningLevelRef.current : undefined;
+    setReasoningLevel(level);
+    reasoningLevelRef.current = level;
+    if (remoteIdRef.current) {
+      void api.patchThread(remoteIdRef.current, {
+        model: next,
+        reasoningLevel: level ?? null,
+      });
+    }
+  };
+  const handleReasoningChange = (level: ReasoningLevel | undefined) => {
+    setReasoningLevel(level);
+    reasoningLevelRef.current = level;
+    if (remoteIdRef.current) {
+      void api.patchThread(remoteIdRef.current, {
+        reasoningLevel: level ?? null,
+      });
+    }
+  };
   const didSelect = useRef(false);
+  const adopted = useRef(false);
   useEffect(() => {
     const sync = () => {
       const state = runtime.threads.getState();
@@ -447,11 +528,24 @@ function EmbeddedChrome({
       }
       const item = state.threadItems[state.mainThreadId];
       const custom = item?.custom as Partial<ThreadCustomMetadata> | undefined;
-      const allowed = assistant.models ?? status.models.map(m => m.id);
-      modelIdRef.current =
-        custom?.model && allowed.includes(custom.model)
-          ? custom.model
-          : defaultModel;
+      // Adopt the thread's saved model and effort once it is listed.
+      if (custom?.model !== undefined && !adopted.current) {
+        adopted.current = true;
+        const model =
+          custom.model && allowedModels.includes(custom.model)
+            ? custom.model
+            : defaultModel;
+        const level =
+          custom.reasoningLevel &&
+          reasons(model) &&
+          REASONING_LEVELS.includes(custom.reasoningLevel as ReasoningLevel)
+            ? (custom.reasoningLevel as ReasoningLevel)
+            : undefined;
+        modelIdRef.current = model;
+        reasoningLevelRef.current = level;
+        setModelId(model);
+        setReasoningLevel(level);
+      }
       const id = item?.remoteId;
       if (id && id !== remoteIdRef.current) {
         remoteIdRef.current = id;
@@ -464,8 +558,36 @@ function EmbeddedChrome({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime]);
 
+  // Earlier conversations with this assistant, fetched when the menu opens.
+  const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
+  const history = useAsync(async () => {
+    if (!historyAnchor) return undefined;
+    const data = await api.requestJson<{
+      threads: Array<{ id: string; title: string; updatedAt: string }>;
+    }>(`/threads?assistantId=${encodeURIComponent(assistant.id)}`);
+    return (data.threads ?? []).slice(0, 10);
+  }, [historyAnchor, api, assistant.id]);
+
   // Focus (which marks the conversation read) only while in view.
   const { usageOf } = useThreadStatus(api, active ? remoteId : undefined);
+
+  // A handed-in first message goes out once the thread list has loaded (so
+  // the runtime is on its fresh thread), exactly once.
+  const sentInitial = useRef(false);
+  useEffect(() => {
+    if (!initialPrompt || sentInitial.current) return undefined;
+    const trySend = () => {
+      if (runtime.threads.getState().isLoading) return false;
+      sentInitial.current = true;
+      runtime.thread.append(initialPrompt);
+      onInitialPromptSent?.();
+      return true;
+    };
+    if (trySend()) return undefined;
+    return runtime.threads.subscribe(() => {
+      if (!sentInitial.current) trySend();
+    });
+  }, [initialPrompt, runtime, onInitialPromptSent]);
 
   return (
     <div className={classes.root}>
@@ -529,6 +651,51 @@ function EmbeddedChrome({
             </IconButton>
           </Tooltip>
         )}
+        <Tooltip title="Earlier conversations">
+          <IconButton
+            size="small"
+            onClick={e => setHistoryAnchor(e.currentTarget)}
+            aria-label="Earlier conversations"
+            aria-haspopup="menu"
+          >
+            <HistoryIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Menu
+          anchorEl={historyAnchor}
+          open={historyAnchor !== null}
+          onClose={() => setHistoryAnchor(null)}
+          getContentAnchorEl={null}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          {history.loading && (
+            <MenuItem disabled>
+              <ListItemText primary="Loading…" />
+            </MenuItem>
+          )}
+          {history.value?.length === 0 && (
+            <MenuItem disabled>
+              <ListItemText primary="No earlier conversations" />
+            </MenuItem>
+          )}
+          {history.value?.map(t => (
+            <MenuItem
+              key={t.id}
+              selected={t.id === remoteId}
+              onClick={() => {
+                setHistoryAnchor(null);
+                if (t.id !== remoteId) onThreadPick(t.id);
+              }}
+            >
+              <ListItemText
+                primary={t.title}
+                secondary={relativeTime(t.updatedAt)}
+                primaryTypographyProps={{ noWrap: true }}
+              />
+            </MenuItem>
+          ))}
+        </Menu>
         <Tooltip title="Open in Assistants">
           <IconButton
             size="small"
@@ -560,9 +727,20 @@ function EmbeddedChrome({
           }}
           assistantColor={assistant.color}
           contextWindow={
-            status.models.find(m => m.id === modelIdRef.current)?.contextWindow
+            status.models.find(m => m.id === modelId)?.contextWindow
           }
           usedTokens={usageOf(remoteId)}
+          composerControls={
+            <ModelControls
+              pool={status.models}
+              allowed={allowedModels}
+              modelId={modelId}
+              defaultModel={defaultModel}
+              onModelChange={handleModelChange}
+              reasoningLevel={reasoningLevel}
+              onReasoningChange={handleReasoningChange}
+            />
+          }
         />
       </div>
     </div>

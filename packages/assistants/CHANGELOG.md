@@ -3,6 +3,18 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- The homepage composer: `assistantsHomeModule` from the `./home` entry point adds an "Ask the assistant" bar (`home-page-widget:assistants/AskAssistant`) to a `@backstage/plugin-home` home page: one line, like a search bar. Sending opens the panel with the message already sent; without the panel it takes the question to the page. `@backstage/plugin-home-react` is an optional peer dependency used only by that entry point.
+- `usePanelControl`: a page component opens the panel, with a first message, through the context the panel wrapper provides.
+- The panel's history button lists the assistant's earlier conversations; picking one continues it in the panel.
+
+### Changed
+
+- The model and reasoning effort pickers moved from the page's thread header into the composer, and the panel's composer has them too. `ConversationSurface` gained a `composerControls` slot.
+
 ## 0.18.0 - 2026-10-22
 
 ### Added

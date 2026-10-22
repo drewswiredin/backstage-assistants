@@ -21,23 +21,11 @@ import {
   ResponseErrorPanel,
 } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
-import {
-  Button,
-  FormControl,
-  IconButton,
-  ListItemIcon,
-  ListSubheader,
-  MenuItem,
-  Select,
-  Tooltip,
-  Typography,
-} from '@material-ui/core';
+import { Button, IconButton, Tooltip, Typography } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
-import CheckIcon from '@material-ui/icons/Check';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import SettingsOutlinedIcon from '@material-ui/icons/SettingsOutlined';
-import StarIcon from '@material-ui/icons/Star';
 import {
   AssistantRuntimeProvider,
   useRemoteThreadListRuntime,
@@ -47,7 +35,6 @@ import {
 import type {
   ClientToolAttributes,
   ModelId,
-  ModelOption,
   ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -59,6 +46,7 @@ import {
   assistantManagePermission,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { ConversationSurface } from './surface';
+import { ModelControls } from './surface/ModelControls';
 import { AssistantAdminDialog } from './admin/AssistantAdminDialog';
 import { AssistantAvatar } from './surface/AssistantAvatar';
 import { SidePane } from './SidePane';
@@ -234,60 +222,6 @@ const useStyles = makeStyles(theme => ({
     whiteSpace: 'nowrap',
     color: theme.palette.text.secondary,
   },
-  headerControls: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    flexShrink: 0,
-  },
-  modelSelect: {
-    fontSize: theme.typography.caption.fontSize,
-    color: theme.palette.text.secondary,
-    borderRadius: 999,
-    transition: theme.transitions.create('background-color'),
-    '&:hover': {
-      backgroundColor: theme.palette.action.hover,
-    },
-    '& .MuiSelect-select': {
-      display: 'flex',
-      alignItems: 'center',
-      borderRadius: 999,
-      paddingTop: theme.spacing(0.5),
-      paddingBottom: theme.spacing(0.5),
-      paddingLeft: theme.spacing(1.25),
-      paddingRight: theme.spacing(3),
-      '&:focus': {
-        backgroundColor: 'transparent',
-        borderRadius: 999,
-      },
-    },
-    '& .MuiSelect-icon': {
-      color: theme.palette.text.secondary,
-      right: theme.spacing(0.5),
-    },
-  },
-  modelGroupLabel: {
-    lineHeight: 2,
-    fontSize: theme.typography.caption.fontSize,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: theme.palette.text.secondary,
-    backgroundColor: theme.palette.background.paper,
-  },
-  modelItem: {
-    paddingTop: theme.spacing(0.75),
-    paddingBottom: theme.spacing(0.75),
-  },
-  modelItemCheck: {
-    minWidth: theme.spacing(3.5),
-    color: theme.palette.primary.main,
-  },
-  modelDefaultStar: {
-    fontSize: '1rem',
-    color: theme.palette.warning.main,
-    marginLeft: theme.spacing(1),
-  },
   threadBody: {
     flex: 1,
     minHeight: 0,
@@ -315,38 +249,6 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
   },
 }));
-
-/**
- * Split a model id into a display vendor + name. Our models route through one
- * provider (e.g. `openrouter`) but the meaningful family is the vendor prefix in
- * the model name (`google/gemini-2.5-flash`). Falls back to the provider / raw
- * id when there's no `/`.
- */
-function splitModel(
-  id: ModelId,
-  pool: ModelOption[],
-): { vendor: string; name: string } {
-  const opt = pool.find(m => m.id === id);
-  const raw = opt?.model ?? id;
-  const slash = raw.indexOf('/');
-  if (slash !== -1) {
-    return { vendor: raw.slice(0, slash), name: raw.slice(slash + 1) };
-  }
-  return { vendor: opt?.provider ?? 'models', name: raw };
-}
-
-/** The short model name (after the vendor prefix), for the selector trigger. */
-function modelLabel(id: ModelId, pool: ModelOption[]): string {
-  return splitModel(id, pool).name;
-}
-
-/** Menu labels for the effort tiers a reasoning model offers. */
-const REASONING_LABELS: Record<ReasoningLevel, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  max: 'Max',
-};
 
 // ---------------------------------------------------------------------------
 // Page entry
@@ -769,16 +671,6 @@ function ChatChrome({
     () => assistant.models ?? status.models.map(m => m.id),
     [assistant.models, status.models],
   );
-  const modelGroups = useMemo<Array<[string, ModelId[]]>>(() => {
-    const byVendor = new Map<string, ModelId[]>();
-    for (const id of allowedModels) {
-      const { vendor } = splitModel(id, status.models);
-      const list = byVendor.get(vendor);
-      if (list) list.push(id);
-      else byVendor.set(vendor, [id]);
-    }
-    return [...byVendor.entries()];
-  }, [allowedModels, status.models]);
   const resolveModel = useCallback(
     (stored: string | null | undefined): ModelId =>
       stored && allowedModels.includes(stored) ? stored : defaultModel,
@@ -987,99 +879,6 @@ function ChatChrome({
     }
   }, [api, activeRemoteId, reasoningLevelRef]);
 
-  // Effort picker: rendered ONLY for a reasoning model, so a non-reasoning
-  // model shows no dead control. "Default" clears the choice and lets the
-  // provider decide.
-  const reasoningPicker = reasons(modelId) && (
-    <FormControl>
-      <Select
-        value={reasoningLevel ?? ''}
-        onChange={e => {
-          const next = e.target.value as ReasoningLevel | '';
-          if (next) handleReasoningChange(next);
-          else handleReasoningClear();
-        }}
-        disableUnderline
-        // Without displayEmpty, MUI skips renderValue for the empty (= no
-        // explicit level) value and the trigger renders as a bare caret.
-        displayEmpty
-        className={classes.modelSelect}
-        inputProps={{ 'aria-label': 'Reasoning effort' }}
-        renderValue={value =>
-          value ? `Effort: ${value as ReasoningLevel}` : 'Effort: default'
-        }
-        MenuProps={{
-          anchorOrigin: { vertical: 'bottom', horizontal: 'right' },
-          transformOrigin: { vertical: 'top', horizontal: 'right' },
-          getContentAnchorEl: null,
-        }}
-      >
-        <MenuItem value="" className={classes.modelItem}>
-          <ListItemIcon className={classes.modelItemCheck}>
-            {reasoningLevel === undefined ? (
-              <CheckIcon fontSize="small" />
-            ) : null}
-          </ListItemIcon>
-          <span style={{ flexGrow: 1 }}>Default</span>
-        </MenuItem>
-        {REASONING_LEVELS.map(level => (
-          <MenuItem key={level} value={level} className={classes.modelItem}>
-            <ListItemIcon className={classes.modelItemCheck}>
-              {level === reasoningLevel ? <CheckIcon fontSize="small" /> : null}
-            </ListItemIcon>
-            <span style={{ flexGrow: 1 }}>{REASONING_LABELS[level]}</span>
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
-  );
-
-  const modelPicker = (
-    <FormControl>
-      <Select
-        value={modelId}
-        onChange={e => handleModelChange(e.target.value as ModelId)}
-        disableUnderline
-        className={classes.modelSelect}
-        inputProps={{ 'aria-label': 'Model' }}
-        renderValue={value => modelLabel(value as ModelId, status.models)}
-        MenuProps={{
-          anchorOrigin: { vertical: 'bottom', horizontal: 'right' },
-          transformOrigin: { vertical: 'top', horizontal: 'right' },
-          getContentAnchorEl: null,
-        }}
-      >
-        {modelGroups.flatMap(([vendor, ids]) => [
-          <ListSubheader
-            key={`group-${vendor}`}
-            disableSticky
-            className={classes.modelGroupLabel}
-          >
-            {vendor}
-          </ListSubheader>,
-          ...ids.map(id => (
-            <MenuItem key={id} value={id} className={classes.modelItem}>
-              <ListItemIcon className={classes.modelItemCheck}>
-                {id === modelId ? <CheckIcon fontSize="small" /> : null}
-              </ListItemIcon>
-              <span style={{ flexGrow: 1 }}>
-                {modelLabel(id, status.models)}
-              </span>
-              {id === defaultModel && (
-                <Tooltip title="Assistant default">
-                  <StarIcon
-                    className={classes.modelDefaultStar}
-                    aria-label="Assistant default"
-                  />
-                </Tooltip>
-              )}
-            </MenuItem>
-          )),
-        ])}
-      </Select>
-    </FormControl>
-  );
-
   return (
     <FullHeightRegion>
       <Content noPadding className={classes.content}>
@@ -1223,10 +1022,6 @@ function ChatChrome({
                   </Typography>
                 )}
               </div>
-              <div className={classes.headerControls}>
-                {reasoningPicker}
-                {modelPicker}
-              </div>
             </div>
             <div className={classes.threadBody}>
               {isBlankDraft ? (
@@ -1264,6 +1059,21 @@ function ChatChrome({
                     status.models.find(m => m.id === modelId)?.contextWindow
                   }
                   usedTokens={usageOf(activeRemoteId)}
+                  composerControls={
+                    <ModelControls
+                      pool={status.models}
+                      allowed={allowedModels}
+                      modelId={modelId}
+                      defaultModel={defaultModel}
+                      onModelChange={handleModelChange}
+                      reasoningLevel={reasoningLevel}
+                      onReasoningChange={level =>
+                        level
+                          ? handleReasoningChange(level)
+                          : handleReasoningClear()
+                      }
+                    />
+                  }
                 />
               )}
             </div>

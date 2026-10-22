@@ -167,6 +167,20 @@ export interface ConversationStatusRow {
 }
 
 // @public
+export interface PanelControl {
+  // (undocumented)
+  open(options?: PanelOpenOptions): void;
+}
+
+// Warning: (ae-missing-release-tag) "PanelOpenOptions" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
+//
+// @public
+export interface PanelOpenOptions {
+  assistantId?: string;
+  prompt?: string;
+}
+
+// @public
 export const rootRouteRef: RouteRef<undefined>;
 
 // @public
@@ -185,6 +199,9 @@ export interface ThreadPatch {
 // @public
 export const threadRouteRef: SubRouteRef<PathParams<'/threads/:threadId'>>;
 
+// @public
+export function usePanelControl(): PanelControl | undefined;
+
 // Warnings were encountered during analysis:
 //
 // src/api/AssistantsApi.d.ts:10:5 - (ae-undocumented) Missing documentation for "threadId".
@@ -196,5 +213,6 @@ export const threadRouteRef: SubRouteRef<PathParams<'/threads/:threadId'>>;
 // src/api/AssistantsApi.d.ts:29:5 - (ae-undocumented) Missing documentation for "pinned".
 // src/api/AssistantsApi.d.ts:30:5 - (ae-undocumented) Missing documentation for "archived".
 // src/clientTools/api.d.ts:16:22 - (ae-undocumented) Missing documentation for "clientToolsApiRef".
+// src/panel/panelControl.d.ts:16:5 - (ae-undocumented) Missing documentation for "open".
 // /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```

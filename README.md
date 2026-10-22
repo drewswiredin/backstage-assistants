@@ -81,7 +81,8 @@ their server's configured credential.
 - **An assistant on every page.** A floating button opens a side panel for a
   quick question wherever you are, and the assistant can read the page you
   are on: "what does this mean", "which button do I press". The conversation
-  moves to the full page in one click. Opt-in for the app.
+  moves to the full page in one click. A homepage card asks the first
+  question. Both opt-in for the app.
 - **A full chat surface.** Attach images and text files, pick the model per
   conversation, set reasoning effort on models that support it, watch the
   context gauge, and copy or regenerate replies. Rename, pin, and delete

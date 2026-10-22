@@ -116,7 +116,9 @@ The panel opens the default assistant, the one every signed-in user gets
 than one assistant picks another from the menu on the assistant's name in the
 panel header; the pick is remembered in that browser and starts a fresh
 conversation. If the picked assistant goes away, the panel falls back to the
-default.
+default. The history button in the header lists that assistant's earlier
+conversations; picking one continues it in the panel. The model and reasoning
+effort pickers sit in the composer, as on the page.
 
 `Ctrl+/` (`⌘/` on macOS) toggles the panel. Hide (the chevron, `Esc`, or a
 click on the page) collapses it to a strip at the right edge with the
@@ -139,6 +141,39 @@ the conversation when it runs. To turn it off for the whole app:
 app:
   extensions:
     - client-tool:assistants/read-current-page: false
+```
+
+### Homepage
+
+An "Ask the assistant" bar for an app that uses `@backstage/plugin-home`:
+one line, like a search bar, with the assistant's avatar, a text box, and
+send. Sending opens the panel with the message already sent, so the bar is a
+way in, not a second chat; in an app without the panel it takes the question
+to the Assistants page. It ships behind its own entry point, so
+`@backstage/plugin-home-react` (an optional peer dependency) is loaded only
+by an app that uses it:
+
+```ts
+import { assistantsHomeModule } from '@drewswiredin/backstage-plugin-assistants/home';
+
+export default createApp({
+  features: [assistantsPlugin, assistantsPanelModule, assistantsHomeModule],
+});
+```
+
+The home page's grid places the widget by name, `AskAssistant`:
+
+```yaml
+app:
+  extensions:
+    - page:home:
+        config:
+          defaultConfig:
+            - component: AskAssistant
+              column: 0
+              row: 0
+              width: 12
+              height: 1
 ```
 
 ### Backend
@@ -263,7 +298,8 @@ export const SidebarContent = NavContentBlueprint.make({
 ### Root entry exports
 
 The plugin itself is the default export of the `./alpha` subpath, which also
-exports `assistantsPanelModule` (see [Panel](#panel)). The package root
+exports `assistantsPanelModule` (see [Panel](#panel)); the `./home` subpath
+exports `assistantsHomeModule` (see [Homepage](#homepage)). The package root
 exports what a host app needs to integrate with it:
 
 | Export                                                                                                                          | Purpose                                                                                                       |
@@ -275,6 +311,7 @@ exports what a host app needs to integrate with it:
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                |
 | `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                 |
 | `clientToolsApiRef`, `ClientToolsApi` (type)                                                                                    | The registry of contributed client tools, read by every surface that runs a conversation.                     |
+| `usePanelControl`, `PanelControl` (type)                                                                                        | Open the panel from a page component, with a first message; undefined in an app without the panel.            |
 | `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps`, `ClientToolInterrupt` (types) | The client tool contract; `ClientToolInterrupt` is the approval or connect prompt a custom `render` receives. |
 
 ### Chat page
@@ -289,9 +326,9 @@ exports what a host app needs to integrate with it:
   Regenerate, with a picker between regenerated branches. Reasoning shows in a
   collapsible block; a tool call without its own UI shows its input and output
   on expand.
-- The composer takes images (picked or pasted) and text and code files up to
-  7 MB each, shows a context gauge against the model's `contextWindow`, and
-  stops a running reply. A stopped reply ends with "Request interrupted"; a
+- The composer holds the model and reasoning effort pickers, takes images
+  (picked or pasted) and text and code files up to 7 MB each, shows a context
+  gauge against the model's `contextWindow`, and stops a running reply. A stopped reply ends with "Request interrupted"; a
   dropped connection with "Connection lost".
 - Attached images and SVG files open in a fullscreen pan-and-zoom preview.
 

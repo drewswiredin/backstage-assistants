@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -24,6 +25,7 @@ import { clientToolsApiRef } from '../clientTools/api';
 import { StatusDot } from '../collapsible/StatusDot';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { rootRouteRef, threadRouteRef } from '../routes';
+import { PanelControlProvider, type PanelControl } from './panelControl';
 import {
   clampPanelWidth,
   loadPanelAssistant,
@@ -188,6 +190,9 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   const [pickedAssistant, setPickedAssistant] = useState<string | undefined>(
     loadPanelAssistant,
   );
+  // A first message handed in by a page component (the homepage composer),
+  // sent once the fresh surface is ready.
+  const [initialPrompt, setInitialPrompt] = useState<string | undefined>();
 
   const onAssistantsPage = (() => {
     const root = rootRoute?.();
@@ -261,6 +266,31 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     [forgetThread],
   );
 
+  // An earlier conversation picked from the history menu: remember it and
+  // remount the surface on it.
+  const pickThread = useCallback((id: string) => {
+    savePanelThread(id);
+    setRemoteId(id);
+    setSession(s => s + 1);
+  }, []);
+
+  // The controls a page component uses to open the panel, with a prompt that
+  // starts a fresh conversation.
+  const control = useMemo<PanelControl>(
+    () => ({
+      open: options => {
+        if (options?.assistantId) pickAssistant(options.assistantId);
+        if (options?.prompt) {
+          if (!options.assistantId) forgetThread();
+          setInitialPrompt(options.prompt);
+        }
+        setMode('open');
+      },
+    }),
+    [pickAssistant, forgetThread],
+  );
+  const promptSent = useCallback(() => setInitialPrompt(undefined), []);
+
   const openFull = useCallback(
     (id: string | undefined, assistantId: string) => {
       const root = rootRoute?.();
@@ -330,7 +360,9 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
 
   return (
     <div className={classes.shell}>
-      <div className={classes.main}>{children}</div>
+      <div className={classes.main}>
+        <PanelControlProvider value={control}>{children}</PanelControlProvider>
+      </div>
       <aside
         className={classes.aside}
         style={{
@@ -376,6 +408,9 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
                   clientTools={clientTools}
                   onThreadChange={rememberThread}
                   onAssistantChange={pickAssistant}
+                  onThreadPick={pickThread}
+                  initialPrompt={initialPrompt}
+                  onInitialPromptSent={promptSent}
                   onOpenFull={openFull}
                   onNew={forgetThread}
                   onHide={hide}

@@ -51,19 +51,20 @@ flowchart LR
   KI --> DB
 ```
 
-| Node            | Module path                                                              | Owns                                                                                        |
-| --------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Browser runtime | `packages/assistants/src/collapsible/`                                   | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                      |
-| Panel           | `packages/assistants/src/panel/`, `embedded/`                            | The app root wrapper: the floating button, the side panel beside the page, one conversation |
-| Admin editor    | `packages/assistants/src/collapsible/admin/`                             | The `assistant.manage` dialog and client-side delta-validation                              |
-| Router          | `packages/assistants-backend/src/router.ts`, `manage.ts`                 | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`               |
-| Tool assembly   | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts` | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping   |
-| AI SDK loop     | `packages/assistants-backend/src/router.ts`                              | `streamText`, the approval map, persistence on start and finish, signals                    |
-| Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts`            | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                |
-| MCP pool        | `packages/assistants-backend/src/mcp.ts`                                 | One client per server per process, the tool cache                                           |
-| Knowledge index | `packages/assistants-backend-module-semantic-search/src/`                | The index refresh task and the `search-knowledge` action                                    |
-| Database        | Backstage `backend.database`                                             | The five plugin tables, plus the two knowledge index tables on Postgres                     |
-| LLM providers   | `packages/assistants-backend/src/config.ts`                              | The AI SDK provider registry built from config                                              |
+| Node              | Module path                                                              | Owns                                                                                         |
+| ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Browser runtime   | `packages/assistants/src/collapsible/`                                   | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                       |
+| Panel             | `packages/assistants/src/panel/`, `embedded/`                            | The app root wrapper: the floating button, the side panel beside the page, one conversation  |
+| Homepage composer | `packages/assistants/src/home.tsx`, `home/`                              | The "Ask the assistant" card; opens the panel with a first message through `usePanelControl` |
+| Admin editor      | `packages/assistants/src/collapsible/admin/`                             | The `assistant.manage` dialog and client-side delta-validation                               |
+| Router            | `packages/assistants-backend/src/router.ts`, `manage.ts`                 | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`                |
+| Tool assembly     | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts` | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping    |
+| AI SDK loop       | `packages/assistants-backend/src/router.ts`                              | `streamText`, the approval map, persistence on start and finish, signals                     |
+| Stores            | `packages/assistants-backend/src/assistants.ts`, `threads.ts`            | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                 |
+| MCP pool          | `packages/assistants-backend/src/mcp.ts`                                 | One client per server per process, the tool cache                                            |
+| Knowledge index   | `packages/assistants-backend-module-semantic-search/src/`                | The index refresh task and the `search-knowledge` action                                     |
+| Database          | Backstage `backend.database`                                             | The five plugin tables, plus the two knowledge index tables on Postgres                      |
+| LLM providers     | `packages/assistants-backend/src/config.ts`                              | The AI SDK provider registry built from config                                               |
 
 ## Routes
 
@@ -271,7 +272,7 @@ A low-privilege user chatting with an assistant wired to a powerful MCP server g
 | Model and effort refs           | React refs     | Per tab                           | Header pickers; PATCHed to the thread                               | Until unmount                                                                 | n/a                                            |
 | Side pane collapsed             | `localStorage` | Per browser                       | The collapse control                                                | Persistent                                                                    | n/a                                            |
 | Panel conversation, width, pick | `localStorage` | Per browser                       | `panelStorage` from the panel                                       | Persistent; the conversation is forgotten on "+" and "Open in Assistants"     | n/a                                            |
-| Panel mode                      | React state    | Per tab                           | The button, Hide, Close, Escape, click-off                          | Until reload; closed on load                                                  | n/a                                            |
+| Panel mode                      | React state    | Per tab                           | The button, Hide, Close, Escape, click-off, `PanelControl.open`     | Until reload; closed on load                                                  | n/a                                            |
 | Default assistant               | DB             | Global                            | `setDefault` from "Make default", the seed, `ensureDefault` at init | Durable; read with the snapshot                                               | Shared                                         |
 | Active assistant                | URL            | Per tab                           | `?assistant=<id>`, rewritten on each switch                         | Survives reload                                                               | n/a                                            |
 | Nav icon status rows            | Browser memory | Per tab                           | `AssistantsNavIcon`'s own `useThreadStatus`                         | Until unmount                                                                 | n/a                                            |
@@ -357,7 +358,7 @@ Timestamps are ISO 8601 strings on every driver; `toIsoTimestamp` converts Postg
 flowchart TB
   CP["CollapsiblePage\ncollapsible/CollapsiblePage.tsx"]
   SP["SidePane\ncollapsible/SidePane.tsx"]
-  HP["Header pickers"]
+  MC["ModelControls\ncollapsible/surface/ModelControls.tsx"]
   AD["AssistantAdminDialog\ncollapsible/admin/"]
   RP["AssistantRuntimeProvider"]
   RL["useRemoteThreadListRuntime\ncollapsible/threadListAdapter.ts"]
@@ -370,10 +371,12 @@ flowchart TB
   BP["AssistantClientToolBlueprint\nclientTools/blueprint.ts"]
   NI["AssistantsNavIcon\nAssistantsNavIcon.tsx"]
   PN["AssistantsPanel\npanel/AssistantsPanel.tsx"]
+  HC["AskAssistantCard\nhome/AskAssistantCard.tsx"]
   EA["EmbeddedAssistant\nembedded/EmbeddedAssistant.tsx"]
   SA["Single-thread adapter\ncollapsible/threadListAdapter.ts"]
   CA["clientToolsApiRef\nclientTools/api.ts"]
   PN --> EA
+  HC -->|"usePanelControl open(prompt)"| PN
   EA --> SA
   SA --> RH
   EA --> CT
@@ -387,7 +390,8 @@ flowchart TB
   BP -->|"tools input"| CA
   CA --> CP
   TS --> API
-  CP --> HP
+  CP -->|"composerControls"| MC
+  EA -->|"composerControls"| MC
   CP --> AD
   CP --> RP
   RP --> RL
@@ -403,9 +407,11 @@ The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRunt
 
 **The panel.** `assistantsPanelModule` is a module for the `app` plugin whose one extension, `app-root-wrapper:app/assistants-panel`, renders `AssistantsPanel` around the app layout: inside the router and after sign-in, once per session, so it never remounts on navigation and a streaming answer survives it. A wrapper rather than an app-root element because the panel takes space from the page instead of covering it: the wrapper is a flex row of the page column (`flex: 1`, `min-width: 0`) and a sticky, clipping panel column whose width animates between 0, the strip, and the panel. The app adds the module to its features. The button (a floating action button with the plugin icon and the conversation's own status dot) is hidden on the Assistants page, for a user without `assistant.use`, and while `/status` lists no assistant. The panel has three states: closed (the button only), open (the panel, no button), and collapsed (a 48 px strip at the right edge with the icon and status dot; clicking it reopens). Hide (the header chevron, `Esc`, or a mousedown on the page outside the panel and any MUI modal, popper, or tooltip) collapses; Close (the x) returns to closed. No backdrop and no focus trap: the page beside it stays usable. Because the panel column clips and the page column shrinks, nothing ever reaches past the viewport (an overlay drawer's slide flashed a horizontal scrollbar and shifted the page). `Ctrl+/` toggles, the left edge resizes (also with arrow keys), and below the `xs` breakpoint it fills the screen. It remembers its conversation and width in `localStorage`; a conversation stays mounted while the panel is collapsed or closed so a stream keeps rendering, but only an open panel focuses it (`active`), so a reply that lands while the panel is hidden stays unread and the strip or the button shows the red dot until the panel opens again.
 
-`EmbeddedAssistant` is the page's layering without the chrome: the `assistant.use` gate and `/status`, `ClientToolsProvider`, the base url, `useRemoteThreadListRuntime` over the single-thread adapter with the same `makeRuntimeHook`, `ClientToolRegistrations`, a header (avatar and title, "+", "Open in Assistants", hide, close), and `ConversationSurface` with a compact class. Its assistant is `resolvePanelAssistant`: the user's pick from the header menu when still accessible, else `defaultAssistant`, else the first accessible; the menu appears only with more than one accessible assistant, and a pick starts a fresh conversation under it (`panelStorage` remembers the pick). The model is the assistant's default (or the thread's saved one); reasoning is the provider default. The single-thread adapter's `list()` returns the remembered thread fetched by id, or nothing (a 404 lists as nothing); `initialize()` creates the thread on the first send, and the surface reports the new id through `onThreadChange`. "+" and "Open in Assistants" forget the thread and remount the surface, so a conversation has one client at a time; the page then resumes any in-flight stream by thread id as it does for its own threads.
+`EmbeddedAssistant` is the page's layering without the chrome: the `assistant.use` gate and `/status`, `ClientToolsProvider`, the base url, `useRemoteThreadListRuntime` over the single-thread adapter with the same `makeRuntimeHook`, `ClientToolRegistrations`, a header (avatar and title, "+", "Open in Assistants", hide, close), and `ConversationSurface` with a compact class. Its assistant is `resolvePanelAssistant`: the user's pick from the header menu when still accessible, else `defaultAssistant`, else the first accessible; the menu appears only with more than one accessible assistant, and a pick starts a fresh conversation under it (`panelStorage` remembers the pick). The header's history button fetches `GET /threads?assistantId=` when opened and lists the ten most recent conversations; picking one remembers it and remounts the surface on it. The model and effort start as the thread's saved choice (adopted once the thread lists) or the assistant's default, are changed from the composer's `ModelControls`, and are PATCHed to the thread. The single-thread adapter's `list()` returns the remembered thread fetched by id, or nothing (a 404 lists as nothing); `initialize()` creates the thread on the first send, and the surface reports the new id through `onThreadChange`. "+" and "Open in Assistants" forget the thread and remount the surface, so a conversation has one client at a time; the page then resumes any in-flight stream by thread id as it does for its own threads.
 
-The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<ConversationSurfaceProps>`. The props are `composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, and `className`. The surface reads the ambient runtime and owns no transport, auth, or chrome. The composer's attachment adapter caps files at 7 MB.
+**The homepage composer.** `assistantsHomeModule` (the `./home` entry point, a module for this plugin) is one `HomePageWidgetBlueprint` widget, `home-page-widget:assistants/AskAssistant`, attached to the home page's public `widgets` input; the app's `page:home` `defaultConfig` places it by the name `AskAssistant`. `AskAssistantCard` reads `/status`, resolves the assistant the way the panel does, and renders one bar (avatar, text box, send) with no card header, so the widget has no `title`; it renders nothing for a user without `assistant.use`. Sending calls `usePanelControl().open({ assistantId, prompt })`: the panel wrapper provides `PanelControl` through a React context to everything it encloses, so no API or event bus is needed; `open` picks the assistant, forgets the panel's thread, opens the panel, and hands the prompt to the fresh surface, which appends it with `runtime.thread.append` once its thread list has loaded, exactly once. In an app without the panel the context is undefined and the card links to the page instead. `@backstage/plugin-home-react` is an optional peer dependency loaded only through `./home`, because a caret range on a `0.1.x` package in the plugin entry would duplicate it in a consumer on another minor.
+
+The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<ConversationSurfaceProps>`. The props are `composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, `className`, and `composerControls`, a slot in the composer's second row (next to the attachment button) where the host renders `ModelControls`, the model and reasoning-effort pickers. The host owns the model and effort state and the thread PATCH; the page and the panel both render the pickers there, so they are in the same place on every surface. The surface reads the ambient runtime and owns no transport, auth, or chrome. The composer's attachment adapter caps files at 7 MB.
 
 `AssistantAdminDialog` opens from the gear when `usePermission(assistantManagePermission)` allows. It loads `/manage/assistants` and `/capabilities` when it opens, edits one draft at a time, and refetches `/status` and the thread list after each save or delete.
 
