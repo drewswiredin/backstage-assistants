@@ -1,13 +1,12 @@
-import { SchedulerServiceTaskScheduleDefinitionConfig } from '@backstage/backend-plugin-api';
-
 export interface Config {
   assistants?: {
     /**
-     * The knowledge index: published TechDocs sections and catalog entities
-     * (except `Location`) embedded into
-     * the assistants plugin's Postgres database and served to assistants as the
-     * `search-knowledge` action. Requires the `vector` and `pg_trgm`
-     * extensions.
+     * The knowledge index: a copy of everything Backstage search indexes
+     * (TechDocs, the catalog, and any other collator's documents), embedded
+     * into the assistants plugin's Postgres database as each search run
+     * finishes and served to assistants as the `search-knowledge` action.
+     * Requires the search plugin in the same backend, and the `vector` and
+     * `pg_trgm` extensions.
      */
     semanticSearch?: {
       /**
@@ -17,13 +16,6 @@ export interface Config {
        * rebuilds the index.
        */
       embeddingModel: string;
-
-      /**
-       * How often the index refreshes. Each run embeds only new and changed
-       * content. Default: every 30 minutes, 1 hour timeout, 15 s initial
-       * delay; a configured schedule replaces it.
-       */
-      schedule?: SchedulerServiceTaskScheduleDefinitionConfig;
     };
   };
 }

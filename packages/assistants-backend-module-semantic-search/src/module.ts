@@ -6,14 +6,16 @@ import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
 import { CatalogClient } from '@backstage/catalog-client';
 import { registerSearchKnowledgeAction } from './action';
 import { readSemanticSearchConfig } from './config';
+import { knowledgeFeedServiceRef } from './feed';
 import { runIndex } from './indexer';
-import { collectDocuments } from './sources';
 import { KnowledgeStore } from './store';
 
 /**
- * The knowledge index for AI Assistants. Keeps TechDocs sections and catalog
- * entities embedded in the assistants plugin's Postgres database and registers
- * the `search-knowledge` action over them.
+ * The knowledge index for AI Assistants. Keeps a copy of everything Backstage
+ * search indexes embedded in the assistants plugin's Postgres database, fed
+ * by {@link searchModuleAssistantsKnowledge} as each search run finishes, and
+ * registers the `search-knowledge` action over it. Runs are copied one at a
+ * time, in the order they finish.
  *
  * Off (with a log line saying why) when `assistants.semanticSearch` is absent, the
  * database is not Postgres, or the `vector` / `pg_trgm` extensions are missing.
@@ -29,19 +31,21 @@ export const assistantsModuleSemanticSearch = createBackendModule({
         config: coreServices.rootConfig,
         logger: coreServices.logger,
         database: coreServices.database,
-        scheduler: coreServices.scheduler,
+        lifecycle: coreServices.lifecycle,
         discovery: coreServices.discovery,
         auth: coreServices.auth,
         actionsRegistry: actionsRegistryServiceRef,
+        feed: knowledgeFeedServiceRef,
       },
       async init({
         config,
         logger,
         database,
-        scheduler,
+        lifecycle,
         discovery,
         auth,
         actionsRegistry,
+        feed,
       }) {
         const settings = readSemanticSearchConfig(config);
         if (!settings) {
@@ -85,19 +89,26 @@ export const assistantsModuleSemanticSearch = createBackendModule({
           embeddingModel: settings.embeddingModel,
         });
 
-        await scheduler.scheduleTask({
-          id: 'assistants-semantic-search-index',
-          // One replica refreshes the shared index.
-          scope: 'global',
-          ...settings.schedule,
-          fn: () =>
+        let queue = Promise.resolve();
+        feed.listen(documents => {
+          queue = queue.then(() =>
             runIndex({
               store,
               embeddingModel: settings.embeddingModel,
-              collect: () =>
-                collectDocuments({ catalog, discovery, auth, config, logger }),
+              documents,
               logger,
-            }),
+            }).catch(error =>
+              logger.error('Knowledge index refresh failed', error),
+            ),
+          );
+        });
+
+        lifecycle.addStartupHook(() => {
+          if (!feed.tapped) {
+            logger.warn(
+              'Knowledge index is empty: it copies what Backstage search indexes, and the search plugin (@backstage/plugin-search-backend) is not installed in this backend',
+            );
+          }
         });
       },
     });

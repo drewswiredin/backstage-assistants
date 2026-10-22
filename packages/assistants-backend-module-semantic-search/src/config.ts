@@ -1,7 +1,3 @@
-import {
-  readSchedulerServiceTaskScheduleDefinitionFromConfig,
-  type SchedulerServiceTaskScheduleDefinition,
-} from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createAzure } from '@ai-sdk/azure';
@@ -13,14 +9,7 @@ export interface SemanticSearchConfig {
   /** `<providerId>:<model>` as configured; part of the index signature. */
   embeddingModelId: string;
   embeddingModel: EmbeddingModel;
-  schedule: SchedulerServiceTaskScheduleDefinition;
 }
-
-const DEFAULT_SCHEDULE: SchedulerServiceTaskScheduleDefinition = {
-  frequency: { minutes: 30 },
-  timeout: { hours: 1 },
-  initialDelay: { seconds: 15 },
-};
 
 /**
  * Reads `assistants.semanticSearch`, or `undefined` when it is absent (the module is
@@ -57,11 +46,6 @@ export function readSemanticSearchConfig(
   return {
     embeddingModelId,
     embeddingModel: buildEmbeddingModel(providerId, provider, modelName),
-    schedule: settings.has('schedule')
-      ? readSchedulerServiceTaskScheduleDefinitionFromConfig(
-          settings.getConfig('schedule'),
-        )
-      : DEFAULT_SCHEDULE,
   };
 }
 

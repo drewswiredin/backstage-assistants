@@ -34,8 +34,10 @@ export interface SearchKnowledgeDeps {
  *
  * The lists are fused by reciprocal rank with one vote per method: the
  * phrasings share the meaning vote, so extra alternatives broaden recall
- * without drowning out exact matches. Results are filtered to entities the
- * caller can read in the catalog, and repeated text is shown once.
+ * without drowning out exact matches. Results gated by a catalog entity are
+ * filtered to entities the caller can read; the rest are visible to every
+ * assistant user, as they are in Backstage search. Repeated text is shown
+ * once.
  */
 export function registerSearchKnowledgeAction({
   actionsRegistry,
@@ -48,7 +50,7 @@ export function registerSearchKnowledgeAction({
     name: 'search-knowledge',
     title: 'Search Knowledge',
     attributes: { destructive: false, readOnly: true, idempotent: true },
-    description: `Search the organization's TechDocs and software catalog by meaning, not only by exact words. Best for questions in the user's own words: it finds a page even when the question is worded differently from it ("fix errored messages" finds "Retry dead-letter messages") and tolerates misspelled names ("Pilon" finds "Pylon"). It returns the most relevant sections, not every match, and cannot filter by entity kind.
+    description: `Search everything the organization's Backstage search indexes (TechDocs, the software catalog, and any other source it collects, such as Confluence or wiki pages) by meaning, not only by exact words. Best for questions in the user's own words: it finds a page even when the question is worded differently from it ("fix errored messages" finds "Retry dead-letter messages") and tolerates misspelled names ("Pilon" finds "Pylon"). It returns the most relevant sections, not every match, and cannot filter by entity kind or source.
 
 How to search the organization's docs and catalog:
 1. Start here, with the user's question.
@@ -57,7 +59,7 @@ How to search the organization's docs and catalog:
 
 Pass the user's question as the "query" parameter. Pass up to three "alternatives": other phrasings, synonyms, or the internal terms the docs might use.
 
-Each result has a title (its heading path), an excerpt, and a location. For TechDocs results, pass the location to read-techdocs to read the full page. For catalog results, the location is the entity ref.`,
+Each result has a title (its heading path), an excerpt, a location, and, for catalog and TechDocs results, the entity ref. A location starting with /docs/ is a TechDocs page: pass it to read-techdocs to read the full page. Any other location is a link to the page or entity; cite it.`,
     schema: {
       input: z =>
         z.object({
@@ -80,10 +82,9 @@ Each result has a title (its heading path), an excerpt, and a location. For Tech
         z.object({
           results: z.array(
             z.object({
-              source: z.enum(['techdocs', 'catalog']),
               title: z.string(),
               location: z.string(),
-              entityRef: z.string(),
+              entityRef: z.string().optional(),
               excerpt: z.string(),
             }),
           ),
@@ -128,7 +129,11 @@ Each result has a title (its heading path), an excerpt, and a location. For Tech
         .filter((chunk): chunk is StoredChunk => Boolean(chunk));
 
       const readable = await readableEntityRefs(catalog, auth, credentials, [
-        ...new Set(candidates.map(chunk => chunk.entityRef)),
+        ...new Set(
+          candidates.flatMap(chunk =>
+            chunk.entityRef ? [chunk.entityRef] : [],
+          ),
+        ),
       ]);
 
       const seen = new Set<string>();
@@ -136,7 +141,7 @@ Each result has a title (its heading path), an excerpt, and a location. For Tech
       for (const chunk of candidates) {
         const key = `${chunk.location}|${chunk.title}`;
         if (
-          !readable.has(chunk.entityRef) ||
+          (chunk.entityRef && !readable.has(chunk.entityRef)) ||
           seen.has(key) ||
           seen.has(chunk.content)
         ) {
@@ -145,10 +150,9 @@ Each result has a title (its heading path), an excerpt, and a location. For Tech
         seen.add(key);
         seen.add(chunk.content);
         results.push({
-          source: chunk.source,
           title: chunk.title,
           location: chunk.location,
-          entityRef: chunk.entityRef,
+          ...(chunk.entityRef ? { entityRef: chunk.entityRef } : {}),
           excerpt: chunk.content.slice(0, EXCERPT_CHARS),
         });
         if (results.length === input.limit) {

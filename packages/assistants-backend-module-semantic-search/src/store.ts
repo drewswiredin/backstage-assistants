@@ -5,7 +5,10 @@ type Knex = Awaited<ReturnType<DatabaseService['getClient']>>;
 
 const CHUNKS = 'assistants_knowledge_chunks';
 const META = 'assistants_knowledge_meta';
+const COLLECTIONS = 'assistants_knowledge_collections';
 const SIGNATURE_KEY = 'embedding';
+/** Bumped when the table's shape changes, so the next run rebuilds it. */
+const SCHEMA_VERSION = 2;
 
 /** The Postgres extensions the index needs. */
 export const REQUIRED_EXTENSIONS = ['vector', 'pg_trgm'] as const;
@@ -13,13 +16,15 @@ export const REQUIRED_EXTENSIONS = ['vector', 'pg_trgm'] as const;
 /** pgvector's HNSW index covers up to 2000 dimensions; larger vectors scan exactly. */
 const HNSW_MAX_DIMENSIONS = 2000;
 
+/** A collection no search run has refreshed for this long is dropped. */
+export const STALE_DAYS = 30;
+
 /** Below the `pg_trgm` default of 0.6 so one typo in a five-letter word ("pilon" → "pylon") still matches. */
 const FUZZY_THRESHOLD = 0.45;
 
 export interface StoredChunk {
   id: string;
-  source: Chunk['source'];
-  entityRef: string;
+  entityRef?: string;
   location: string;
   title: string;
   content: string;
@@ -30,9 +35,17 @@ export interface StoredChunk {
  * carrying its embedding (pgvector), a generated full-text vector, and a
  * trigram index over its text.
  *
- * The table is a rebuildable cache of TechDocs and the catalog, so it is
+ * The table is a rebuildable copy of what Backstage search indexes, so it is
  * managed here rather than by migrations: changing the embedding model or its
- * dimensions drops and recreates it, and the next run refills it.
+ * dimensions drops and recreates it, and each document type refills on its
+ * next search run.
+ *
+ * Each chunk belongs to a collection: the documents of one search document
+ * type. A run does not say which type it is, so it joins the collection that
+ * already holds most of its locations (a new one when none match), and only
+ * that collection's missing chunks are deleted. A collection no run has
+ * refreshed in {@link STALE_DAYS} days (a source removed from search, or one
+ * whose locations all changed at once) is dropped.
  */
 export class KnowledgeStore {
   constructor(
@@ -73,7 +86,7 @@ export class KnowledgeStore {
     if (!Number.isInteger(dimensions) || dimensions < 1) {
       throw new Error(`Invalid embedding dimensions: ${dimensions}`);
     }
-    const signature = `${this.embeddingModelId}#${dimensions}`;
+    const signature = `${this.embeddingModelId}#${dimensions}#${SCHEMA_VERSION}`;
 
     await this.db.raw(
       `CREATE TABLE IF NOT EXISTS ${META} (key text PRIMARY KEY, value text NOT NULL)`,
@@ -85,11 +98,17 @@ export class KnowledgeStore {
 
     await this.db.transaction(async tx => {
       await tx.raw(`DROP TABLE IF EXISTS ${CHUNKS}`);
+      await tx.raw(`DROP TABLE IF EXISTS ${COLLECTIONS}`);
+      await tx.raw(`
+        CREATE TABLE ${COLLECTIONS} (
+          collection text PRIMARY KEY,
+          refreshed_at timestamptz NOT NULL DEFAULT now()
+        )`);
       await tx.raw(`
         CREATE TABLE ${CHUNKS} (
           id text PRIMARY KEY,
-          source text NOT NULL,
-          entity_ref text NOT NULL,
+          collection text NOT NULL,
+          entity_ref text,
           location text NOT NULL,
           title text NOT NULL,
           content text NOT NULL,
@@ -104,6 +123,9 @@ export class KnowledgeStore {
         );
       }
       await tx.raw(`CREATE INDEX ${CHUNKS}_tsv ON ${CHUNKS} USING gin (tsv)`);
+      await tx.raw(
+        `CREATE INDEX ${CHUNKS}_location ON ${CHUNKS} (location, collection)`,
+      );
       await tx.raw(
         `CREATE INDEX ${CHUNKS}_trgm ON ${CHUNKS} USING gin ((title || ' ' || content) gin_trgm_ops)`,
       );
@@ -124,12 +146,48 @@ export class KnowledgeStore {
     return Boolean(current?.value.startsWith(`${this.embeddingModelId}#`));
   }
 
+  /** The collection holding most of these locations, if any holds one. */
+  async collectionOf(locations: string[]): Promise<string | undefined> {
+    if (locations.length === 0) {
+      return undefined;
+    }
+    const row = await this.db(CHUNKS)
+      .select('collection')
+      .whereRaw('location = ANY(?::text[])', [locations])
+      .groupBy('collection')
+      .orderByRaw('count(*) DESC')
+      .first();
+    return row?.collection;
+  }
+
+  /** Marks the collection refreshed and drops collections no run has refreshed in {@link STALE_DAYS} days. */
+  async refreshed(collection: string): Promise<number> {
+    await this.db(COLLECTIONS)
+      .insert({ collection, refreshed_at: this.db.fn.now() })
+      .onConflict('collection')
+      .merge();
+    const stale = this.db(COLLECTIONS)
+      .select('collection')
+      .whereRaw(`refreshed_at < now() - make_interval(days => ?)`, [
+        STALE_DAYS,
+      ]);
+    const dropped = await this.db(CHUNKS).whereIn('collection', stale).delete();
+    await this.db(COLLECTIONS)
+      .whereRaw(`refreshed_at < now() - make_interval(days => ?)`, [STALE_DAYS])
+      .delete();
+    return dropped;
+  }
+
   async hashes(): Promise<Map<string, string>> {
     const rows = await this.db(CHUNKS).select('id', 'content_hash');
     return new Map(rows.map(row => [row.id, row.content_hash]));
   }
 
-  async upsert(chunks: Chunk[], embeddings: number[][]): Promise<void> {
+  async upsert(
+    collection: string,
+    chunks: Chunk[],
+    embeddings: number[][],
+  ): Promise<void> {
     if (chunks.length === 0) {
       return;
     }
@@ -137,8 +195,8 @@ export class KnowledgeStore {
       .insert(
         chunks.map((chunk, i) => ({
           id: chunk.id,
-          source: chunk.source,
-          entity_ref: chunk.entityRef,
+          collection,
+          entity_ref: chunk.entityRef ?? null,
           location: chunk.location,
           title: chunk.title,
           content: chunk.content,
@@ -151,14 +209,11 @@ export class KnowledgeStore {
       .merge();
   }
 
-  /** Deletes chunks not seen this run, except those of entities whose docs failed to load. */
-  async deleteExcept(
-    keepIds: string[],
-    keepEntityRefs: string[],
-  ): Promise<number> {
+  /** Deletes the collection's chunks that this run no longer has. */
+  async deleteExcept(collection: string, keepIds: string[]): Promise<number> {
     return this.db(CHUNKS)
+      .where({ collection })
       .whereRaw('NOT (id = ANY(?::text[]))', [keepIds])
-      .whereRaw('NOT (entity_ref = ANY(?::text[]))', [keepEntityRefs])
       .delete();
   }
 
@@ -246,12 +301,11 @@ export class KnowledgeStore {
       return [];
     }
     const rows = await this.db(CHUNKS)
-      .select('id', 'source', 'entity_ref', 'location', 'title', 'content')
+      .select('id', 'entity_ref', 'location', 'title', 'content')
       .whereRaw('id = ANY(?::text[])', [ids]);
     return rows.map(row => ({
       id: row.id,
-      source: row.source,
-      entityRef: row.entity_ref,
+      ...(row.entity_ref ? { entityRef: row.entity_ref } : {}),
       location: row.location,
       title: row.title,
       content: row.content,

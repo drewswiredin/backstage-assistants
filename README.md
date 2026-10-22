@@ -67,7 +67,9 @@ to a titled card; sending opens the panel on the answer.
   service?" and get an answer sourced from the catalog and TechDocs, not the
   model's memory. Add the [semantic search module](packages/assistants-backend-module-semantic-search)
   and it finds pages by meaning and tolerates misspellings: "fix errored
-  messages" finds the dead-letter runbook, "Pilon" finds Pylon.
+  messages" finds the dead-letter runbook, "Pilon" finds Pylon. It covers
+  everything your Backstage search indexes, Confluence or a wiki included,
+  without reading any source a second time.
 - **Backstage actions as the user.** Let an assistant act on Backstage: look up
   entities, search docs, or run a scaffolder template, as the user, with their
   permissions.
@@ -143,12 +145,12 @@ to a titled card; sending opens the panel on the answer.
 
 ## Packages
 
-| Package                                                                                                                          | Role                                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| [`@drewswiredin/backstage-plugin-assistants`](packages/assistants)                                                               | Frontend plugin (new frontend system)                                                          |
-| [`@drewswiredin/backstage-plugin-assistants-backend`](packages/assistants-backend)                                               | Backend plugin                                                                                 |
-| [`@drewswiredin/backstage-plugin-assistants-common`](packages/assistants-common)                                                 | Shared browser-safe types                                                                      |
-| [`@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`](packages/assistants-backend-module-semantic-search) | Knowledge index: semantic and fuzzy search over TechDocs and the catalog (Postgres + pgvector) |
+| Package                                                                                                                          | Role                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [`@drewswiredin/backstage-plugin-assistants`](packages/assistants)                                                               | Frontend plugin (new frontend system)                                                                     |
+| [`@drewswiredin/backstage-plugin-assistants-backend`](packages/assistants-backend)                                               | Backend plugin                                                                                            |
+| [`@drewswiredin/backstage-plugin-assistants-common`](packages/assistants-common)                                                 | Shared browser-safe types                                                                                 |
+| [`@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`](packages/assistants-backend-module-semantic-search) | Knowledge index: semantic and fuzzy search over everything Backstage search indexes (Postgres + pgvector) |
 
 Install + wiring: [frontend README](packages/assistants/README.md). Full
 configuration reference: [backend README](packages/assistants-backend/README.md).

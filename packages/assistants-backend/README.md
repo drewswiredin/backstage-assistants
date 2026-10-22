@@ -239,8 +239,8 @@ plugins (catalog, scaffolder, and TechDocs action modules). The built-in tools
 query the search backend (`software-catalog` and `techdocs` documents) and read
 TechDocs pages, so they need `@backstage/plugin-search-backend` with the
 catalog and TechDocs collators, and `@backstage/plugin-techdocs-backend`.
-`search-knowledge`, which finds TechDocs and catalog content by meaning and
-near spelling, comes from the
+`search-knowledge`, which finds anything Backstage search indexes by meaning
+and near spelling, comes from the
 [semantic search module](../assistants-backend-module-semantic-search).
 
 > **Required:** Backstage's actions service only exposes actions from the plugin

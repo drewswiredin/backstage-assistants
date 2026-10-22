@@ -3,6 +3,18 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The index is a copy of everything Backstage search indexes, not a crawl of its own. A search decorator on every document type hands each finished collator run to the index, so Confluence, wikis, and any other collated source become searchable by meaning, and no source is read twice. Requires `@backstage/plugin-search-backend` in the same backend; the package's default export now adds two modules (`assistantsModuleSemanticSearch` and `searchModuleAssistantsKnowledge`).
+- Catalog and TechDocs results stay filtered to entities the user can read; results from other sources are visible to every assistant user, as in Backstage search. `search-knowledge` results drop `source`, and `entityRef` is present only for entity-gated results. Locations are the search result locations (TechDocs `/docs/...` paths still go to `read-techdocs`).
+- The index rebuilds on upgrade and refills as each collator next runs.
+
+### Removed
+
+- `assistants.semanticSearch.schedule`: the index refreshes when search does.
+
 ## 0.1.4 - 2026-10-22
 
 ### Changed

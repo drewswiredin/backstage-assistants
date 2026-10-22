@@ -1,16 +1,24 @@
 # @drewswiredin/backstage-plugin-assistants-backend-module-semantic-search
 
-Knowledge index for AI Assistants for Backstage. It embeds every published
-TechDocs section and every catalog entity except `Location` into the assistants plugin's Postgres database and
-gives assistants a `search-knowledge` tool that finds them by meaning, by near
-spelling, and by exact words:
+Knowledge index for AI Assistants for Backstage. It copies everything your
+Backstage search indexes (TechDocs, the catalog, and any other source a
+collator brings in, such as Confluence or a wiki), embeds it into the
+assistants plugin's Postgres database, and gives assistants a
+`search-knowledge` tool that finds it by meaning, by near spelling, and by
+exact words:
 
 - "how do I fix errored-out messages" finds _Dead-letter handling › Replaying
   dead-lettered messages_.
 - "Pilon deployment" finds the _Pylon Gateway › Deployment runbook_.
 - "dlq-replay" finds the page that names the job.
 
-Results are filtered to entities the user can read in the catalog.
+It reads no source itself. Each time a search collator finishes a run, the
+module copies that run's documents, so the index follows your search schedule
+and a rate-limited source such as Confluence is read once, by search.
+
+Catalog and TechDocs results are filtered to entities the user can read in the
+catalog. Results from other sources are visible to every assistant user, as
+they are in Backstage search.
 
 Adds to the backend plugin
 [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend).
@@ -18,6 +26,8 @@ Adds to the backend plugin
 ## Requirements
 
 - The assistants backend plugin, with its database on Postgres 13 or later.
+- Backstage search (`@backstage/plugin-search-backend`) in the same backend,
+  with the collators for the sources you want: any search engine works.
 - The `vector` ([pgvector](https://github.com/pgvector/pgvector)) and
   `pg_trgm` extensions in the assistants plugin's database.
 - An embedding model from an `openai`, `azure`, or `openai-compatible`
@@ -34,12 +44,20 @@ yarn --cwd packages/backend add @drewswiredin/backstage-plugin-assistants-backen
 ```ts
 // packages/backend/src/index.ts
 backend.add(import('@drewswiredin/backstage-plugin-assistants-backend'));
+backend.add(import('@backstage/plugin-search-backend'));
 backend.add(
   import(
     '@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search'
   ),
 );
 ```
+
+The one `backend.add` installs two modules: the index and `search-knowledge`
+under the `assistants` plugin, and a document decorator under the `search`
+plugin that copies what each search run collected. To add them separately,
+import `assistantsModuleSemanticSearch` and `searchModuleAssistantsKnowledge`
+by name. Without the search plugin the module logs a warning at startup and
+the index stays empty.
 
 ## Enable the extensions
 
@@ -82,14 +100,18 @@ assistants:
 On Azure OpenAI, deploy an embedding model and name the deployment:
 `embeddingModel: azure:<embedding-deployment>`.
 
-The first run embeds everything; later runs embed only new and changed
-sections and delete removed ones. Changing `embeddingModel` rebuilds the index.
+The index fills as search runs: each document type arrives when its collator
+next runs, on the schedule you gave that collator. A source's first run embeds
+all of it; later runs embed only new and changed sections and delete removed
+ones. Changing `embeddingModel` empties the index, and each type refills on its
+next search run.
 
 ## Give an assistant the tool
 
 Add `search-knowledge` to the assistant's tools in the assistant editor. It
 pairs with `read-techdocs` (from `builtinActions: true`), which opens the full
-page behind a TechDocs result. Until the first index run finishes, the tool
+page behind a TechDocs result; other results carry a link. Until the first
+search run is copied, the tool
 answers with an error that points the model at keyword search: Backstage's
 `query` action when the assistant has it, otherwise `search-techdocs` and
 `search-catalog`.
@@ -113,13 +135,27 @@ backend:
 
 ## How it works
 
-**Indexing.** A scheduled task (one replica at a time) reads each published
-TechDocs site's MkDocs search index (the same source Backstage's TechDocs
-search uses) and every catalog entity except `Location`. Each TechDocs section
-becomes one or more chunks of up to ~1600 characters, titled with its heading
-path (`Site › Page › Section`) and embedded with that title. Each row stores
-the embedding, a generated full-text vector, and a trigram index over its text.
-The table is a rebuildable cache, not migrated data.
+**Indexing.** A search decorator sits on every document type's pipeline. It
+passes each document on to the search engine unchanged and keeps it; when the
+collator finishes, it hands the run's documents to the index. A failed run
+hands over nothing, and a run with no documents changes nothing. Runs are
+copied one at a time, in the backend that ran the collator.
+
+Each document becomes one or more chunks of up to ~1600 characters, titled
+with its heading path (`Site › Page › Section` for TechDocs) and embedded with
+that title. The facts collators attach (entity ref, type, owner, lifecycle)
+join the text, so a catalog entity with no description is still found. A
+document gated by a catalog entity (its `authorization.resourceRef`) keeps that
+entity for the permission check; a document gated by any other kind of
+resource is skipped, since the index can only check entity read permission.
+
+A run does not say which document type it is, so the index recognizes a source
+by its locations: the run joins the stored collection that already holds most
+of its locations, and that collection's chunks the run no longer has are
+deleted. A collection no search run has refreshed in 30 days (a source removed
+from search, or one whose locations all changed at once) is dropped. Each row stores the embedding, a generated full-text vector, and a
+trigram index over its text. The table is a rebuildable copy, not migrated
+data.
 
 **Retrieval.** `search-knowledge` takes the question and up to three alternative
 phrasings and builds one semantic list per phrasing, a keyword list, a rare-word
@@ -139,14 +175,17 @@ without outvoting an exact match. The rare-word list keeps a name or acronym
 mentioned once in a paragraph about something else from being outranked by
 sections that are only near the question in meaning. The top candidates'
 entities are fetched from the catalog as the user; results for entities the
-user cannot read are dropped, and repeated text is shown once.
+user cannot read are dropped, results with no entity are kept, and repeated
+text is shown once.
 
 ## Reference
 
-| Key                                        | Default                                              | Meaning                                                                                       |
-| ------------------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `assistants.semanticSearch.embeddingModel` | (required)                                           | `<providerId>:<model>` from `assistants.providers`.                                           |
-| `assistants.semanticSearch.schedule`       | every 30 minutes, 1 hour timeout, 15 s initial delay | Backstage task schedule for refreshing the index; a configured schedule replaces the default. |
+| Key                                        | Default    | Meaning                                             |
+| ------------------------------------------ | ---------- | --------------------------------------------------- |
+| `assistants.semanticSearch.embeddingModel` | (required) | `<providerId>:<model>` from `assistants.providers`. |
+
+The index refreshes when search does; set each collator's schedule in its own
+config.
 
 ## License
 

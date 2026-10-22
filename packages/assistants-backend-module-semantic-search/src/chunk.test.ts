@@ -1,11 +1,9 @@
 import { chunkDocument, splitText } from './chunk';
-import type { SourceDocument } from './sources';
+import type { SourceDocument } from './documents';
 
 const doc = (text: string): SourceDocument => ({
-  source: 'techdocs',
-  key: '/docs/default/component/pylon/messaging/#retry',
+  location: '/docs/default/component/pylon/messaging/#retry',
   entityRef: 'component:default/pylon',
-  location: '/docs/default/component/pylon/messaging/',
   title: 'Pylon › Messaging › Retry',
   text,
 });
@@ -44,7 +42,7 @@ describe('chunkDocument', () => {
     expect(c.hash).not.toBe(a.hash);
     expect(a).toMatchObject({
       entityRef: 'component:default/pylon',
-      location: '/docs/default/component/pylon/messaging/',
+      location: '/docs/default/component/pylon/messaging/#retry',
       title: 'Pylon › Messaging › Retry',
       content: 'Run the replay job.',
     });

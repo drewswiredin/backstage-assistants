@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { SourceDocument } from './sources';
+import type { SourceDocument } from './documents';
 
 /** A stored, embedded unit of a {@link SourceDocument}. */
 export interface Chunk {
   id: string;
-  source: SourceDocument['source'];
-  entityRef: string;
+  entityRef?: string;
   location: string;
   title: string;
   content: string;
@@ -19,13 +18,12 @@ const OVERLAP_CHARS = 200;
 /**
  * Splits a document into chunks of at most ~1600 characters on word
  * boundaries, overlapping by ~200 so a sentence cut at a boundary survives in
- * one piece. MkDocs sections are usually one chunk already.
+ * one piece. TechDocs sections are usually one chunk already.
  */
 export function chunkDocument(doc: SourceDocument): Chunk[] {
   return splitText(doc.text).map((content, index) => ({
-    id: sha256(`${doc.source}|${doc.key}|${index}`),
-    source: doc.source,
-    entityRef: doc.entityRef,
+    id: sha256(`${doc.location}|${index}`),
+    ...(doc.entityRef ? { entityRef: doc.entityRef } : {}),
     location: doc.location,
     title: doc.title,
     content,

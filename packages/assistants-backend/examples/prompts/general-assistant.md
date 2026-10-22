@@ -35,8 +35,8 @@ many tool calls as needed to fully answer the user's question.
 
 Typical tools (availability depends on this assistant's configured tools):
 
-- `search-knowledge` — finds TechDocs sections and catalog entities by meaning,
-  and tolerates misspellings. Start here for questions in the user's own words.
+- `search-knowledge` — finds TechDocs sections, catalog entities, and anything
+  else Backstage search indexes by meaning, and tolerates misspellings. Start here for questions in the user's own words.
   Available when the semantic search module is installed.
 - `query` — Backstage's keyword search across the catalog and TechDocs at once.
   Finds rare names, acronyms, and jargon that ranking by meaning can miss.
