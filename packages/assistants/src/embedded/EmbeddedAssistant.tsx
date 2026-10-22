@@ -119,6 +119,9 @@ export interface EmbeddedAssistantProps {
   onClose: () => void;
 }
 
+/** The assistant picker's fixed width; its menu is the same width. */
+const PICKER_WIDTH = 240;
+
 const useStyles = makeStyles(theme => ({
   root: {
     display: 'flex',
@@ -144,9 +147,12 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 600,
   },
   // The assistant name as a menu trigger when there is more than one.
+  // A fixed-width picker (a wide header no longer floats the arrow to the
+  // far edge); a long name is cut with an ellipsis, and the menu matches.
   picker: {
-    flex: 1,
-    minWidth: 0,
+    flex: '0 0 auto',
+    width: PICKER_WIDTH,
+    maxWidth: '100%',
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
@@ -156,6 +162,9 @@ const useStyles = makeStyles(theme => ({
     '&:hover': {
       backgroundColor: theme.palette.action.hover,
     },
+  },
+  headerSpacer: {
+    flex: 1,
   },
   body: {
     flex: 1,
@@ -648,12 +657,16 @@ function EmbeddedChrome({
               </Typography>
               <ArrowDropDownIcon fontSize="small" color="action" />
             </ButtonBase>
+            <span className={classes.headerSpacer} />
             <Menu
               anchorEl={pickerAnchor}
               open={pickerAnchor !== null}
               onClose={() => setPickerAnchor(null)}
               getContentAnchorEl={null}
               anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              PaperProps={{
+                style: { width: pickerAnchor?.offsetWidth ?? PICKER_WIDTH },
+              }}
             >
               {status.assistants.map(a => (
                 <MenuItem
@@ -684,6 +697,7 @@ function EmbeddedChrome({
             <Typography variant="subtitle2" className={classes.title}>
               {assistant.title}
             </Typography>
+            <span className={classes.headerSpacer} />
           </>
         )}
         {!composerOnly && remoteId && (
