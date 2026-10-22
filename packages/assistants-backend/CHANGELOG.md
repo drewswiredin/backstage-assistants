@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.20.1 - 2026-10-22
+
+### Changed
+
+- `describe_portal` is always offered: it is among the built-in client tools in common 0.15.1, which this release requires.
+- README: the built-in client tools section covers `read_current_page`, `describe_portal`, and the per-turn page note.
+
 ## 0.20.0 - 2026-10-22
 
 ### Added
