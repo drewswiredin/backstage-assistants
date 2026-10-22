@@ -189,10 +189,10 @@ const useStyles = makeStyles(theme => ({
   // Composer only: the thread viewport shows nothing but its footer (the
   // composer), capped at the page's composer width.
   composerOnly: {
-    // Beats the compact class's full-width footer, so the composer is capped
-    // like the page's.
+    // Beats the compact class's full-width footer: the composer takes most
+    // of the card without running edge to edge.
     '& .aui-thread-viewport-footer': {
-      maxWidth: '48rem',
+      maxWidth: '80%',
     },
     '& .aui-thread-viewport': {
       paddingTop: 0,
