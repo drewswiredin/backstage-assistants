@@ -16,6 +16,7 @@ import { clientToolsApiRef, type ClientToolsApi } from './clientTools/api';
 import { renderFormTool } from './clientTools/builtin/renderForm';
 import { downloadFileTool } from './clientTools/builtin/downloadFile';
 import { readCurrentPageTool } from './clientTools/builtin/readCurrentPage';
+import { describePortalTool } from './clientTools/builtin/describePortal';
 import { AssistantsPanel } from './panel/AssistantsPanel';
 
 /** Backend client (`/status`, threads, manage, base url + authed fetch). */
@@ -89,6 +90,16 @@ const readCurrentPageClientTool = AssistantClientToolBlueprint.make({
 });
 
 /**
+ * `describe_portal`: what this Backstage instance offers (plugins, pages,
+ * entity tabs, client tools), read from the app tree. An app that does not
+ * want it disables `client-tool:assistants/describe-portal`.
+ */
+const describePortalClientTool = AssistantClientToolBlueprint.make({
+  name: 'describe-portal',
+  params: defineParams => defineParams(describePortalTool),
+});
+
+/**
  * The Backstage AI Assistants frontend plugin (new frontend system).
  *
  * @public
@@ -104,6 +115,7 @@ export default createFrontendPlugin({
     renderFormClientTool,
     downloadFileClientTool,
     readCurrentPageClientTool,
+    describePortalClientTool,
   ],
   routes: {
     root: rootRouteRef,

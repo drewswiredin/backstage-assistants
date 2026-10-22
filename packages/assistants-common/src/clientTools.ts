@@ -57,6 +57,7 @@ export const BUILTIN_CLIENT_TOOLS: readonly string[] = [
   'render_form',
   'download_file',
   'read_current_page',
+  'describe_portal',
 ];
 
 /**

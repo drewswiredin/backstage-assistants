@@ -147,6 +147,14 @@ app:
     - client-tool:assistants/read-current-page: false
 ```
 
+The assistant also knows what this Backstage instance offers through the
+built-in `describe_portal` tool: the installed plugins, every page with its
+path, and the tabs on a catalog entity's page (Kubernetes, CI, API
+definitions, and so on), read from the app tree every new-frontend-system app
+builds. So "what's in Backstage" and "where do I find our API docs" get an
+answer, with links, from any page, and without the visualizer plugin. Turn it
+off the same way, with `client-tool:assistants/describe-portal: false`.
+
 <!-- screenshot: panel-page-context.png — the panel answering a question about the page beside it, with the read_current_page chip -->
 
 ### Homepage
@@ -390,12 +398,14 @@ exports what a host app needs to integrate with it:
 
 ### Generative UI
 
-Three built-in client tools are always available and need no config:
+Four built-in client tools are always available and need no config:
 
 - `render_form`: an inline form; the submitted values become the tool result.
 - `download_file`: a download chip for a text file the assistant generates
   (CSV, JSON, Markdown, code, SVG), with Copy for text files.
 - `read_current_page`: the page the user is looking at, as an outline (see
+  [Panel](#panel)). An app can turn it off.
+- `describe_portal`: this instance's plugins, pages, and entity tabs (see
   [Panel](#panel)). An app can turn it off.
 
 Mermaid code blocks render as diagrams themed to the Backstage light or dark

@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `describe_portal` joins the built-in client tool names, so the backend always offers it, and the platform instructions say when to call it.
+
 ## 0.15.0 - 2026-10-22
 
 ### Added

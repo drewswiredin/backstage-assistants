@@ -81,6 +81,21 @@ const _default: OverridableFrontendPlugin<
         params: ApiFactory<TApi, TImpl, TDeps>,
       ) => ExtensionBlueprintParams<AnyApiFactory>;
     }>;
+    'assistant-client-tool:assistants/describe-portal': OverridableExtensionDefinition<{
+      kind: 'assistant-client-tool';
+      name: 'describe-portal';
+      config: {};
+      configInput: {};
+      output: ExtensionDataRef<
+        AssistantClientTool<any, any>,
+        'assistants.client-tool',
+        {}
+      >;
+      inputs: {};
+      params: <TInput extends JsonObject, TOutput = unknown>(
+        tool: AssistantClientTool<TInput, TOutput>,
+      ) => ExtensionBlueprintParams<AssistantClientTool<any, any>>;
+    }>;
     'assistant-client-tool:assistants/download-file': OverridableExtensionDefinition<{
       kind: 'assistant-client-tool';
       name: 'download-file';

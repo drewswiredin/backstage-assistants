@@ -373,7 +373,7 @@ per-user permissions still apply when an approved Backstage action invokes.
 
 ## Built-in client tools
 
-Three built-in client tools are always available and need no config.
+Four built-in client tools are always available and need no config.
 `render_form` renders an inline RJSF form for structured, multi-field, or
 multiple-choice input; the user fills and submits, and the values flow back as
 the tool result. Forms render Backstage scaffolder field extensions (owner,
@@ -392,8 +392,15 @@ page, not app state, so it works on any page with no per-plugin code. When the
 frontend's panel sends a turn, `/chat` also carries `page` (the path, the title,
 and the catalog entity ref when the page is one); this backend appends one note
 naming the page to that turn's instructions, after the assistant's prompt, and
-never persists it. An app turns the tool off in its frontend config; nothing is
-configured here.
+never persists it.
+
+`describe_portal` returns what the Backstage instance offers: its installed
+plugins, its pages with their paths, the tabs on a catalog entity's page, and
+the client tools the browser can run, read from the frontend's app tree. It
+answers "what is in Backstage" and "where do I find X" with links.
+
+An app turns either tool off in its frontend config; nothing is configured
+here.
 
 ## Client tools: run in the browser as the user
 
@@ -430,8 +437,8 @@ model explains instead of retrying.
 Every turn, the backend sends the model a fixed set of platform instructions
 before the assistant's prompt: what the chat renders (Markdown and Mermaid; not
 raw HTML or LaTeX), formatting, a monotone symbol set, Mermaid syntax that
-parses, when to use `render_form` and `download_file`, and when to read the
-user's page with `read_current_page`. They are the same
+parses, when to use `render_form` and `download_file`, when to read the
+user's page with `read_current_page`, and when to call `describe_portal`. They are the same
 for every assistant, so a prompt only needs the assistant's role; where the two
 differ, the assistant's prompt takes precedence. The editor shows them
 read-only under the prompt field. The text is `PLATFORM_INSTRUCTIONS` in

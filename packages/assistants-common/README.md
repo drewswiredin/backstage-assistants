@@ -58,7 +58,7 @@ user's browser; the blueprint itself is in the frontend package):
   `timeout`, `aborted`, `failed`): the `_error` result a client tool returns
   instead of throwing.
 - `CLIENT_TOOL_NAME_PATTERN` (`<namespace>__<tool>`), `BUILTIN_CLIENT_TOOLS`
-  (`render_form`, `download_file`, `read_current_page`), `CLIENT_TOOL_LIMITS` (30 per request,
+  (`render_form`, `download_file`, `read_current_page`, `describe_portal`), `CLIENT_TOOL_LIMITS` (30 per request,
   4000-character description, 8192-character schema), and
   `isClientToolName`.
 

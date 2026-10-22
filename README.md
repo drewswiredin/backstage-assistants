@@ -101,8 +101,10 @@ to a titled card; sending opens the panel on the answer.
   page in one click.
 - **Answers about the page you are on.** The panel tells the assistant which
   page it sits beside, and the assistant can read that page: "what does this
-  mean", "which button do I press", "why is this pod failing". It works on any
-  page, with no per-plugin code.
+  mean", "which button do I press", "why is this pod failing". It also knows
+  what your instance offers, its plugins, pages, and entity tabs, so "what's in
+  Backstage" and "where are our API docs" get an answer with links. It works on
+  any page, with no per-plugin code.
 - **A composer on the home page.** Ask from the home page in one of four looks,
   from a search-bar style line to a titled card; the answer opens in the panel.
   The panel and the homepage composer are both opt-in for the app.

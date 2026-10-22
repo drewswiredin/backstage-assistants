@@ -3,6 +3,16 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `describe_portal`, a built-in client tool: what this Backstage instance offers (its plugins, its pages with their paths, the tabs on a catalog entity's page, and the client tools the browser can run), read from the app tree every new-frontend-system app builds, with or without the visualizer plugin. "What's in Backstage" and "where do I find X" get an answer with links. Disable it app-wide with `client-tool:assistants/describe-portal: false`. Requires common 0.15.1.
+
+### Changed
+
+- README: the homepage composer section says to add `@backstage/plugin-home-react` to the app (an optional peer dependency, which no package manager installs on its own), and the whole README is brought up to date with the panel, page context, and the homepage composer.
+
 ## 0.19.0 - 2026-10-22
 
 ### Added
