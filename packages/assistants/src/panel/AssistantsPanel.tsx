@@ -336,10 +336,18 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
         savePanelWidth(w);
         return w;
       });
+      window.dispatchEvent(new Event('resize'));
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
+
+  // Content that measures itself only on window resize (the home page's
+  // grid, charts) must learn that the page column changed width. Fired when
+  // the column's width transition ends, and after a drag resize.
+  const notifyResize = useCallback(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, []);
 
   const onHandleKey = (e: ReactKeyboardEvent) => {
     let step = 0;
@@ -384,6 +392,11 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
         }}
         aria-label="Assistant panel"
         aria-hidden={mode === 'closed'}
+        onTransitionEnd={e => {
+          if (e.target === e.currentTarget && e.propertyName === 'width') {
+            notifyResize();
+          }
+        }}
       >
         {/* Mounted while open or collapsed, and kept mounted while closed
             if a conversation exists, so a stream keeps rendering and
