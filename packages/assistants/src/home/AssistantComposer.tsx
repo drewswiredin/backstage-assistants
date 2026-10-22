@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -60,8 +60,14 @@ const useStyles = makeStyles(theme => ({
  */
 export function AssistantComposer({
   variant = 'padded',
+  width,
 }: {
   variant?: AssistantComposerVariant;
+  /**
+   * The composer's width as a percentage of the card, 20 to 100. Defaults to
+   * 100 for `bar`, like a search bar, and 80 for the others.
+   */
+  width?: number;
 }) {
   const classes = useStyles();
   const panel = usePanelControl();
@@ -94,7 +100,19 @@ export function AssistantComposer({
   if (variant === 'bar') className = classes.bar;
 
   return (
-    <div className={className}>
+    <div
+      className={className}
+      style={
+        width
+          ? ({
+              '--assistant-composer-width': `${Math.min(
+                Math.max(width, 20),
+                100,
+              )}%`,
+            } as CSSProperties)
+          : undefined
+      }
+    >
       <EmbeddedAssistant
         key={session}
         composerOnly

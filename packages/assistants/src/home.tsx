@@ -35,6 +35,7 @@ const ROWS: Record<AssistantComposerVariant, number> = {
  *         config:
  *           variant: bar # bar | padded | full | titled
  *           title: Ask the assistant # titled only
+ *           width: 100 # % of the card; bar 100, others 80 by default
  *     - page:home:
  *         config:
  *           defaultConfig:
@@ -55,6 +56,7 @@ export const assistantsHomeModule = createFrontendModule({
       configSchema: {
         variant: z.enum(['bar', 'padded', 'full', 'titled']).default('padded'),
         title: z.string().default('Ask the assistant'),
+        width: z.number().min(20).max(100).optional(),
       },
       factory(originalFactory, { config }) {
         const variant = config.variant as AssistantComposerVariant;
@@ -67,7 +69,9 @@ export const assistantsHomeModule = createFrontendModule({
           description: 'Ask the assistant: a question answered in the panel.',
           components: () =>
             import('./home/AssistantComposer').then(m => ({
-              Content: () => <m.AssistantComposer variant={variant} />,
+              Content: () => (
+                <m.AssistantComposer variant={variant} width={config.width} />
+              ),
             })),
           layout: {
             width: { minColumns: 4, defaultColumns: 12 },

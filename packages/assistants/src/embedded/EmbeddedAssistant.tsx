@@ -208,12 +208,12 @@ const useStyles = makeStyles(theme => ({
     textAlign: 'center',
   },
   // Composer only: the thread viewport shows nothing but its footer (the
-  // composer), capped at the page's composer width.
+  // composer). Its width is `--assistant-composer-width` (a percentage set
+  // by the host), 80% when unset. `&&` beats the surface's own 48rem cap and
+  // the compact class, which otherwise tie and win by stylesheet order.
   composerOnly: {
-    // Beats the compact class's full-width footer: the composer takes most
-    // of the card without running edge to edge.
-    '& .aui-thread-viewport-footer': {
-      maxWidth: '80%',
+    '&& .aui-thread-viewport-footer': {
+      maxWidth: 'var(--assistant-composer-width, 80%)',
     },
     '& .aui-thread-viewport': {
       paddingTop: 0,
@@ -238,8 +238,8 @@ const useStyles = makeStyles(theme => ({
       paddingRight: 0,
       justifyContent: 'center',
     },
-    '& .aui-thread-viewport-footer': {
-      maxWidth: '100%',
+    '&& .aui-thread-viewport-footer': {
+      maxWidth: 'var(--assistant-composer-width, 100%)',
       marginTop: 0,
       paddingLeft: 0,
       paddingRight: 0,

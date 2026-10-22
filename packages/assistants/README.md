@@ -174,6 +174,9 @@ The module adds one widget, `AssistantComposer`. Its look is set with
 | `full`             | The same, filling the card edge to edge.                                                                                                                           | 3         |
 | `titled`           | `padded` under a card header, like the other home cards. `title` sets the header text (default "Ask the assistant").                                               | 4         |
 
+`width` sets the composer's width as a percentage of the card, 20 to 100: 100
+by default for `bar`, like a search bar, and 80 for the others.
+
 Configure the widget and place it on the home page's grid by its name:
 
 ```yaml
@@ -182,6 +185,7 @@ app:
     - home-page-widget:assistants/AssistantComposer:
         config:
           variant: bar
+          width: 100
     - page:home:
         config:
           defaultConfig:
@@ -204,7 +208,7 @@ component the entry point exports:
 ```tsx
 import { AssistantComposer } from '@drewswiredin/backstage-plugin-assistants/home';
 
-<AssistantComposer variant="padded" />;
+<AssistantComposer variant="padded" width={90} />;
 ```
 
 `full` assumes the home card's 16 px content padding; the other variants fit

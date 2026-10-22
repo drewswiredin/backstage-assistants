@@ -9,6 +9,7 @@ import { JSX as JSX_2 } from 'react';
 // @public
 export function AssistantComposer(input: {
   variant?: AssistantComposerVariant;
+  width?: number;
 }): JSX_2.Element;
 
 // @public
