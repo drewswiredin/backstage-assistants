@@ -165,7 +165,7 @@ export default createApp({
 The module adds one widget, `AssistantComposer`. Its look is set with
 `variant`:
 
-![The four looks of the homepage composer](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer-variants.png)
+![The homepage composer's four looks: bar across the top, padded and full side by side, titled below](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer-variants.png)
 
 | `variant`          | Looks like                                                                                                                                                         | Grid rows |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
