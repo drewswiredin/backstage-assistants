@@ -10,6 +10,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `read_current_page`, a built-in client tool: the rendered page as an outline (open dialogs first, then the content; headings, text, buttons, links, tabs, form fields, tables, alerts, and the first lines of long logs, with `find` for the lines around a term), so the assistant can answer "what does this mean" on any page. Disable it app-wide with `client-tool:assistants/read-current-page: false`.
 - The panel sends the page it sits beside with every turn (path, title, catalog entity ref), so the assistant knows where the user is before it reads anything. Requires backend 0.20.0 for the note; an older backend ignores the field.
 
+### Fixed
+
+- A reply that lands while the panel is hidden or collapsed now shows the unread dot on the button or the strip. The hidden surface kept marking its conversation read; only an open panel focuses it now.
+
 ## 0.17.0 - 2026-10-22
 
 ### Added

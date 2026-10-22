@@ -380,6 +380,7 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
                   onNew={forgetThread}
                   onHide={hide}
                   onClose={close}
+                  active={mode === 'open'}
                 />
               </Suspense>
             </div>

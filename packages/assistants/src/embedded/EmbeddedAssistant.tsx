@@ -80,6 +80,12 @@ export interface EmbeddedAssistantProps {
   assistantId?: string;
   /** The user picked another assistant in the header menu. */
   onAssistantChange: (assistantId: string) => void;
+  /**
+   * Whether the surface is in view. Only a surface in view focuses its
+   * conversation (marking it read); a hidden one leaves a reply that lands
+   * unread, so the button and the strip can show it.
+   */
+  active: boolean;
   /** The conversation to show (a server thread id), or none. */
   threadId?: string;
   /** The conversation's server id once it exists. */
@@ -234,6 +240,7 @@ function EmbeddedChat({
   onHide,
   onClose,
   onAssistantChange,
+  active,
 }: EmbeddedAssistantProps & {
   status: StatusResponse;
   assistant: AssistantSummary;
@@ -275,6 +282,7 @@ function EmbeddedChat({
       onHide={onHide}
       onClose={onClose}
       onAssistantChange={onAssistantChange}
+      active={active}
     />
   );
 }
@@ -291,6 +299,7 @@ function EmbeddedRuntime({
   onHide,
   onClose,
   onAssistantChange,
+  active,
 }: {
   api: AssistantsApi;
   baseUrl: string;
@@ -303,6 +312,7 @@ function EmbeddedRuntime({
   onHide: () => void;
   onClose: () => void;
   onAssistantChange: (assistantId: string) => void;
+  active: boolean;
 }) {
   // The assistant's default when the pool still offers it, else the
   // platform default (an assistant can outlive a model it was given).
@@ -374,6 +384,7 @@ function EmbeddedRuntime({
         onHide={onHide}
         onClose={onClose}
         onAssistantChange={onAssistantChange}
+        active={active}
       />
     </AssistantRuntimeProvider>
   );
@@ -393,6 +404,7 @@ function EmbeddedChrome({
   onHide,
   onClose,
   onAssistantChange,
+  active,
 }: {
   runtime: AssistantRuntime;
   api: AssistantsApi;
@@ -407,6 +419,7 @@ function EmbeddedChrome({
   onHide: () => void;
   onClose: () => void;
   onAssistantChange: (assistantId: string) => void;
+  active: boolean;
 }) {
   const classes = useStyles();
   // The assistant picker, offered only when there is a choice.
@@ -451,7 +464,8 @@ function EmbeddedChrome({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime]);
 
-  const { usageOf } = useThreadStatus(api, remoteId);
+  // Focus (which marks the conversation read) only while in view.
+  const { usageOf } = useThreadStatus(api, active ? remoteId : undefined);
 
   return (
     <div className={classes.root}>
