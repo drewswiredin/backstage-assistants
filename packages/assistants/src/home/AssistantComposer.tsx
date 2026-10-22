@@ -1,4 +1,9 @@
-import { useCallback, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -6,7 +11,11 @@ import { makeStyles } from '@material-ui/core/styles';
 import { clientToolsApiRef } from '../clientTools/api';
 import { EmbeddedAssistant } from '../embedded/EmbeddedAssistant';
 import { usePanelControl } from '../panel/panelControl';
-import { loadPanelAssistant, savePanelAssistant } from '../panel/panelStorage';
+import {
+  loadPanelAssistant,
+  onPanelAssistantChange,
+  savePanelAssistant,
+} from '../panel/panelStorage';
 import { threadRouteRef } from '../routes';
 
 /**
@@ -74,10 +83,13 @@ export function AssistantComposer({
   const navigate = useNavigate();
   const threadRoute = useRouteRef(threadRouteRef);
   const { tools } = useApi(clientToolsApiRef);
-  const [assistantId, setAssistantId] = useState<string | undefined>(
+  // The pick shared with the panel: one made there shows here at once.
+  const assistantId = useSyncExternalStore(
+    onPanelAssistantChange,
     loadPanelAssistant,
   );
-  // Remounting the surface starts it over on a fresh thread.
+  // Remounting the surface starts it over on a fresh thread (a new session,
+  // or a new pick).
   const [session, setSession] = useState(0);
 
   const handOff = useCallback(
@@ -88,11 +100,7 @@ export function AssistantComposer({
     },
     [panel, threadRoute, navigate],
   );
-  const pickAssistant = useCallback((id: string) => {
-    savePanelAssistant(id);
-    setAssistantId(id);
-    setSession(s => s + 1);
-  }, []);
+  const pickAssistant = useCallback((id: string) => savePanelAssistant(id), []);
   const noop = useCallback(() => {}, []);
 
   let className = classes.frame;
@@ -114,7 +122,7 @@ export function AssistantComposer({
       }
     >
       <EmbeddedAssistant
-        key={session}
+        key={`${session}:${assistantId ?? ''}`}
         composerOnly
         bare={variant === 'bar'}
         assistantId={assistantId}

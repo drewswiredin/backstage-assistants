@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -35,6 +36,7 @@ import {
   loadPanelAssistant,
   loadPanelThread,
   loadPanelWidth,
+  onPanelAssistantChange,
   savePanelAssistant,
   savePanelThread,
   savePanelWidth,
@@ -264,14 +266,29 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     setSession(s => s + 1);
   }, []);
   // Switching assistant starts fresh under the new one; the old chat stays in
-  // history.
-  const pickAssistant = useCallback(
-    (id: string) => {
-      savePanelAssistant(id);
+  // history. A pick made elsewhere (the homepage composer) switches too.
+  const pickedRef = useRef(pickedAssistant);
+  const adoptAssistant = useCallback(
+    (id: string | undefined) => {
+      pickedRef.current = id;
       setPickedAssistant(id);
       forgetThread();
     },
     [forgetThread],
+  );
+  const pickAssistant = useCallback(
+    (id: string) => {
+      adoptAssistant(id);
+      savePanelAssistant(id);
+    },
+    [adoptAssistant],
+  );
+  useEffect(
+    () =>
+      onPanelAssistantChange(id => {
+        if (id !== pickedRef.current) adoptAssistant(id);
+      }),
+    [adoptAssistant],
   );
 
   // An earlier conversation picked from the history menu: remember it and

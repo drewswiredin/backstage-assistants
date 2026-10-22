@@ -1,7 +1,8 @@
 /**
  * What the panel remembers between page loads: the last quick chat (a server
- * thread id) and the panel width. Both live in this browser's localStorage.
- * A missing or unusable store just means a blank panel at the default width.
+ * thread id), the assistant the user picked, and the panel width. All live in
+ * this browser's localStorage. A missing or unusable store just means a blank
+ * panel on the default assistant at the default width.
  */
 
 const THREAD_KEY = 'assistants-panel-thread';
@@ -55,8 +56,25 @@ export function loadPanelAssistant(): string | undefined {
   return id ? id : undefined;
 }
 
+const assistantListeners = new Set<(id: string | undefined) => void>();
+
+/**
+ * The pick is shared by the panel and the homepage composer: a pick in one
+ * reaches the other at once.
+ */
 export function savePanelAssistant(id: string | undefined) {
   write(ASSISTANT_KEY, id);
+  for (const listener of assistantListeners) listener(id);
+}
+
+/** Calls `listener` on every pick; returns the unsubscribe. */
+export function onPanelAssistantChange(
+  listener: (id: string | undefined) => void,
+): () => void {
+  assistantListeners.add(listener);
+  return () => {
+    assistantListeners.delete(listener);
+  };
 }
 
 /**

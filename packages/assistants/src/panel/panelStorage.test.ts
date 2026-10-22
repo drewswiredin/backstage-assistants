@@ -5,6 +5,7 @@ import {
   loadPanelThread,
   loadPanelWidth,
   MIN_PANEL_WIDTH,
+  onPanelAssistantChange,
   resolvePanelAssistant,
   savePanelAssistant,
   savePanelThread,
@@ -54,5 +55,15 @@ describe('panelStorage', () => {
     expect(clampPanelWidth(500, 800)).toBe(400);
     expect(clampPanelWidth(500, 500)).toBe(MIN_PANEL_WIDTH);
     expect(clampPanelWidth(Number.NaN, 2000)).toBe(DEFAULT_PANEL_WIDTH);
+  });
+
+  it('tells every subscriber about a pick, until it unsubscribes', () => {
+    const seen: Array<string | undefined> = [];
+    const unsubscribe = onPanelAssistantChange(id => seen.push(id));
+    savePanelAssistant('b');
+    unsubscribe();
+    savePanelAssistant('c');
+    expect(seen).toEqual(['b']);
+    expect(loadPanelAssistant()).toBe('c');
   });
 });
