@@ -54,16 +54,25 @@ import { usePanelControl } from '../panel/panelControl';
 import { rootRouteRef } from '../routes';
 
 const useStyles = makeStyles(theme => ({
+  // Header at the top, composer at the bottom, like the panel's column. The
+  // home card's content padding is reclaimed so both reach the card's edges.
   root: {
     display: 'flex',
     flexDirection: 'column',
+    justifyContent: 'space-between',
     gap: theme.spacing(1),
-    // Reclaim the home card's content padding so the header and composer
-    // fill the card the way the panel fills its column.
     margin: theme.spacing(-1, -0.5),
+    minHeight: `calc(100% + ${theme.spacing(2)}px)`,
   },
+  // `aui-root` scopes the vendored CSS's box reset (the composer's border
+  // exists only under it) and `aui-thread-root` gives the composer the
+  // background it inherits, exactly as inside a conversation.
   host: {
     ...auiThemeVars(theme),
+    '&&': {
+      height: 'auto',
+      overflow: 'visible',
+    },
     '& .aui-composer-root:focus-within': {
       borderColor: 'var(--aui-composer-focus)',
       boxShadow: '0 0 0 1px var(--aui-composer-focus)',
@@ -87,11 +96,6 @@ const useStyles = makeStyles(theme => ({
   },
   title: {
     fontWeight: 600,
-  },
-  // The stock textarea class is restyled by the shared composer styles; this
-  // keeps it from inheriting the card's font.
-  textarea: {
-    font: 'inherit',
   },
 }));
 
@@ -192,7 +196,7 @@ function Composer({ status }: { status: StatusResponse }) {
   };
 
   return (
-    <div className={`${classes.root} ${classes.host}`}>
+    <div className={`aui-root aui-thread-root ${classes.root} ${classes.host}`}>
       <div className={classes.header}>
         <ButtonBase
           className={classes.picker}
@@ -263,7 +267,7 @@ function Composer({ status }: { status: StatusResponse }) {
       >
         <textarea
           ref={inputRef}
-          className={`aui-composer-input ${composer.composerInput} ${classes.textarea}`}
+          className={`aui-composer-input ${composer.composerInput}`}
           rows={1}
           placeholder={
             assistant.ui?.composer?.placeholder ?? 'Ask the assistant…'
