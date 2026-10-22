@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.20.1 - 2026-10-22
+
+### Fixed
+
+- An assistant picked in the panel switches the homepage composer at once, and a pick in the composer switches the panel; before, the other surface caught up only after a page change.
+
 ## 0.20.0 - 2026-10-22
 
 ### Added
