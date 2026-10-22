@@ -9,26 +9,60 @@ import { usePanelControl } from '../panel/panelControl';
 import { loadPanelAssistant, savePanelAssistant } from '../panel/panelStorage';
 import { threadRouteRef } from '../routes';
 
+/**
+ * How the homepage composer looks:
+ *
+ * - `bar`: the composer alone, one row (input and send), like a search bar.
+ *   No header, no assistant picker; the remembered pick or the default.
+ * - `padded`: the panel's header (assistant picker) and the full composer,
+ *   framed, inside the card's padding.
+ * - `full`: the same, filling the card edge to edge.
+ * - `titled`: `padded` under a card header, like the other home cards.
+ *
+ * @public
+ */
+export type AssistantComposerVariant = 'bar' | 'padded' | 'full' | 'titled';
+
 const useStyles = makeStyles(theme => ({
-  // The page's chat pane frame around the embedded surface, filling the home
-  // card by cancelling the card's content padding.
+  // The page's chat pane frame around the embedded surface.
   frame: {
-    margin: theme.spacing(-2),
-    height: `calc(100% + ${theme.spacing(4)}px)`,
+    height: '100%',
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius,
     overflow: 'hidden',
+  },
+  // Fills the home card by cancelling its content padding.
+  full: {
+    margin: theme.spacing(-2),
+    height: `calc(100% + ${theme.spacing(4)}px)`,
+  },
+  // The bar carries no frame: the composer's own border is the outline.
+  bar: {
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
   },
 }));
 
 /**
  * The homepage composer: the panel's surface in composer-only mode, so the
- * header's assistant picker and the composer (model, effort, attachments)
- * are the same components as everywhere else. The first send creates the
- * conversation; it is handed to the panel, which continues it, and the card
- * starts over. Without the panel the conversation opens on the page.
+ * assistant picker and the composer are the same components as everywhere
+ * else. The first send creates the conversation; it is handed to the panel,
+ * which continues it, and the composer starts over. Without the panel the
+ * conversation opens on the Assistants page.
+ *
+ * `assistantsHomeModule` places it on a `@backstage/plugin-home` home page;
+ * an app can also render it inside its own card or page. `full` assumes the
+ * home card's 16 px content padding.
+ *
+ * @public
  */
-export function AskAssistantCard() {
+export function AssistantComposer({
+  variant = 'padded',
+}: {
+  variant?: AssistantComposerVariant;
+}) {
   const classes = useStyles();
   const panel = usePanelControl();
   const navigate = useNavigate();
@@ -55,11 +89,16 @@ export function AskAssistantCard() {
   }, []);
   const noop = useCallback(() => {}, []);
 
+  let className = classes.frame;
+  if (variant === 'full') className = `${classes.frame} ${classes.full}`;
+  if (variant === 'bar') className = classes.bar;
+
   return (
-    <div className={classes.frame}>
+    <div className={className}>
       <EmbeddedAssistant
         key={session}
         composerOnly
+        bare={variant === 'bar'}
         assistantId={assistantId}
         clientTools={tools}
         active={false}

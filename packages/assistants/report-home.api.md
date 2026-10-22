@@ -4,6 +4,15 @@
 
 ```ts
 import { FrontendModule } from '@backstage/frontend-plugin-api';
+import { JSX as JSX_2 } from 'react';
+
+// @public
+export function AssistantComposer(input: {
+  variant?: AssistantComposerVariant;
+}): JSX_2.Element;
+
+// @public
+export type AssistantComposerVariant = 'bar' | 'padded' | 'full' | 'titled';
 
 // @public
 export const assistantsHomeModule: FrontendModule;

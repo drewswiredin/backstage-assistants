@@ -10,15 +10,34 @@ app:
     - page:catalog:
         config:
           path: /
-    # The home page, with the "Ask the assistant" composer card placed.
+    # The homepage composer (padded), with its other three looks from the
+    # dev app's homeVariants module, for the docs screenshot.
+    - home-page-widget:assistants/AssistantComposer:
+        config:
+          variant: padded
     - page:home:
         config:
           defaultConfig:
-            - component: AskAssistant
+            - component: AssistantComposer-bar
               column: 0
               row: 0
               width: 12
+              height: 2
+            - component: AssistantComposer
+              column: 0
+              row: 2
+              width: 12
               height: 3
+            - component: AssistantComposer-full
+              column: 0
+              row: 5
+              width: 12
+              height: 3
+            - component: AssistantComposer-titled
+              column: 0
+              row: 8
+              width: 12
+              height: 4
 
 organization:
   name: My Company

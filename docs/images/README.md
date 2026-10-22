@@ -19,13 +19,13 @@ link to them.
 
 Shots to take at the next deployment, before the READMEs link to them:
 
-| File                 | Shows                                                                                         |
-| -------------------- | --------------------------------------------------------------------------------------------- |
-| `panel.png`          | the panel open beside an entity page, mid-answer, with the page content narrowed, not covered |
-| `panel-picker.png`   | the panel header menu listing the accessible assistants with the Default marker               |
-| `editor-default.png` | the editor with the Default chip, the Make default button, and the locked access row          |
-| `editor-tools.png`   | retake: tool assignment now has the Backstage client tools group                              |
-| `home-ask.png`       | the homepage composer: the assistant header and the composer with its pickers                 |
+| File                         | Shows                                                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `panel.png`                  | the panel open beside an entity page, mid-answer, with the page content narrowed, not covered                                 |
+| `panel-picker.png`           | the panel header menu listing the accessible assistants with the Default marker                                               |
+| `editor-default.png`         | the editor with the Default chip, the Make default button, and the locked access row                                          |
+| `editor-tools.png`           | retake: tool assignment now has the Backstage client tools group                                                              |
+| `home-composer-variants.png` | the homepage composer's four looks, top to bottom: `bar`, `padded`, `full`, `titled` (the dev app's home page shows all four) |
 
 Regenerate the PNG icon after editing the SVG:
 

@@ -4,7 +4,14 @@
 import '../collapsible/surface/styles/assistant-ui.css';
 import '../collapsible/surface/styles/assistant-ui-markdown.css';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
@@ -99,6 +106,11 @@ export interface EmbeddedAssistantProps {
    * hands it to the panel.
    */
   composerOnly?: boolean;
+  /**
+   * With `composerOnly`: no header and a one-row composer (input and send),
+   * like a search bar. The assistant is the remembered pick or the default.
+   */
+  bare?: boolean;
   /** A first message, with its model and effort, sent once ready. */
   handoff?: PanelHandoff;
   /** The handoff went out (the host clears it). */
@@ -212,7 +224,32 @@ const useStyles = makeStyles(theme => ({
       display: 'none',
     },
   },
+  hidden: {
+    display: 'none',
+  },
+  // Bare: the composer alone, full width, on whatever it sits on.
+  bare: {
+    backgroundColor: 'transparent',
+    '& .aui-thread-root': {
+      backgroundColor: 'transparent',
+    },
+    '& .aui-thread-viewport': {
+      paddingLeft: 0,
+      paddingRight: 0,
+      justifyContent: 'center',
+    },
+    '& .aui-thread-viewport-footer': {
+      maxWidth: '100%',
+      marginTop: 0,
+      paddingLeft: 0,
+      paddingRight: 0,
+      paddingBottom: 0,
+    },
+  },
 }));
+
+/** Bare mode, read by the chrome without threading it through every layer. */
+const BareContext = createContext(false);
 
 /** "just now", "5m ago", "3h ago", "2d ago", else the date. */
 function relativeTime(iso: string): string {
@@ -228,6 +265,14 @@ function relativeTime(iso: string): string {
 }
 
 export function EmbeddedAssistant(props: EmbeddedAssistantProps) {
+  return (
+    <BareContext.Provider value={props.bare === true}>
+      <EmbeddedAssistantInner {...props} />
+    </BareContext.Provider>
+  );
+}
+
+function EmbeddedAssistantInner(props: EmbeddedAssistantProps) {
   const classes = useStyles();
   const api = useApi(assistantsApiRef);
   const canUse = usePermission({ permission: assistantUsePermission });
@@ -517,6 +562,7 @@ function EmbeddedChrome({
   onHandoffSent?: () => void;
 }) {
   const classes = useStyles();
+  const bare = useContext(BareContext);
   // The assistant picker, offered only when there is a choice.
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
   const canPick = status.assistants.length > 1;
@@ -640,9 +686,11 @@ function EmbeddedChrome({
 
   return (
     <div
-      className={`${classes.root} ${composerOnly ? classes.composerOnly : ''}`}
+      className={`${classes.root} ${composerOnly ? classes.composerOnly : ''} ${
+        bare ? classes.bare : ''
+      }`}
     >
-      <div className={classes.header}>
+      <div className={`${classes.header} ${bare ? classes.hidden : ''}`}>
         {canPick ? (
           <>
             <ButtonBase
@@ -781,6 +829,7 @@ function EmbeddedChrome({
       <div className={classes.body}>
         <ConversationSurface
           className={classes.compact}
+          composerMinimal={bare}
           composerPlaceholder={assistant.ui?.composer?.placeholder}
           suggestions={assistant.ui?.suggestions}
           welcome={{

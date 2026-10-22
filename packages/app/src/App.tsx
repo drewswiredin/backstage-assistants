@@ -8,6 +8,7 @@ import assistantsPlugin, {
 import { assistantsHomeModule } from '@drewswiredin/backstage-plugin-assistants/home';
 import { clientToolsModule } from './modules/clientTools';
 import { navModule } from './modules/nav';
+import { homeVariantsModule } from './modules/homeVariants';
 import { signInModule } from './modules/signIn';
 
 export default createApp({
@@ -22,6 +23,8 @@ export default createApp({
     // A home page with the "Ask the assistant" composer card.
     homePlugin,
     assistantsHomeModule,
+    // The composer's other looks, for the docs screenshot.
+    homeVariantsModule,
     // Demo client tools (browser info, clipboard, a connect flow).
     clientToolsModule,
     navModule,

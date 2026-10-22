@@ -145,14 +145,14 @@ app:
 
 ### Homepage
 
-A composer for an app that uses `@backstage/plugin-home`: the panel's own
-surface with the conversation hidden, so the header's assistant picker and
-the composer (model, reasoning effort, attachments) are the same components
-as everywhere else. The first send creates the conversation and hands it to
-the panel, which opens and continues it, and the card starts over; in an app
-without the panel the conversation opens on the Assistants page. It ships behind its own entry
-point, so `@backstage/plugin-home-react` (an optional peer dependency) is
-loaded only by an app that uses it:
+A composer for an app that uses `@backstage/plugin-home`. It is the panel's
+own surface with the conversation hidden, so the composer is the same one the
+page and the panel use. The first send creates the conversation and hands it
+to the panel, which opens and continues it, and the composer starts over; in
+an app without the panel the conversation opens on the Assistants page.
+
+It ships behind its own entry point, so `@backstage/plugin-home-react` (an
+optional peer dependency) is loaded only by an app that uses it:
 
 ```ts
 import { assistantsHomeModule } from '@drewswiredin/backstage-plugin-assistants/home';
@@ -162,20 +162,53 @@ export default createApp({
 });
 ```
 
-The home page's grid places the widget by name, `AskAssistant`:
+The module adds one widget, `AssistantComposer`. Its look is set with
+`variant`:
+
+![The four looks of the homepage composer](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer-variants.png)
+
+| `variant`          | Looks like                                                                                                                                                         | Grid rows |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| `bar`              | The composer alone on one row, like a search bar: no header, no assistant picker, no model picker. It uses the user's last picked assistant, else the default one. | 2         |
+| `padded` (default) | The assistant picker and the full composer (attachments, model, reasoning effort), framed inside the card's padding.                                               | 3         |
+| `full`             | The same, filling the card edge to edge.                                                                                                                           | 3         |
+| `titled`           | `padded` under a card header, like the other home cards. `title` sets the header text (default "Ask the assistant").                                               | 4         |
+
+Configure the widget and place it on the home page's grid by its name:
 
 ```yaml
 app:
   extensions:
+    - home-page-widget:assistants/AssistantComposer:
+        config:
+          variant: bar
     - page:home:
         config:
           defaultConfig:
-            - component: AskAssistant
+            - component: AssistantComposer
               column: 0
               row: 0
               width: 12
-              height: 3
+              height: 2 # the variant's grid rows
 ```
+
+The composer's hint text is the assistant's own "Composer placeholder", set in
+the editor; for the `bar`, a placeholder such as "Ask anything about our
+systems…" on the default assistant makes it read like a search box. A user's
+saved home layout wins over `defaultConfig` until they choose "Restore
+defaults".
+
+To render it somewhere else, such as inside your own card or page, use the
+component the entry point exports:
+
+```tsx
+import { AssistantComposer } from '@drewswiredin/backstage-plugin-assistants/home';
+
+<AssistantComposer variant="padded" />;
+```
+
+`full` assumes the home card's 16 px content padding; the other variants fit
+any container.
 
 ### Backend
 

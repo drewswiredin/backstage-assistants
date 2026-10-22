@@ -64,6 +64,8 @@ const ComposerInfoContext = createContext<{
   used?: number;
   /** The host's model and effort pickers, rendered in the composer's second row. */
   controls?: ReactNode;
+  /** One row: the input and send only, like a search bar. */
+  minimal?: boolean;
 }>({});
 
 const useStyles = makeStyles(theme => ({
@@ -182,7 +184,8 @@ const useStyles = makeStyles(theme => ({
  */
 function ComposerWithGauge() {
   const classes = useComposerStyles();
-  const { contextWindow, used, controls } = useContext(ComposerInfoContext);
+  const { contextWindow, used, controls, minimal } =
+    useContext(ComposerInfoContext);
   const color = useContext(AvatarColorContext) ?? DEFAULT_AVATAR_COLOR;
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -197,6 +200,16 @@ function ComposerWithGauge() {
     typeof contextWindow === 'number' &&
     typeof used === 'number' &&
     used > contextWindow;
+
+  if (minimal) {
+    // The stock single-row composer: the input grows, send sits at its end.
+    return (
+      <Composer.Root>
+        <Composer.Input ref={inputRef} />
+        <Composer.Action />
+      </Composer.Root>
+    );
+  }
 
   return (
     <Composer.Root
@@ -354,6 +367,11 @@ export interface ConversationSurfaceProps {
    * the same place.
    */
   composerControls?: ReactNode;
+  /**
+   * A one-row composer: the input and send only, with no attachment button,
+   * pickers, or gauge. The homepage bar.
+   */
+  composerMinimal?: boolean;
 }
 
 /**
@@ -378,6 +396,7 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
     usedTokens,
     className,
     composerControls,
+    composerMinimal,
   } = props;
   const classes = useStyles();
   const theme = useTheme();
@@ -440,7 +459,12 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
 
   return (
     <ComposerInfoContext.Provider
-      value={{ contextWindow, used: usedTokens, controls: composerControls }}
+      value={{
+        contextWindow,
+        used: usedTokens,
+        controls: composerControls,
+        minimal: composerMinimal,
+      }}
     >
       <AvatarColorContext.Provider value={resolvedColor}>
         <div
