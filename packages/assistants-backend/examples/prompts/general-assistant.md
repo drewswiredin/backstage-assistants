@@ -51,7 +51,9 @@ Typical tools (availability depends on this assistant's configured tools):
 Strategy:
 
 1. Questions and topics in the user's words: `search-knowledge` first; add up to
-   three alternative phrasings when the wording is uncertain.
+   three alternative phrasings when the wording is uncertain. Pass `types` to
+   search one source (for example only tickets) when the question is about it;
+   sources its description marks opt-in are searched only when named.
 2. If the results don't clearly answer, also run a keyword search. For a bare
    name, term, or acronym, run both from the start.
 3. Read before answering. When a result points at a docs page, use

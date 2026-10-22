@@ -134,6 +134,19 @@ all of it; later runs embed only new and changed sections and delete removed
 ones. Changing `embeddingModel` empties the index, and each type refills on its
 next search run.
 
+A type added to `types` takes its name, weight, and metadata on its next run,
+keeping the embeddings it already has; 0.2.0 indexes upgrade the same way. To
+run a collator now rather than wait for its schedule, trigger its search task
+with a user or service token:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  https://backstage.example.com/api/search/.backstage/scheduler/v1/tasks/search_index_jira/trigger
+```
+
+The task id is `search_index_<type>`; the backend logs `Knowledge index
+refreshed` with the type and counts when the copy finishes.
+
 ## Give an assistant the tool
 
 Add `search-knowledge` to the assistant's tools in the assistant editor. It
