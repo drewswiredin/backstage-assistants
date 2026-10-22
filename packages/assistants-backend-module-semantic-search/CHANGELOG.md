@@ -3,6 +3,19 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Ranking by source. `assistants.semanticSearch.types.<type>` sets a document type's `weight` (multiplies its fused score; 0 never returns it), `default` (false makes it opt-in), `maxResults` (a per-answer cap whose spare slots go to other types), `enabled` (false stops copying it and deletes its chunks on its next run), and a `description` for the model. `assistants.semanticSearch.maxResults` sets the default result count.
+- `search-knowledge` takes `types` to search only named sources; an unknown name returns the list of types. The tool description lists the configured types and marks the opt-in ones. Each result carries its `type` and the short fields its collator attached (`metadata`: status, space, last update, …).
+- `knowledgeRankingExtensionPoint` (from `./alpha`) lets a backend module replace the default ranker, for example to favour recent tickets. The ranker sees only candidates the caller may read.
+
+### Changed
+
+- Each retrieval list keeps its best chunks of every type, so a large source cannot fill a list on its own before ranking weighs the types. Filtered vector search uses pgvector 0.8 iterative scans when available.
+- A run of a type named in `types` is stored under that type's name. Upgrading from 0.2.0 keeps the embeddings: each named type takes over its existing chunks on its next run without re-embedding.
+
 ## 0.2.0 - 2026-10-22
 
 ### Changed

@@ -94,6 +94,32 @@ describe('toSourceDocuments', () => {
     ]);
     expect(skipped).toBe(1);
   });
+
+  it('keeps the short fields a collator attaches as metadata', () => {
+    const { documents } = toSourceDocuments([
+      {
+        title: 'PAY-142: Rotate the Kafka key',
+        text: 'Rotated in staging first.',
+        location: 'https://jira.example.com/browse/PAY-142',
+        key: 'PAY-142',
+        status: 'Done',
+        labels: ['kafka', 'security'],
+        updated: '2026-10-01T09:00:00Z',
+        votes: 3,
+        owner: 'payments',
+        description: 'x'.repeat(500),
+        changelog: { items: [] },
+      },
+    ] as unknown as IndexableDocument[]);
+
+    expect(documents[0].metadata).toEqual({
+      key: 'PAY-142',
+      status: 'Done',
+      labels: 'kafka, security',
+      updated: '2026-10-01T09:00:00Z',
+      votes: 3,
+    });
+  });
 });
 
 describe('htmlToText', () => {

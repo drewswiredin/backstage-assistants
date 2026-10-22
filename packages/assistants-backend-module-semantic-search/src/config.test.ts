@@ -38,4 +38,46 @@ describe('readSemanticSearchConfig', () => {
       /no embeddings API/,
     );
   });
+
+  it('reads type settings with their defaults, and the result count', () => {
+    const config = read({
+      embeddingModel: 'local:nomic-embed-text',
+      maxResults: 6,
+      types: {
+        techdocs: { weight: 1.2 },
+        jira: {
+          weight: 0.5,
+          default: false,
+          maxResults: 2,
+          description: 'ticket history',
+        },
+        wiki: { enabled: false },
+      },
+    });
+    expect(config?.maxResults).toBe(6);
+    expect(Object.fromEntries(config!.types)).toEqual({
+      techdocs: { weight: 1.2, default: true, enabled: true },
+      jira: {
+        weight: 0.5,
+        default: false,
+        maxResults: 2,
+        enabled: true,
+        description: 'ticket history',
+      },
+      wiki: { weight: 1, default: true, enabled: false },
+    });
+    expect(read({ embeddingModel: 'local:x' })?.maxResults).toBe(8);
+  });
+
+  it('rejects a negative weight and a fractional result cap', () => {
+    expect(() =>
+      read({ embeddingModel: 'local:x', types: { jira: { weight: -1 } } }),
+    ).toThrow(/types.jira.weight/);
+    expect(() =>
+      read({ embeddingModel: 'local:x', types: { jira: { maxResults: 1.5 } } }),
+    ).toThrow(/types.jira.maxResults/);
+    expect(() => read({ embeddingModel: 'local:x', maxResults: 0 })).toThrow(
+      /semanticSearch.maxResults/,
+    );
+  });
 });

@@ -17,7 +17,33 @@ export interface SourceDocument {
   /** Heading path, e.g. `Pylon › Messaging › Dead-letter handling`. */
   title: string;
   text: string;
+  /** The other short fields the collator attached (status, space, updated, …). */
+  metadata?: KnowledgeMetadata;
 }
+
+export type KnowledgeMetadata = Record<string, string | number | boolean>;
+
+/** Fields every document has, or that the title and text already carry. */
+const OWN_FIELDS = new Set([
+  'title',
+  'text',
+  'location',
+  'authorization',
+  'entityTitle',
+  'owner',
+  'lifecycle',
+]);
+/** Fields of an entity-gated document that its entity ref, facts, or location already carry. */
+const ENTITY_FIELDS = new Set([
+  'kind',
+  'namespace',
+  'name',
+  'type',
+  'componentType',
+  'path',
+]);
+const MAX_METADATA_FIELDS = 16;
+const MAX_METADATA_CHARS = 200;
 
 export interface MappedDocuments {
   documents: SourceDocument[];
@@ -61,6 +87,7 @@ export function toSourceDocuments(docs: IndexableDocument[]): MappedDocuments {
       continue;
     }
     seen.add(doc.location);
+    const meta = metadata(doc, entityRef !== undefined);
     documents.push({
       location: doc.location,
       ...(entityRef ? { entityRef } : {}),
@@ -70,6 +97,7 @@ export function toSourceDocuments(docs: IndexableDocument[]): MappedDocuments {
         htmlToText(doc.title),
       ]),
       text,
+      ...(meta ? { metadata: meta } : {}),
     });
   }
   return { documents, skipped };
@@ -88,6 +116,44 @@ function asEntityRef(ref: string): string | undefined {
 function field(doc: IndexableDocument, key: string): string | undefined {
   const value = (doc as unknown as Record<string, unknown>)[key];
   return typeof value === 'string' && value ? value : undefined;
+}
+
+/**
+ * The collator's other fields that fit in a result: strings up to 200
+ * characters, numbers, booleans, and short string lists joined with commas;
+ * at most 16. Long text, nested objects, and fields the title and text
+ * already carry are left out.
+ */
+function metadata(
+  doc: IndexableDocument,
+  gated: boolean,
+): KnowledgeMetadata | undefined {
+  const result: KnowledgeMetadata = {};
+  let count = 0;
+  for (const [key, raw] of Object.entries(doc)) {
+    if (
+      OWN_FIELDS.has(key) ||
+      (gated && ENTITY_FIELDS.has(key)) ||
+      count === MAX_METADATA_FIELDS
+    ) {
+      continue;
+    }
+    const value =
+      Array.isArray(raw) && raw.every(item => typeof item === 'string')
+        ? raw.join(', ')
+        : raw;
+    if (
+      (typeof value === 'string' &&
+        value.trim() &&
+        value.length <= MAX_METADATA_CHARS) ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value))
+    ) {
+      result[key] = typeof value === 'string' ? value.trim() : value;
+      count++;
+    }
+  }
+  return count > 0 ? result : undefined;
 }
 
 function facts(doc: IndexableDocument, entityRef: string | undefined): string {

@@ -100,6 +100,34 @@ assistants:
 On Azure OpenAI, deploy an embedding model and name the deployment:
 `embeddingModel: azure:<embedding-deployment>`.
 
+### Rank by source
+
+Every source shares one index, so a large one (thousands of tickets that all
+mention the same system) can crowd out the one runbook section that answers
+the question. Name the search document types to weigh them:
+
+```yaml
+assistants:
+  semanticSearch:
+    embeddingModel: openai:text-embedding-3-small
+    maxResults: 8
+    types:
+      software-catalog: { weight: 1.5 }
+      techdocs: { weight: 1.2 }
+      confluence: { weight: 1.0 }
+      jira:
+        weight: 0.5
+        maxResults: 2
+        description: ticket history, decisions and status
+```
+
+The keys are the type names Backstage search uses: `software-catalog`,
+`techdocs`, or a collator's own type. Types left out are copied and ranked
+with weight 1. Set `default: false` to make a source opt-in: the model then
+searches it only when it passes `types: ['jira']`, and the tool description
+says so. Set `enabled: false` to stop copying a source; its chunks are
+deleted on its next search run.
+
 The index fills as search runs: each document type arrives when its collator
 next runs, on the schedule you gave that collator. A source's first run embeds
 all of it; later runs embed only new and changed sections and delete removed
@@ -149,17 +177,24 @@ document gated by a catalog entity (its `authorization.resourceRef`) keeps that
 entity for the permission check; a document gated by any other kind of
 resource is skipped, since the index can only check entity read permission.
 
-A run does not say which document type it is, so the index recognizes a source
-by its locations: the run joins the stored collection that already holds most
-of its locations, and that collection's chunks the run no longer has are
-deleted. A collection no search run has refreshed in 30 days (a source removed
-from search, or one whose locations all changed at once) is dropped. Each row stores the embedding, a generated full-text vector, and a
-trigram index over its text. The table is a rebuildable copy, not migrated
+Search never tells a decorator which document type it is decorating, so the
+module adds a pass-through decorator to each type named in `types`. Search
+builds a run's pipeline in one pass, so that decorator names the run's type.
+A named type's run is stored under its name; a run of any other type joins
+the stored collection that already holds most of its locations. Chunks the
+run no longer has are deleted. A collection no search run has refreshed in
+30 days (a source removed from search, or an unnamed one whose locations all
+changed at once) is dropped. Each row stores the embedding, a generated
+full-text vector, a trigram index over its text, its type, and the short
+fields its collator attached. The table is a rebuildable copy, not migrated
 data.
 
-**Retrieval.** `search-knowledge` takes the question and up to three alternative
-phrasings and builds one semantic list per phrasing, a keyword list, a rare-word
-list, and a fuzzy list:
+**Retrieval.** `search-knowledge` takes the question, up to three alternative
+phrasings, and optionally the `types` to search (otherwise every type that is
+on by default, plus unnamed sources). It builds one semantic list per
+phrasing, a keyword list, a rare-word list, and a fuzzy list, each keeping
+its best 30 chunks of every type, so a large source cannot fill a list on its
+own:
 
 | List      | Matches                                       | Postgres                                                    |
 | --------- | --------------------------------------------- | ----------------------------------------------------------- |
@@ -171,18 +206,71 @@ list, and a fuzzy list:
 Query words include adjacent pairs written as one word, so "tally up" also
 matches "TallyUp". Reciprocal rank fusion merges the lists with one vote per
 method: the semantic lists share one vote, so extra phrasings broaden recall
-without outvoting an exact match. The rare-word list keeps a name or acronym
-mentioned once in a paragraph about something else from being outranked by
-sections that are only near the question in meaning. The top candidates'
-entities are fetched from the catalog as the user; results for entities the
-user cannot read are dropped, results with no entity are kept, and repeated
-text is shown once.
+without outvoting an exact match. Each chunk's fused score is multiplied by
+its type's weight. The rare-word list keeps a name or acronym mentioned once
+in a paragraph about something else from being outranked by sections that
+are only near the question in meaning. The top candidates' entities are
+fetched from the catalog as the user; results for entities the user cannot
+read are dropped, results with no entity are kept, and repeated text is shown
+once. The ranker then picks the results: by default best first, with at most
+`maxResults` of a capped type while other types can fill the slots.
+
+Each result carries its title, location, type, excerpt, the entity ref for
+catalog and TechDocs results, and `metadata`: the short fields its collator
+attached (strings up to 200 characters, numbers, booleans), such as a
+ticket's status or a page's last update.
+
+## Custom ranking
+
+A backend module can replace the ranker, for example to favour recently
+updated tickets:
+
+```ts
+import { createBackendModule } from '@backstage/backend-plugin-api';
+import { knowledgeRankingExtensionPoint } from '@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search/alpha';
+
+export default createBackendModule({
+  pluginId: 'assistants',
+  moduleId: 'knowledge-recency',
+  register(env) {
+    env.registerInit({
+      deps: { ranking: knowledgeRankingExtensionPoint },
+      async init({ ranking }) {
+        ranking.setRanker(({ candidates, maxResults }) =>
+          candidates
+            .map(candidate => {
+              const updated = Date.parse(String(candidate.metadata?.updated));
+              const ageDays = (Date.now() - updated) / 86_400_000;
+              const boost = ageDays < 90 ? 1.2 : 1;
+              return { candidate, score: candidate.score * boost };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, maxResults)
+            .map(({ candidate }) => candidate),
+        );
+      },
+    });
+  },
+});
+```
+
+The ranker receives the query, its phrasings, the types searched, and up to
+60 candidates the caller may read. Each candidate has its fused score after
+weights, its rank in each retrieval list, its type, entity ref, and metadata.
+It runs after the permission check, so it cannot surface what the caller
+cannot read; results it returns that were not candidates are dropped.
 
 ## Reference
 
-| Key                                        | Default    | Meaning                                             |
-| ------------------------------------------ | ---------- | --------------------------------------------------- |
-| `assistants.semanticSearch.embeddingModel` | (required) | `<providerId>:<model>` from `assistants.providers`. |
+| Key                                                  | Default    | Meaning                                                                       |
+| ---------------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
+| `assistants.semanticSearch.embeddingModel`           | (required) | `<providerId>:<model>` from `assistants.providers`.                           |
+| `assistants.semanticSearch.maxResults`               | `8`        | Results per answer unless the model asks for a number (it may ask for 20).    |
+| `assistants.semanticSearch.types.<type>.weight`      | `1`        | Multiplies the type's fused score; `0` never returns it.                      |
+| `assistants.semanticSearch.types.<type>.default`     | `true`     | Searched when the model names no types; `false` makes the type opt-in.        |
+| `assistants.semanticSearch.types.<type>.maxResults`  |            | At most this many of the type's results while other types can fill the slots. |
+| `assistants.semanticSearch.types.<type>.enabled`     | `true`     | `false` stops copying the type and deletes its chunks on its next run.        |
+| `assistants.semanticSearch.types.<type>.description` |            | What the source holds, shown to the model in the tool description.            |
 
 The index refreshes when search does; set each collator's schedule in its own
 config.

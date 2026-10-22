@@ -16,6 +16,42 @@ export interface Config {
        * rebuilds the index.
        */
       embeddingModel: string;
+      /**
+       * Results per `search-knowledge` answer unless the caller asks for a
+       * number. Defaults to 8.
+       */
+      maxResults?: number;
+      /**
+       * Settings per Backstage search document type, keyed by the type name
+       * search uses (`software-catalog`, `techdocs`, or a collator's own type).
+       * Types left out are copied and ranked with the defaults.
+       */
+      types?: {
+        [type: string]: {
+          /**
+           * Multiplies the type's fused score. Defaults to 1; 0 means its
+           * chunks are never returned.
+           */
+          weight?: number;
+          /**
+           * Searched when the caller names no types. Defaults to true; false
+           * makes the type opt-in (the model passes it in `types`).
+           */
+          default?: boolean;
+          /** At most this many of the type's results in one answer. */
+          maxResults?: number;
+          /**
+           * Copied into the index. Defaults to true; false stops copying it
+           * and deletes its chunks on its next search run.
+           */
+          enabled?: boolean;
+          /**
+           * What the source holds, shown to the model in the tool
+           * description, e.g. "ticket history, decisions and status".
+           */
+          description?: string;
+        };
+      };
     };
   };
 }

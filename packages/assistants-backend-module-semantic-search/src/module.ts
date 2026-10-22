@@ -1,6 +1,7 @@
 import {
   coreServices,
   createBackendModule,
+  type LoggerService,
 } from '@backstage/backend-plugin-api';
 import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
 import { CatalogClient } from '@backstage/catalog-client';
@@ -8,6 +9,12 @@ import { registerSearchKnowledgeAction } from './action';
 import { readSemanticSearchConfig } from './config';
 import { knowledgeFeedServiceRef } from './feed';
 import { runIndex } from './indexer';
+import {
+  defaultRanker,
+  knowledgeRankingExtensionPoint,
+  typeSettingsOf,
+  type KnowledgeRanker,
+} from './ranking';
 import { KnowledgeStore } from './store';
 
 /**
@@ -15,7 +22,8 @@ import { KnowledgeStore } from './store';
  * search indexes embedded in the assistants plugin's Postgres database, fed
  * by {@link searchModuleAssistantsKnowledge} as each search run finishes, and
  * registers the `search-knowledge` action over it. Runs are copied one at a
- * time, in the order they finish.
+ * time, in the order they finish. Other modules can replace how results are
+ * picked through `knowledgeRankingExtensionPoint`.
  *
  * Off (with a log line saying why) when `assistants.semanticSearch` is absent, the
  * database is not Postgres, or the `vector` / `pg_trgm` extensions are missing.
@@ -26,6 +34,16 @@ export const assistantsModuleSemanticSearch = createBackendModule({
   pluginId: 'assistants',
   moduleId: 'semantic-search',
   register(env) {
+    let customRanker: KnowledgeRanker | undefined;
+    env.registerExtensionPoint(knowledgeRankingExtensionPoint, {
+      setRanker(ranker) {
+        if (customRanker) {
+          throw new Error('The knowledge ranker has already been set');
+        }
+        customRanker = ranker;
+      },
+    });
+
     env.registerInit({
       deps: {
         config: coreServices.rootConfig,
@@ -80,6 +98,8 @@ export const assistantsModuleSemanticSearch = createBackendModule({
         }
 
         const catalog = new CatalogClient({ discoveryApi: discovery });
+        const settingsOf = typeSettingsOf(settings.types);
+        const fallbackRanker = defaultRanker(settingsOf);
 
         registerSearchKnowledgeAction({
           actionsRegistry,
@@ -87,17 +107,24 @@ export const assistantsModuleSemanticSearch = createBackendModule({
           catalog,
           auth,
           embeddingModel: settings.embeddingModel,
+          types: settings.types,
+          maxResults: settings.maxResults,
+          ranker: () => customRanker ?? fallbackRanker,
         });
 
         let queue = Promise.resolve();
-        feed.listen(documents => {
+        feed.listen(({ type, documents }) => {
           queue = queue.then(() =>
-            runIndex({
-              store,
-              embeddingModel: settings.embeddingModel,
-              documents,
-              logger,
-            }).catch(error =>
+            (type && !settingsOf(type).enabled
+              ? dropType(store, type, logger)
+              : runIndex({
+                  store,
+                  embeddingModel: settings.embeddingModel,
+                  type,
+                  documents,
+                  logger,
+                })
+            ).catch(error =>
               logger.error('Knowledge index refresh failed', error),
             ),
           );
@@ -114,3 +141,21 @@ export const assistantsModuleSemanticSearch = createBackendModule({
     });
   },
 });
+
+/** Deletes what the index holds of a type that is no longer copied. */
+async function dropType(
+  store: KnowledgeStore,
+  type: string,
+  logger: LoggerService,
+): Promise<void> {
+  if (!(await store.isReady())) {
+    return;
+  }
+  const dropped = await store.dropType(type);
+  if (dropped > 0) {
+    logger.info('Knowledge index dropped a type that is not copied', {
+      type,
+      dropped,
+    });
+  }
+}

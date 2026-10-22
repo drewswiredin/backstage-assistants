@@ -47,4 +47,14 @@ describe('chunkDocument', () => {
       content: 'Run the replay job.',
     });
   });
+
+  it('hashes metadata apart from the embedded text', () => {
+    const base = doc('Rotated in staging first.');
+    const [open] = chunkDocument({ ...base, metadata: { status: 'Open' } });
+    const [done] = chunkDocument({ ...base, metadata: { status: 'Done' } });
+
+    expect(done.hash).toBe(open.hash);
+    expect(done.metadataHash).not.toBe(open.metadataHash);
+    expect(done.metadata).toEqual({ status: 'Done' });
+  });
 });

@@ -49,25 +49,54 @@ export function joinedWords(phrasings: string[]): string[] {
   return [...words].slice(0, MAX_WORDS);
 }
 
-/** A ranked list of chunk ids from one retrieval method, with its fusion weight. */
+/** The retrieval methods whose lists are fused. */
+export type ListName = 'semantic' | 'keyword' | 'rareWord' | 'fuzzy';
+
+/** A ranked list of chunks from one retrieval method, with its fusion weight. */
 export interface RankedList {
-  ids: string[];
+  name: ListName;
+  hits: Array<{ id: string; type?: string }>;
   weight: number;
+}
+
+/** A chunk after fusion. */
+export interface FusedHit {
+  id: string;
+  type?: string;
+  /** Fused score, after the type's weight. */
+  score: number;
+  /** The chunk's 1-based rank in each list it appears in; the best one for the semantic lists. */
+  ranks: Partial<Record<ListName, number>>;
 }
 
 const RRF_K = 60;
 
 /**
- * Reciprocal rank fusion: each list contributes `weight / (60 + rank)` per id.
- * Rewards ids several methods agree on without comparing their raw scores,
- * which live on different scales.
+ * Reciprocal rank fusion: each list contributes `weight / (60 + rank)` per
+ * chunk, and the sum is multiplied by the chunk's type weight. Rewards chunks
+ * several methods agree on without comparing their raw scores, which live on
+ * different scales. Chunks whose type weighs 0 are left out.
  */
-export function fuseRankings(lists: RankedList[]): string[] {
-  const scores = new Map<string, number>();
-  for (const { ids, weight } of lists) {
-    ids.forEach((id, index) => {
-      scores.set(id, (scores.get(id) ?? 0) + weight / (RRF_K + index + 1));
+export function fuseRankings(
+  lists: RankedList[],
+  typeWeight: (type: string | undefined) => number = () => 1,
+): FusedHit[] {
+  const fused = new Map<string, FusedHit>();
+  for (const { name, hits, weight } of lists) {
+    hits.forEach(({ id, type }, index) => {
+      const hit = fused.get(id) ?? {
+        id,
+        ...(type ? { type } : {}),
+        score: 0,
+        ranks: {},
+      };
+      hit.score += weight / (RRF_K + index + 1);
+      hit.ranks[name] = Math.min(hit.ranks[name] ?? Infinity, index + 1);
+      fused.set(id, hit);
     });
   }
-  return [...scores.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  return [...fused.values()]
+    .map(hit => ({ ...hit, score: hit.score * typeWeight(hit.type) }))
+    .filter(hit => hit.score > 0)
+    .sort((a, b) => b.score - a.score);
 }

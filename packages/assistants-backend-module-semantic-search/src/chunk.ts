@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { SourceDocument } from './documents';
+import type { KnowledgeMetadata, SourceDocument } from './documents';
 
 /** A stored, embedded unit of a {@link SourceDocument}. */
 export interface Chunk {
@@ -10,6 +10,9 @@ export interface Chunk {
   content: string;
   /** Hash of what gets embedded; unchanged hash = no re-embedding. */
   hash: string;
+  metadata?: KnowledgeMetadata;
+  /** Hash of the metadata; a change alone rewrites the row without re-embedding. */
+  metadataHash: string;
 }
 
 const MAX_CHARS = 1600;
@@ -21,6 +24,9 @@ const OVERLAP_CHARS = 200;
  * one piece. TechDocs sections are usually one chunk already.
  */
 export function chunkDocument(doc: SourceDocument): Chunk[] {
+  const metadataHash = sha256(
+    JSON.stringify(Object.entries(doc.metadata ?? {}).sort()),
+  );
   return splitText(doc.text).map((content, index) => ({
     id: sha256(`${doc.location}|${index}`),
     ...(doc.entityRef ? { entityRef: doc.entityRef } : {}),
@@ -28,6 +34,8 @@ export function chunkDocument(doc: SourceDocument): Chunk[] {
     title: doc.title,
     content,
     hash: sha256(embeddingInput(doc.title, content)),
+    ...(doc.metadata ? { metadata: doc.metadata } : {}),
+    metadataHash,
   }));
 }
 
