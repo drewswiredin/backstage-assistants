@@ -591,7 +591,13 @@ needs no backup.
 ### Logs
 
 - Healthy start: `AI Assistants backend plugin initialized`, with `models`,
-  `defaultModel`, `builtinActions`, and `assistants` counts.
+  `defaultModel`, `builtinActions`, and `assistants` counts. Before it, on an
+  upgrade from a version without the designation, `default assistant
+designated: the oldest assistant open to every signed-in user`, or the
+  warning `no default assistant` when none is open to everyone; designate one
+  in the editor.
+- At info, per designation: `default assistant designated` with the id and
+  the acting admin.
 - Per turn, at info: `chat turn started`, then `chat turn finished` or
   `chat turn aborted (stop)`; a failure logs `chat turn errored` at error with
   the provider's message and, for a provider error, the response body.

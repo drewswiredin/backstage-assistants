@@ -89,7 +89,8 @@ their server's configured credential.
 ## What admins get
 
 - **In-app editor.** Create, edit, and delete assistants in-app; changes are
-  live on save.
+  live on save. One assistant is the default: the one every signed-in user
+  gets and the panel opens first.
 - **Permissions.** Two Backstage permissions (`assistant.use`,
   `assistant.manage`) plus a per-assistant audience; works with your permission
   policy or the RBAC plugin.

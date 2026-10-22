@@ -255,25 +255,28 @@ A low-privilege user chatting with an assistant wired to a powerful MCP server g
 
 ## State and lifetime
 
-| Store                           | Where          | Scope                             | Written by                                            | Lifetime                                                                      | Several replicas                               |
-| ------------------------------- | -------------- | --------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------- |
-| `threads`, `messages`           | DB             | Per `user_ref`                    | `ThreadService` from `/chat` and `/threads`           | Durable                                                                       | Shared                                         |
-| `assistants`, `assistants_meta` | DB             | Global                            | `AssistantStore` from `/manage`, seed-once            | Durable                                                                       | Shared                                         |
-| `assistants_knowledge_*`        | DB             | Global                            | The knowledge index refresh task, one replica per run | Rebuildable cache; rebuilt when the embedding model changes                   | Shared                                         |
-| Assistant snapshot              | Process memory | Global                            | Write-through on the editing replica                  | Lazy refresh after 60 s elsewhere                                             | Stale up to 60 s; `/chat` reads the row        |
-| `stream_chunks`                 | DB             | Per thread, owner-checked on read | `StreamBuffer` from the `consumeSseStream` tee        | Replaced by the next turn; deleted 60 s after completion; swept after an hour | Shared                                         |
-| Turn state                      | DB             | Per thread                        | `noteStarted`, a 5 s heartbeat, `noteFinished`        | Cleared on finish, abort, or error; stale after 30 s                          | Shared                                         |
-| Abort handles                   | Process memory | Per thread                        | `/chat`                                               | Cleared on finish, abort, or error                                            | A cancel elsewhere lands on the next heartbeat |
-| MCP pool and tool cache         | Process memory | Per server                        | `maintainMcpConnections` every 2 min                  | Until shutdown; 5 min freshness for `/capabilities`                           | Each replica keeps its own                     |
-| Runtime messages                | Browser memory | Per tab                           | `useChat` stream, history adapter load                | Until unmount; never persisted                                                | n/a                                            |
-| Thread status rows              | Browser memory | Per tab                           | `useThreadStatus` refetch                             | Until unmount                                                                 | n/a                                            |
-| `interruptedTurns` reasons      | Browser memory | Per message id                    | `useChat.onFinish`                                    | Cleared on reload; the DB flag takes over                                     | n/a                                            |
-| Model and effort refs           | React refs     | Per tab                           | Header pickers; PATCHed to the thread                 | Until unmount                                                                 | n/a                                            |
-| Side pane collapsed             | `localStorage` | Per browser                       | The collapse control                                  | Persistent                                                                    | n/a                                            |
-| Active assistant                | URL            | Per tab                           | `?assistant=<id>`, rewritten on each switch           | Survives reload                                                               | n/a                                            |
-| Nav icon status rows            | Browser memory | Per tab                           | `AssistantsNavIcon`'s own `useThreadStatus`           | Until unmount                                                                 | n/a                                            |
-| Scaffolder field registry       | Module memory  | Per tab                           | `render_form`'s first `loadFormFields()`              | Until reload                                                                  | n/a                                            |
-| Client tool prompts             | Browser memory | Per tool call                     | The runtime's `execute` wrapper via `human`           | Until answered or the turn stops; a reload re-runs the call and asks again    | n/a                                            |
+| Store                           | Where          | Scope                             | Written by                                                          | Lifetime                                                                      | Several replicas                               |
+| ------------------------------- | -------------- | --------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------- |
+| `threads`, `messages`           | DB             | Per `user_ref`                    | `ThreadService` from `/chat` and `/threads`                         | Durable                                                                       | Shared                                         |
+| `assistants`, `assistants_meta` | DB             | Global                            | `AssistantStore` from `/manage`, seed-once                          | Durable                                                                       | Shared                                         |
+| `assistants_knowledge_*`        | DB             | Global                            | The knowledge index refresh task, one replica per run               | Rebuildable cache; rebuilt when the embedding model changes                   | Shared                                         |
+| Assistant snapshot              | Process memory | Global                            | Write-through on the editing replica                                | Lazy refresh after 60 s elsewhere                                             | Stale up to 60 s; `/chat` reads the row        |
+| `stream_chunks`                 | DB             | Per thread, owner-checked on read | `StreamBuffer` from the `consumeSseStream` tee                      | Replaced by the next turn; deleted 60 s after completion; swept after an hour | Shared                                         |
+| Turn state                      | DB             | Per thread                        | `noteStarted`, a 5 s heartbeat, `noteFinished`                      | Cleared on finish, abort, or error; stale after 30 s                          | Shared                                         |
+| Abort handles                   | Process memory | Per thread                        | `/chat`                                                             | Cleared on finish, abort, or error                                            | A cancel elsewhere lands on the next heartbeat |
+| MCP pool and tool cache         | Process memory | Per server                        | `maintainMcpConnections` every 2 min                                | Until shutdown; 5 min freshness for `/capabilities`                           | Each replica keeps its own                     |
+| Runtime messages                | Browser memory | Per tab                           | `useChat` stream, history adapter load                              | Until unmount; never persisted                                                | n/a                                            |
+| Thread status rows              | Browser memory | Per tab                           | `useThreadStatus` refetch                                           | Until unmount                                                                 | n/a                                            |
+| `interruptedTurns` reasons      | Browser memory | Per message id                    | `useChat.onFinish`                                                  | Cleared on reload; the DB flag takes over                                     | n/a                                            |
+| Model and effort refs           | React refs     | Per tab                           | Header pickers; PATCHed to the thread                               | Until unmount                                                                 | n/a                                            |
+| Side pane collapsed             | `localStorage` | Per browser                       | The collapse control                                                | Persistent                                                                    | n/a                                            |
+| Panel conversation, width, pick | `localStorage` | Per browser                       | `panelStorage` from the panel                                       | Persistent; the conversation is forgotten on "+" and "Open in Assistants"     | n/a                                            |
+| Panel mode                      | React state    | Per tab                           | The button, Hide, Close, Escape, click-off                          | Until reload; closed on load                                                  | n/a                                            |
+| Default assistant               | DB             | Global                            | `setDefault` from "Make default", the seed, `ensureDefault` at init | Durable; read with the snapshot                                               | Shared                                         |
+| Active assistant                | URL            | Per tab                           | `?assistant=<id>`, rewritten on each switch                         | Survives reload                                                               | n/a                                            |
+| Nav icon status rows            | Browser memory | Per tab                           | `AssistantsNavIcon`'s own `useThreadStatus`                         | Until unmount                                                                 | n/a                                            |
+| Scaffolder field registry       | Module memory  | Per tab                           | `render_form`'s first `loadFormFields()`                            | Until reload                                                                  | n/a                                            |
+| Client tool prompts             | Browser memory | Per tool call                     | The runtime's `execute` wrapper via `human`                         | Until answered or the turn stops; a reload re-runs the call and asks again    | n/a                                            |
 
 Turn state and the stream buffer are in the database, so `working`, Stop, and rejoining a running reply work on any replica. The abort handles live in process memory; a Stop received elsewhere reaches them through the heartbeat.
 
@@ -325,7 +328,7 @@ Turn state and the stream buffer are in the database, so `working`, Stop, and re
 | `definition_json`                                      | `TEXT`, `LONGTEXT` on MySQL: `title`, `description?`, `color?`, `prompt`, `access`, `allowedTools`, `models`, `defaultModel`, `ui?` |
 | `created_by`, `created_at`, `updated_by`, `updated_at` | Audit columns                                                                                                                       |
 
-`assistants_meta` holds the seed-once marker: `key = seeded`, `value` = the seed timestamp.
+`assistants_meta` holds two keys: `seeded`, the seed-once marker with the seed timestamp, and `default_assistant`, the default assistant's id. The default is a single key rather than a column so there can never be two.
 
 `assistants_knowledge_chunks` (knowledge index module, Postgres only)
 
@@ -369,6 +372,7 @@ flowchart TB
   PN["AssistantsPanel\npanel/AssistantsPanel.tsx"]
   EA["EmbeddedAssistant\nembedded/EmbeddedAssistant.tsx"]
   SA["Single-thread adapter\ncollapsible/threadListAdapter.ts"]
+  CA["clientToolsApiRef\nclientTools/api.ts"]
   PN --> EA
   EA --> SA
   SA --> RH
@@ -380,7 +384,6 @@ flowchart TB
   CP --> TS
   NI --> TS
   RP --> CT
-  CA["clientToolsApiRef\nclientTools/api.ts"]
   BP -->|"tools input"| CA
   CA --> CP
   TS --> API
@@ -450,9 +453,13 @@ sequenceDiagram
   R-->>E: actions, models, servers, floor
   E->>E: edit, delta-validate
   E->>R: POST or PUT /manage/assistants
-  R->>R: structural validation, delta rule
+  R->>R: structural validation, delta rule, default stays open
   R->>S: create or update
   S->>D: write row
+  S->>S: rebuild snapshot
+  E->>R: PUT /manage/assistants/:id/default
+  R->>S: setDefault
+  S->>D: open access, write default_assistant
   S->>S: rebuild snapshot
   E->>R: GET /status
 ```

@@ -4,9 +4,10 @@ AI Assistants for your developer portal.
 Every answer comes from your catalog and docs. Every Backstage action runs as the user.
 
 This is the frontend plugin of AI Assistants for Backstage, for the new
-frontend system: a collapsible, multi-conversation chat panel at `/assistants`
-and the in-app editor where admins create assistants. The panel renders
-generative UI: forms built from your scaffolder field extensions, Mermaid
+frontend system: a collapsible, multi-conversation chat page at `/assistants`,
+a panel that opens beside any page for a quick question, and the in-app
+editor where admins create assistants. The conversation renders generative
+UI: forms built from your scaffolder field extensions, Mermaid
 diagrams with fullscreen pan and zoom, download chips for generated files, and
 approval cards (Allow, Always allow, Deny) for gated tools. It pairs with:
 
@@ -247,8 +248,9 @@ export const SidebarContent = NavContentBlueprint.make({
 
 ### Root entry exports
 
-The plugin itself is the default export of the `./alpha` subpath. The package
-root exports what a host app needs to integrate with it:
+The plugin itself is the default export of the `./alpha` subpath, which also
+exports `assistantsPanelModule` (see [Panel](#panel)). The package root
+exports what a host app needs to integrate with it:
 
 | Export                                                                                                                          | Purpose                                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -258,6 +260,7 @@ root exports what a host app needs to integrate with it:
 | `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none.                       |
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                |
 | `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                 |
+| `clientToolsApiRef`, `ClientToolsApi` (type)                                                                                    | The registry of contributed client tools, read by every surface that runs a conversation.                     |
 | `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps`, `ClientToolInterrupt` (types) | The client tool contract; `ClientToolInterrupt` is the approval or connect prompt a custom `render` receives. |
 
 ### Chat page
