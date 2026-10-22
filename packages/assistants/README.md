@@ -151,8 +151,17 @@ page and the panel use. The first send creates the conversation and hands it
 to the panel, which opens and continues it, and the composer starts over; in
 an app without the panel the conversation opens on the Assistants page.
 
-It ships behind its own entry point, so `@backstage/plugin-home-react` (an
-optional peer dependency) is loaded only by an app that uses it:
+It ships behind its own entry point, `/home`, and needs
+`@backstage/plugin-home-react` in your app. That package is an optional peer
+dependency, so the plugin never pulls it in and an app without a home page
+never loads it, but your package manager won't install it for you either. Add
+it next to `@backstage/plugin-home`:
+
+```sh
+yarn --cwd packages/app add @backstage/plugin-home-react
+```
+
+Then add the module to your features:
 
 ```ts
 import { assistantsHomeModule } from '@drewswiredin/backstage-plugin-assistants/home';
