@@ -145,12 +145,12 @@ app:
 
 ### Homepage
 
-A composer for an app that uses `@backstage/plugin-home`: the panel's header
-(the assistant, with a menu to pick another) and the same composer as the
-page and the panel, with the model and reasoning effort pickers, but no
-conversation. Sending opens the panel on a fresh conversation with the
-assistant, model, and effort already chosen; in an app without the panel it
-takes the question to the Assistants page. It ships behind its own entry
+A composer for an app that uses `@backstage/plugin-home`: the panel's own
+surface with the conversation hidden, so the header's assistant picker and
+the composer (model, reasoning effort, attachments) are the same components
+as everywhere else. The first send creates the conversation and hands it to
+the panel, which opens and continues it, and the card starts over; in an app
+without the panel the conversation opens on the Assistants page. It ships behind its own entry
 point, so `@backstage/plugin-home-react` (an optional peer dependency) is
 loaded only by an app that uses it:
 

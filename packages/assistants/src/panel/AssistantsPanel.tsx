@@ -284,6 +284,7 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     () => ({
       open: options => {
         if (options?.assistantId) pickAssistant(options.assistantId);
+        if (options?.threadId) pickThread(options.threadId);
         if (options?.prompt) {
           if (!options.assistantId) forgetThread();
           setHandoff({
@@ -295,7 +296,7 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
         setMode('open');
       },
     }),
-    [pickAssistant, forgetThread],
+    [pickAssistant, pickThread, forgetThread],
   );
   const handoffSent = useCallback(() => setHandoff(undefined), []);
 

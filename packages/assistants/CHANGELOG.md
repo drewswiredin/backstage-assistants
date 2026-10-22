@@ -7,8 +7,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- The homepage composer: `assistantsHomeModule` from the `./home` entry point adds `home-page-widget:assistants/AskAssistant` to a `@backstage/plugin-home` home page: the panel's header with the assistant menu and the same composer as the page and the panel (model and effort pickers, the gauge), but no conversation. Sending opens the panel on a fresh conversation with the assistant, model, effort, and message already chosen; without the panel it takes the question to the page. `@backstage/plugin-home-react` is an optional peer dependency used only by that entry point.
-- `usePanelControl`: a page component opens the panel, with a first message, through the context the panel wrapper provides.
+- The homepage composer: `assistantsHomeModule` from the `./home` entry point adds `home-page-widget:assistants/AskAssistant` to a `@backstage/plugin-home` home page: the panel's surface with the conversation hidden, so the assistant picker and the composer (model, effort, attachments) are the same components as everywhere else. The first send creates the conversation and hands it to the panel, which continues it; without the panel it opens on the page. `@backstage/plugin-home-react` is an optional peer dependency used only by that entry point.
+- `usePanelControl`: a page component opens the panel, on a conversation or with a first message, through the context the panel wrapper provides.
 - The panel's history button lists the assistant's earlier conversations; picking one continues it in the panel.
 
 ### Changed

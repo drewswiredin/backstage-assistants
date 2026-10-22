@@ -92,6 +92,13 @@ export interface EmbeddedAssistantProps {
    * unread, so the button and the strip can show it.
    */
   active: boolean;
+  /**
+   * Only the header's assistant picker and the composer: no conversation,
+   * no history, no panel controls. The homepage composer; the first send
+   * creates the thread, reported through `onThreadChange`, and the host
+   * hands it to the panel.
+   */
+  composerOnly?: boolean;
   /** A first message, with its model and effort, sent once ready. */
   handoff?: PanelHandoff;
   /** The handoff went out (the host clears it). */
@@ -179,6 +186,23 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(3, 2),
     textAlign: 'center',
   },
+  // Composer only: the thread viewport shows nothing but its footer (the
+  // composer), capped at the page's composer width.
+  composerOnly: {
+    // Beats the compact class's full-width footer, so the composer is capped
+    // like the page's.
+    '& .aui-thread-viewport-footer': {
+      maxWidth: '48rem',
+    },
+    '& .aui-thread-viewport': {
+      paddingTop: 0,
+      justifyContent: 'flex-end',
+      overflow: 'hidden',
+    },
+    '& .aui-thread-viewport > :not(.aui-thread-viewport-footer)': {
+      display: 'none',
+    },
+  },
 }));
 
 /** "just now", "5m ago", "3h ago", "2d ago", else the date. */
@@ -265,6 +289,7 @@ function EmbeddedChat({
   onAssistantChange,
   onThreadPick,
   active,
+  composerOnly,
   handoff,
   onHandoffSent,
 }: EmbeddedAssistantProps & {
@@ -310,6 +335,7 @@ function EmbeddedChat({
       onAssistantChange={onAssistantChange}
       onThreadPick={onThreadPick}
       active={active}
+      composerOnly={composerOnly}
       handoff={handoff}
       onHandoffSent={onHandoffSent}
     />
@@ -330,6 +356,7 @@ function EmbeddedRuntime({
   onAssistantChange,
   onThreadPick,
   active,
+  composerOnly,
   handoff,
   onHandoffSent,
 }: {
@@ -346,6 +373,7 @@ function EmbeddedRuntime({
   onAssistantChange: (assistantId: string) => void;
   onThreadPick: (remoteId: string) => void;
   active: boolean;
+  composerOnly?: boolean;
   handoff?: PanelHandoff;
   onHandoffSent?: () => void;
 }) {
@@ -430,6 +458,7 @@ function EmbeddedRuntime({
         onAssistantChange={onAssistantChange}
         onThreadPick={onThreadPick}
         active={active}
+        composerOnly={composerOnly}
         handoff={handoff}
         onHandoffSent={onHandoffSent}
       />
@@ -454,6 +483,7 @@ function EmbeddedChrome({
   onAssistantChange,
   onThreadPick,
   active,
+  composerOnly,
   handoff,
   onHandoffSent,
 }: {
@@ -473,6 +503,7 @@ function EmbeddedChrome({
   onAssistantChange: (assistantId: string) => void;
   onThreadPick: (remoteId: string) => void;
   active: boolean;
+  composerOnly?: boolean;
   handoff?: PanelHandoff;
   onHandoffSent?: () => void;
 }) {
@@ -599,7 +630,9 @@ function EmbeddedChrome({
   }, [handoff, runtime, onHandoffSent]);
 
   return (
-    <div className={classes.root}>
+    <div
+      className={`${classes.root} ${composerOnly ? classes.composerOnly : ''}`}
+    >
       <div className={classes.header}>
         {canPick ? (
           <>
@@ -653,23 +686,25 @@ function EmbeddedChrome({
             </Typography>
           </>
         )}
-        {remoteId && (
+        {!composerOnly && remoteId && (
           <Tooltip title="New chat">
             <IconButton size="small" onClick={onNew} aria-label="New chat">
               <AddIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         )}
-        <Tooltip title="Earlier conversations">
-          <IconButton
-            size="small"
-            onClick={e => setHistoryAnchor(e.currentTarget)}
-            aria-label="Earlier conversations"
-            aria-haspopup="menu"
-          >
-            <HistoryIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        {!composerOnly && (
+          <Tooltip title="Earlier conversations">
+            <IconButton
+              size="small"
+              onClick={e => setHistoryAnchor(e.currentTarget)}
+              aria-label="Earlier conversations"
+              aria-haspopup="menu"
+            >
+              <HistoryIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
         <Menu
           anchorEl={historyAnchor}
           open={historyAnchor !== null}
@@ -705,25 +740,29 @@ function EmbeddedChrome({
             </MenuItem>
           ))}
         </Menu>
-        <Tooltip title="Open in Assistants">
-          <IconButton
-            size="small"
-            onClick={() => onOpenFull(remoteId, assistant.id)}
-            aria-label="Open in Assistants"
-          >
-            <OpenInNewIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Hide (Esc). Your chat is kept.">
-          <IconButton size="small" onClick={onHide} aria-label="Hide">
-            <ChevronRightIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Close the panel. Your chat is kept.">
-          <IconButton size="small" onClick={onClose} aria-label="Close">
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        {!composerOnly && (
+          <>
+            <Tooltip title="Open in Assistants">
+              <IconButton
+                size="small"
+                onClick={() => onOpenFull(remoteId, assistant.id)}
+                aria-label="Open in Assistants"
+              >
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Hide (Esc). Your chat is kept.">
+              <IconButton size="small" onClick={onHide} aria-label="Hide">
+                <ChevronRightIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Close the panel. Your chat is kept.">
+              <IconButton size="small" onClick={onClose} aria-label="Close">
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
       </div>
       <div className={classes.body}>
         <ConversationSurface

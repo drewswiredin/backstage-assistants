@@ -8,6 +8,8 @@ import type {
 export interface PanelOpenOptions {
   /** Open on this assistant (one the user can access); the current one otherwise. */
   assistantId?: string;
+  /** Continue this conversation (a server thread id), e.g. one just started elsewhere. */
+  threadId?: string;
   /** Start a fresh conversation and send this as its first message. */
   prompt?: string;
   /** The model for that conversation (one the assistant allows). */
