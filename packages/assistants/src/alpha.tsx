@@ -15,6 +15,7 @@ import { AssistantClientToolBlueprint, clientToolDataRef } from './clientTools';
 import { clientToolsApiRef, type ClientToolsApi } from './clientTools/api';
 import { renderFormTool } from './clientTools/builtin/renderForm';
 import { downloadFileTool } from './clientTools/builtin/downloadFile';
+import { readCurrentPageTool } from './clientTools/builtin/readCurrentPage';
 import { AssistantsPanel } from './panel/AssistantsPanel';
 
 /** Backend client (`/status`, threads, manage, base url + authed fetch). */
@@ -78,6 +79,16 @@ const downloadFileClientTool = AssistantClientToolBlueprint.make({
 });
 
 /**
+ * `read_current_page`: the rendered page as an outline, so the model can see
+ * what the user is looking at. An app that does not want pages read turns it
+ * off: `client-tool:assistants/read-current-page` with `disabled: true`.
+ */
+const readCurrentPageClientTool = AssistantClientToolBlueprint.make({
+  name: 'read-current-page',
+  params: defineParams => defineParams(readCurrentPageTool),
+});
+
+/**
  * The Backstage AI Assistants frontend plugin (new frontend system).
  *
  * @public
@@ -92,6 +103,7 @@ export default createFrontendPlugin({
     assistantsPage,
     renderFormClientTool,
     downloadFileClientTool,
+    readCurrentPageClientTool,
   ],
   routes: {
     root: rootRouteRef,

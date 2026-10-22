@@ -25,6 +25,7 @@ import type {
   AssistantId,
   ClientToolAttributes,
   ModelId,
+  PageContext,
   ReasoningLevel,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
@@ -68,6 +69,11 @@ interface RuntimeHookOptions {
    * tell what a tool does to its system.
    */
   getClientToolAttributes: () => Record<string, ClientToolAttributes>;
+  /**
+   * The page the user is viewing, read per request by a surface that sits
+   * beside the page (the panel); the page itself sends none.
+   */
+  getPageContext?: () => PageContext | undefined;
 }
 
 /**
@@ -86,6 +92,7 @@ function createInjectingFetch(
   modelIdRef: RefObject<ModelId>,
   reasoningLevelRef: RefObject<ReasoningLevel | undefined>,
   getClientToolAttributes: () => Record<string, ClientToolAttributes>,
+  getPageContext?: () => PageContext | undefined,
 ): typeof fetch {
   return async (input, init) => {
     let nextInit = init;
@@ -102,6 +109,8 @@ function createInjectingFetch(
         if (typeof body.id === 'string' && body.threadId === undefined) {
           body.threadId = body.id;
         }
+        const page = getPageContext?.();
+        if (page) body.page = page;
         const tools = body.tools;
         if (tools && typeof tools === 'object') {
           const attributes = getClientToolAttributes();
@@ -157,6 +166,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     modelIdRef,
     reasoningLevelRef,
     getClientToolAttributes,
+    getPageContext,
   } = options;
   const isClientTool = (name: string) => name in getClientToolAttributes();
 
@@ -195,6 +205,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
             modelIdRef,
             reasoningLevelRef,
             getClientToolAttributes,
+            getPageContext,
           ),
           resumable: {
             // Reconnect by the THREAD id — the backend buffers the in-flight SSE

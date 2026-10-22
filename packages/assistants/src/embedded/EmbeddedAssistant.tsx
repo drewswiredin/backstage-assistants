@@ -5,6 +5,7 @@ import '../collapsible/surface/styles/assistant-ui.css';
 import '../collapsible/surface/styles/assistant-ui-markdown.css';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
 import { useApi } from '@backstage/core-plugin-api';
@@ -57,6 +58,7 @@ import {
 import { makeRuntimeHook } from '../collapsible/useAssistantRuntime';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { resolvePanelAssistant } from '../panel/panelStorage';
+import { derivePageContext } from '../pageContext/pageContext';
 
 /**
  * One conversation outside the Assistants page: the assistant's defaults for
@@ -318,6 +320,10 @@ function EmbeddedRuntime({
   const modelIdRef = useRef<ModelId>(defaultModel);
   // No reasoning control here: the provider default applies.
   const reasoningLevelRef = useRef<ReasoningLevel | undefined>(undefined);
+  // The page beside the surface, read live by the transport on each send.
+  const { pathname } = useLocation();
+  const pageContextRef = useRef(derivePageContext(pathname, document.title));
+  pageContextRef.current = derivePageContext(pathname, document.title);
 
   const adapter = useMemo(
     () =>
@@ -344,6 +350,7 @@ function EmbeddedRuntime({
         modelIdRef,
         reasoningLevelRef,
         getClientToolAttributes: () => clientToolAttributesRef.current,
+        getPageContext: () => pageContextRef.current,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, baseUrl],

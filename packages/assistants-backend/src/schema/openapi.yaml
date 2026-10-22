@@ -217,6 +217,27 @@ components:
             shape of each message is intentionally not over-constrained here.
           items:
             type: object
+        page:
+          type: object
+          description: >-
+            The portal page the user is viewing, sent by a surface beside the
+            page (the panel). Added to this turn's instructions; never
+            persisted.
+          required:
+            - path
+          properties:
+            path:
+              type: string
+              maxLength: 2000
+              description: The location pathname.
+            title:
+              type: string
+              maxLength: 300
+              description: The document title.
+            entityRef:
+              type: string
+              maxLength: 300
+              description: '`kind:namespace/name` when the page is a catalog entity.'
         tools:
           type: object
           description: >-

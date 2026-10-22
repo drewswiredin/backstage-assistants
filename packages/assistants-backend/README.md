@@ -740,7 +740,7 @@ every conversation route is scoped to the owning user.
 | Route                                | Permission         | Purpose                                                                                                     |
 | ------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------- |
 | `GET /status`                        | `assistant.use`    | Accessible assistants (the default first), model pool and defaults, tool lists, the approval floor's names. |
-| `POST /chat`                         | `assistant.use`    | Run a turn; streams the reply. `tools` carries client tool declarations.                                    |
+| `POST /chat`                         | `assistant.use`    | Run a turn; streams the reply. `tools` carries client tool declarations; `page` the panel's page context.   |
 | `GET /chat/resume/:threadId`         | `assistant.use`    | Rejoin an in-flight reply's stream.                                                                         |
 | `POST /chat/cancel/:threadId`        | `assistant.use`    | Stop an in-flight reply.                                                                                    |
 | `GET /threads`                       | `assistant.use`    | List the caller's conversations; `?assistantId=` filters.                                                   |

@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `PageContext`: the page a surface beside the page sends with a turn (`path`, `title`, `entityRef`). `read_current_page` joins the built-in client tool names, and the platform instructions tell the model when to call it.
+
 ## 0.14.0 - 2026-10-22
 
 ### Added

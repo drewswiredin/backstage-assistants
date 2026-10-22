@@ -206,6 +206,23 @@ export interface StatusResponse {
 }
 
 /**
+ * The portal page the user is on when a turn is sent, carried on `/chat` by
+ * a surface that sits beside the page (the panel). The backend adds it to
+ * that turn's instructions and never persists it. `entityRef` is derived
+ * from the catalog entity route when the path is one.
+ *
+ * @public
+ */
+export interface PageContext {
+  /** The location pathname, e.g. `/catalog/default/component/orders`. */
+  path: string;
+  /** The document title, if any. */
+  title?: string;
+  /** `kind:namespace/name` when the path is a catalog entity page. */
+  entityRef?: string;
+}
+
+/**
  * Access policy for an assistant — who may converse with it.
  *
  * Evaluated server-side with the ownership-ref check (`userEntityRef` /

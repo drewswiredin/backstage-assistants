@@ -96,6 +96,21 @@ const _default: OverridableFrontendPlugin<
         tool: AssistantClientTool<TInput, TOutput>,
       ) => ExtensionBlueprintParams<AssistantClientTool<any, any>>;
     }>;
+    'assistant-client-tool:assistants/read-current-page': OverridableExtensionDefinition<{
+      kind: 'assistant-client-tool';
+      name: 'read-current-page';
+      config: {};
+      configInput: {};
+      output: ExtensionDataRef<
+        AssistantClientTool<any, any>,
+        'assistants.client-tool',
+        {}
+      >;
+      inputs: {};
+      params: <TInput extends JsonObject, TOutput = unknown>(
+        tool: AssistantClientTool<TInput, TOutput>,
+      ) => ExtensionBlueprintParams<AssistantClientTool<any, any>>;
+    }>;
     'assistant-client-tool:assistants/render-form': OverridableExtensionDefinition<{
       kind: 'assistant-client-tool';
       name: 'render-form';

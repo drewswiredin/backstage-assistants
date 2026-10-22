@@ -24,6 +24,7 @@ import {
 } from 'ai';
 import type {
   AssistantDefinition,
+  PageContext,
   ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -95,6 +96,21 @@ export interface RouterOptions {
   streamBuffer: StreamBuffer;
   /** Real-time push for working / unread indicators (per user). */
   signals: SignalsService;
+}
+
+/**
+ * The per-turn note about the page the user is viewing, appended to the
+ * instructions after the assistant prompt. Ephemeral: it describes this
+ * turn only and is never persisted with the thread.
+ */
+export function pageContextInstructions(page: PageContext): string {
+  const where = page.title
+    ? `"${page.title}" at ${page.path}`
+    : `the page at ${page.path}`;
+  const entity = page.entityRef
+    ? ` The page is the catalog entity ${page.entityRef}.`
+    : '';
+  return `## The user's page\nThe user is viewing ${where}.${entity} Call \`read_current_page\` to see what the page shows.`;
 }
 
 /**
@@ -602,12 +618,14 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 2. The request body shape (assistantId/modelId present + non-empty,
     //    messages a non-empty array) is already validated by the OpenAPI router
     //    against `src/schema/openapi.yaml`, so no hand-checks are needed here.
-    const { assistantId, modelId, threadId, reasoningLevel } = req.body as {
-      assistantId: string;
-      modelId: string;
-      threadId?: string;
-      reasoningLevel?: ReasoningLevel;
-    };
+    const { assistantId, modelId, threadId, reasoningLevel, page } =
+      req.body as {
+        assistantId: string;
+        modelId: string;
+        threadId?: string;
+        reasoningLevel?: ReasoningLevel;
+        page?: PageContext;
+      };
     let messages = req.body.messages as unknown[];
 
     // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
@@ -842,7 +860,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     const result = streamText({
       model,
-      instructions: `${PLATFORM_INSTRUCTIONS}\n\n${assistant.prompt}`,
+      // The page note comes last: it describes this turn only.
+      instructions: [
+        PLATFORM_INSTRUCTIONS,
+        assistant.prompt,
+        ...(page ? [pageContextInstructions(page)] : []),
+      ].join('\n\n'),
       messages: modelMessages,
       tools,
       ...(Object.keys(toolApproval).length > 0 ? { toolApproval } : {}),

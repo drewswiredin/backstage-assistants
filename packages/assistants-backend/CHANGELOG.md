@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `POST /chat` accepts `page`, the panel's page context. The turn's instructions end with a note naming the page and its catalog entity and pointing at `read_current_page`; the note is never persisted. `read_current_page` is a built-in client tool, always offered when the browser declares it.
+
 ## 0.19.0 - 2026-10-22
 
 ### Added

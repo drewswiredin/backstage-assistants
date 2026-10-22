@@ -144,6 +144,13 @@ export interface ModelOption {
 }
 
 // @public
+export interface PageContext {
+  entityRef?: string;
+  path: string;
+  title?: string;
+}
+
+// @public
 export const PLATFORM_INSTRUCTIONS: string;
 
 // @public

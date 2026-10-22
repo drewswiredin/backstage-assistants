@@ -47,6 +47,14 @@ _Avoid_: a bespoke form widget — it reuses scaffolder's fields
 **Download file** (`download_file`):
 A built-in Client tool the model calls to hand back a generated text file (CSV, JSON, Markdown, code, SVG). The card renders a download chip, with Copy for text and a fullscreen preview for SVG; its `execute` acknowledges the delivery and the turn resumes with that result. Always available; not config-gated.
 
+**Read current page** (`read_current_page`):
+A built-in Client tool the model calls to see what the user is looking at: the rendered page as an outline (open dialogs and drawers first, then `main`; headings, text, buttons, links, tabs, form fields, tables, alerts, the first lines of long monospace regions, `find` for the lines around a term), with the portal chrome and the Panel itself skipped. Pure DOM, no app state, so it works on any page with no per-plugin code (CopilotKit-style readable-state hooks would need the page's own component). Read-only; an app that does not want pages read disables `client-tool:assistants/read-current-page`.
+_Avoid_: screenshot (a later vision fallback), page scraping
+
+**Page context**:
+What the Panel tells the backend about the page it sits beside, on every turn: the pathname, the document title, and the catalog entity ref when the path is an entity page (`PageContext` on `/chat`). The backend appends one note to that turn's instructions after the Assistant prompt and never persists it; the page itself sends none, since it is the chat.
+_Avoid_: context injection, page state
+
 **Platform instructions**:
 The fixed text the backend sends before every Assistant's system prompt on every turn: what the conversation surface renders, formatting and symbols, safe Mermaid syntax, what a tool's `_error` result means, and how to use `render_form` and `download_file`. Facts about the surface, not a role; the Assistant's prompt follows and takes precedence. `PLATFORM_INSTRUCTIONS` in `-common`; shown read-only in the editor.
 _Avoid_: system preamble, base prompt
