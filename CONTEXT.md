@@ -109,7 +109,7 @@ The floating quick-chat surface: a button in the lower right of every page opens
 _Avoid_: widget, popup, chatbot, drawer (the MUI component, not the concept)
 
 **Homepage composer**:
-The "Ask the assistant" bar on a `@backstage/plugin-home` home page: one line, like the home page's search bar, with the Default (or picked) Assistant's avatar, a text box, and send; no card header, no suggestions. Sending opens the Panel with the message already sent through the Panel's controls (`usePanelControl`, a React context the Panel wrapper provides to every page); without the Panel it takes the question to the page. A way in, not a second chat: it owns no runtime and no conversation. Its own entry point (`/home`, `assistantsHomeModule`) so the `0.1.x` home-react peer is optional.
+The composer on a `@backstage/plugin-home` home page: the Panel's header (the Default or picked Assistant, with a menu to pick another) and the same composer as the page and the Panel (`aui-composer-*` classes and the shared composer styles, `ModelControls`, the context gauge), but no conversation, no history, no title. Sending opens the Panel on a fresh Thread with the Assistant, model, effort, and message handed over through the Panel's controls (`usePanelControl().open`, a React context the Panel wrapper provides to every page); without the Panel it takes the question to the page. A way in, not a second chat: it owns no runtime and no conversation. Its own entry point (`/home`, `assistantsHomeModule`) so the `0.1.x` home-react peer is optional.
 _Avoid_: home widget (the home plugin's word for any card), chat card
 
 **Embedded surface**:

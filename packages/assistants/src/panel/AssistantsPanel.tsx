@@ -25,7 +25,11 @@ import { clientToolsApiRef } from '../clientTools/api';
 import { StatusDot } from '../collapsible/StatusDot';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { rootRouteRef, threadRouteRef } from '../routes';
-import { PanelControlProvider, type PanelControl } from './panelControl';
+import {
+  PanelControlProvider,
+  type PanelControl,
+  type PanelHandoff,
+} from './panelControl';
 import {
   clampPanelWidth,
   loadPanelAssistant,
@@ -190,9 +194,9 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   const [pickedAssistant, setPickedAssistant] = useState<string | undefined>(
     loadPanelAssistant,
   );
-  // A first message handed in by a page component (the homepage composer),
-  // sent once the fresh surface is ready.
-  const [initialPrompt, setInitialPrompt] = useState<string | undefined>();
+  // A first message (with its model and effort) handed in by a page
+  // component, the homepage composer, sent once the fresh surface is ready.
+  const [handoff, setHandoff] = useState<PanelHandoff | undefined>();
 
   const onAssistantsPage = (() => {
     const root = rootRoute?.();
@@ -282,14 +286,18 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
         if (options?.assistantId) pickAssistant(options.assistantId);
         if (options?.prompt) {
           if (!options.assistantId) forgetThread();
-          setInitialPrompt(options.prompt);
+          setHandoff({
+            prompt: options.prompt,
+            modelId: options.modelId,
+            reasoningLevel: options.reasoningLevel,
+          });
         }
         setMode('open');
       },
     }),
     [pickAssistant, forgetThread],
   );
-  const promptSent = useCallback(() => setInitialPrompt(undefined), []);
+  const handoffSent = useCallback(() => setHandoff(undefined), []);
 
   const openFull = useCallback(
     (id: string | undefined, assistantId: string) => {
@@ -409,8 +417,8 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
                   onThreadChange={rememberThread}
                   onAssistantChange={pickAssistant}
                   onThreadPick={pickThread}
-                  initialPrompt={initialPrompt}
-                  onInitialPromptSent={promptSent}
+                  handoff={handoff}
+                  onHandoffSent={handoffSent}
                   onOpenFull={openFull}
                   onNew={forgetThread}
                   onHide={hide}

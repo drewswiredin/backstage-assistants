@@ -1,4 +1,8 @@
 import { createContext, useContext } from 'react';
+import type {
+  ModelId,
+  ReasoningLevel,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 
 /** What a page component may ask the panel to do. */
 export interface PanelOpenOptions {
@@ -6,6 +10,17 @@ export interface PanelOpenOptions {
   assistantId?: string;
   /** Start a fresh conversation and send this as its first message. */
   prompt?: string;
+  /** The model for that conversation (one the assistant allows). */
+  modelId?: ModelId;
+  /** The reasoning effort for that conversation, when the model reasons. */
+  reasoningLevel?: ReasoningLevel;
+}
+
+/** A first message with its settings, handed to a fresh surface. */
+export interface PanelHandoff {
+  prompt: string;
+  modelId?: ModelId;
+  reasoningLevel?: ReasoningLevel;
 }
 
 /**

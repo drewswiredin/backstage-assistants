@@ -145,13 +145,14 @@ app:
 
 ### Homepage
 
-An "Ask the assistant" bar for an app that uses `@backstage/plugin-home`:
-one line, like a search bar, with the assistant's avatar, a text box, and
-send. Sending opens the panel with the message already sent, so the bar is a
-way in, not a second chat; in an app without the panel it takes the question
-to the Assistants page. It ships behind its own entry point, so
-`@backstage/plugin-home-react` (an optional peer dependency) is loaded only
-by an app that uses it:
+A composer for an app that uses `@backstage/plugin-home`: the panel's header
+(the assistant, with a menu to pick another) and the same composer as the
+page and the panel, with the model and reasoning effort pickers, but no
+conversation. Sending opens the panel on a fresh conversation with the
+assistant, model, and effort already chosen; in an app without the panel it
+takes the question to the Assistants page. It ships behind its own entry
+point, so `@backstage/plugin-home-react` (an optional peer dependency) is
+loaded only by an app that uses it:
 
 ```ts
 import { assistantsHomeModule } from '@drewswiredin/backstage-plugin-assistants/home';
@@ -173,7 +174,7 @@ app:
               column: 0
               row: 0
               width: 12
-              height: 1
+              height: 3
 ```
 
 ### Backend

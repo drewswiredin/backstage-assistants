@@ -2,11 +2,13 @@ import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import { HomePageWidgetBlueprint } from '@backstage/plugin-home-react/alpha';
 
 /**
- * The homepage composer: one bar on the `@backstage/plugin-home` home page,
- * like a search bar, with the assistant's avatar, a text box, and send.
- * Sending opens the panel with the message already sent, so the bar is a
- * way in, not a second chat; without the panel it takes the question to the
- * Assistants page.
+ * The homepage composer on the `@backstage/plugin-home` home page: the
+ * panel's header (the assistant, with a menu to pick another) and the same
+ * composer as the page and the panel, with the model and reasoning effort
+ * pickers, but no conversation. Sending opens the panel on a fresh
+ * conversation with everything already chosen, so the card is a way in, not
+ * a second chat; without the panel it takes the question to the Assistants
+ * page.
  *
  * Its own entry point, so `@backstage/plugin-home-react` (an optional peer)
  * is loaded only by an app that uses it:
@@ -43,8 +45,8 @@ export const assistantsHomeModule = createFrontendModule({
         // The grid's key for `defaultConfig` and the widget picker (the
         // extension name above is not used for that).
         name: 'AskAssistant',
-        // No title: the bar renders without a card header, like the home
-        // page's search bar. The description names it in the widget picker.
+        // No title: the composer renders without a card header, the way the
+        // panel has none. The description names it in the widget picker.
         description: 'Ask the assistant: a question answered in the panel.',
         components: () =>
           import('./home/AskAssistantCard').then(m => ({
@@ -52,7 +54,7 @@ export const assistantsHomeModule = createFrontendModule({
           })),
         layout: {
           width: { minColumns: 4, defaultColumns: 12 },
-          height: { minRows: 1, defaultRows: 1 },
+          height: { minRows: 3, maxRows: 3, defaultRows: 3 },
         },
       },
     }),

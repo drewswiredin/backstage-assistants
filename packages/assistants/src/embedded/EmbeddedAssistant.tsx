@@ -61,6 +61,7 @@ import {
 import { makeRuntimeHook } from '../collapsible/useAssistantRuntime';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { resolvePanelAssistant } from '../panel/panelStorage';
+import type { PanelHandoff } from '../panel/panelControl';
 import { derivePageContext } from '../pageContext/pageContext';
 
 /**
@@ -91,10 +92,10 @@ export interface EmbeddedAssistantProps {
    * unread, so the button and the strip can show it.
    */
   active: boolean;
-  /** A first message to send as soon as the conversation is ready. */
-  initialPrompt?: string;
-  /** The initial prompt went out (the host clears it). */
-  onInitialPromptSent?: () => void;
+  /** A first message, with its model and effort, sent once ready. */
+  handoff?: PanelHandoff;
+  /** The handoff went out (the host clears it). */
+  onHandoffSent?: () => void;
   /** The conversation to show (a server thread id), or none. */
   threadId?: string;
   /** The conversation's server id once it exists. */
@@ -264,8 +265,8 @@ function EmbeddedChat({
   onAssistantChange,
   onThreadPick,
   active,
-  initialPrompt,
-  onInitialPromptSent,
+  handoff,
+  onHandoffSent,
 }: EmbeddedAssistantProps & {
   status: StatusResponse;
   assistant: AssistantSummary;
@@ -309,8 +310,8 @@ function EmbeddedChat({
       onAssistantChange={onAssistantChange}
       onThreadPick={onThreadPick}
       active={active}
-      initialPrompt={initialPrompt}
-      onInitialPromptSent={onInitialPromptSent}
+      handoff={handoff}
+      onHandoffSent={onHandoffSent}
     />
   );
 }
@@ -329,8 +330,8 @@ function EmbeddedRuntime({
   onAssistantChange,
   onThreadPick,
   active,
-  initialPrompt,
-  onInitialPromptSent,
+  handoff,
+  onHandoffSent,
 }: {
   api: AssistantsApi;
   baseUrl: string;
@@ -345,8 +346,8 @@ function EmbeddedRuntime({
   onAssistantChange: (assistantId: string) => void;
   onThreadPick: (remoteId: string) => void;
   active: boolean;
-  initialPrompt?: string;
-  onInitialPromptSent?: () => void;
+  handoff?: PanelHandoff;
+  onHandoffSent?: () => void;
 }) {
   // The assistant's default when the pool still offers it, else the
   // platform default (an assistant can outlive a model it was given).
@@ -361,9 +362,17 @@ function EmbeddedRuntime({
   const remoteIdRef = useRef<string | undefined>(initialThreadId);
   const assistantIdRef = useRef<string>(assistant.id);
   assistantIdRef.current = assistant.id;
-  const modelIdRef = useRef<ModelId>(defaultModel);
-  // No reasoning control here: the provider default applies.
-  const reasoningLevelRef = useRef<ReasoningLevel | undefined>(undefined);
+  // A handed-in model and effort (the homepage composer's picks) start the
+  // conversation; otherwise the assistant's default and the provider default.
+  const handoffModel =
+    handoff?.modelId &&
+    (assistant.models ?? status.models.map(m => m.id)).includes(handoff.modelId)
+      ? handoff.modelId
+      : undefined;
+  const modelIdRef = useRef<ModelId>(handoffModel ?? defaultModel);
+  const reasoningLevelRef = useRef<ReasoningLevel | undefined>(
+    handoffModel ? handoff?.reasoningLevel : undefined,
+  );
   // The page beside the surface, read live by the transport on each send.
   const { pathname } = useLocation();
   const pageContextRef = useRef(derivePageContext(pathname, document.title));
@@ -421,8 +430,8 @@ function EmbeddedRuntime({
         onAssistantChange={onAssistantChange}
         onThreadPick={onThreadPick}
         active={active}
-        initialPrompt={initialPrompt}
-        onInitialPromptSent={onInitialPromptSent}
+        handoff={handoff}
+        onHandoffSent={onHandoffSent}
       />
     </AssistantRuntimeProvider>
   );
@@ -445,8 +454,8 @@ function EmbeddedChrome({
   onAssistantChange,
   onThreadPick,
   active,
-  initialPrompt,
-  onInitialPromptSent,
+  handoff,
+  onHandoffSent,
 }: {
   runtime: AssistantRuntime;
   api: AssistantsApi;
@@ -464,8 +473,8 @@ function EmbeddedChrome({
   onAssistantChange: (assistantId: string) => void;
   onThreadPick: (remoteId: string) => void;
   active: boolean;
-  initialPrompt?: string;
-  onInitialPromptSent?: () => void;
+  handoff?: PanelHandoff;
+  onHandoffSent?: () => void;
 }) {
   const classes = useStyles();
   // The assistant picker, offered only when there is a choice.
@@ -483,10 +492,10 @@ function EmbeddedChrome({
     () => assistant.models ?? status.models.map(m => m.id),
     [assistant.models, status.models],
   );
-  const [modelId, setModelId] = useState<ModelId>(defaultModel);
+  const [modelId, setModelId] = useState<ModelId>(modelIdRef.current);
   const [reasoningLevel, setReasoningLevel] = useState<
     ReasoningLevel | undefined
-  >(undefined);
+  >(reasoningLevelRef.current);
   const reasons = (id: ModelId) =>
     status.models.find(m => m.id === id)?.reasoning === true;
   const handleModelChange = (next: ModelId) => {
@@ -575,19 +584,19 @@ function EmbeddedChrome({
   // the runtime is on its fresh thread), exactly once.
   const sentInitial = useRef(false);
   useEffect(() => {
-    if (!initialPrompt || sentInitial.current) return undefined;
+    if (!handoff || sentInitial.current) return undefined;
     const trySend = () => {
       if (runtime.threads.getState().isLoading) return false;
       sentInitial.current = true;
-      runtime.thread.append(initialPrompt);
-      onInitialPromptSent?.();
+      runtime.thread.append(handoff.prompt);
+      onHandoffSent?.();
       return true;
     };
     if (trySend()) return undefined;
     return runtime.threads.subscribe(() => {
       if (!sentInitial.current) trySend();
     });
-  }, [initialPrompt, runtime, onInitialPromptSent]);
+  }, [handoff, runtime, onHandoffSent]);
 
   return (
     <div className={classes.root}>

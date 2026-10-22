@@ -17,6 +17,7 @@ import { ExtensionBlueprintParams } from '@backstage/frontend-plugin-api';
 import { ExtensionDataRef } from '@backstage/frontend-plugin-api';
 import type { JsonObject } from '@backstage/types';
 import { JSX as JSX_2 } from 'react';
+import type { ModelId } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { OAuthApi } from '@backstage/core-plugin-api';
 import { PathParams } from '@backstage/core-plugin-api';
 import { ReasoningLevel } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -177,7 +178,9 @@ export interface PanelControl {
 // @public
 export interface PanelOpenOptions {
   assistantId?: string;
+  modelId?: ModelId;
   prompt?: string;
+  reasoningLevel?: ReasoningLevel;
 }
 
 // @public
@@ -213,6 +216,6 @@ export function usePanelControl(): PanelControl | undefined;
 // src/api/AssistantsApi.d.ts:29:5 - (ae-undocumented) Missing documentation for "pinned".
 // src/api/AssistantsApi.d.ts:30:5 - (ae-undocumented) Missing documentation for "archived".
 // src/clientTools/api.d.ts:16:22 - (ae-undocumented) Missing documentation for "clientToolsApiRef".
-// src/panel/panelControl.d.ts:16:5 - (ae-undocumented) Missing documentation for "open".
+// src/panel/panelControl.d.ts:27:5 - (ae-undocumented) Missing documentation for "open".
 // /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```
