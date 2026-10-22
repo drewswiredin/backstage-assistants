@@ -13,6 +13,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The composer's hint, when an assistant sets no placeholder of its own, is "Ask about your services, docs, or anything in Backstage…" instead of "Write a message...", on the page, the panel, and the homepage composer.
 - The model and reasoning effort pickers moved from the page's thread header into the composer, and the panel's composer has them too. `ConversationSurface` gained a `composerControls` slot.
 
 ## 0.18.0 - 2026-10-22

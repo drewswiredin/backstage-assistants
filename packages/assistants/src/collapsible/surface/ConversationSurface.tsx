@@ -46,6 +46,10 @@ import {
   ToolFallback,
 } from './parts';
 
+/** The composer's hint when the assistant sets no placeholder of its own. */
+const DEFAULT_COMPOSER_PLACEHOLDER =
+  'Ask about your services, docs, or anything in Backstage…';
+
 const DEFAULT_WELCOME_SUBTITLE =
   'Ask me about services, APIs, teams, TechDocs, or anything in the catalog.';
 
@@ -476,11 +480,14 @@ export function ConversationSurface(props: ConversationSurfaceProps) {
           }
         >
           <Thread
-            strings={
-              composerPlaceholder
-                ? { composer: { input: { placeholder: composerPlaceholder } } }
-                : undefined
-            }
+            strings={{
+              composer: {
+                input: {
+                  placeholder:
+                    composerPlaceholder || DEFAULT_COMPOSER_PLACEHOLDER,
+                },
+              },
+            }}
             components={{
               AssistantMessage: AssistantMessageWithAvatar,
               ThreadWelcome: EmptyThreadWelcome,

@@ -193,7 +193,7 @@ app:
 ```
 
 The composer's hint text is the assistant's own "Composer placeholder", set in
-the editor; for the `bar`, a placeholder such as "Ask anything about our
+the editor, else "Ask about your services, docs, or anything in Backstage…"; for the `bar`, a placeholder such as "Ask anything about our
 systems…" on the default assistant makes it read like a search box. A user's
 saved home layout wins over `defaultConfig` until they choose "Restore
 defaults".
