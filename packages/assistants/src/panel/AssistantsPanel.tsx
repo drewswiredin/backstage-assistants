@@ -131,13 +131,17 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    // The expand chevron at the top; the assistant icon at the bottom, where
+    // the floating button sits when the panel is closed.
     paddingTop: theme.spacing(1),
-    gap: theme.spacing(0.5),
+    paddingBottom: theme.spacing(3),
     backgroundColor: theme.palette.background.paper,
     borderLeft: `1px solid ${theme.palette.divider}`,
     cursor: 'pointer',
   },
   stripIcon: {
+    display: 'inline-flex',
     color: theme.palette.primary.main,
   },
   stripChevron: {
@@ -441,16 +445,13 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
             <Tooltip title="Show assistant (Ctrl+/)" placement="left">
               <IconButton
                 size="small"
-                className={classes.stripIcon}
+                className={classes.stripChevron}
                 aria-label="Show assistant"
               >
-                {icon}
+                <ChevronLeftIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <ChevronLeftIcon
-              fontSize="small"
-              className={classes.stripChevron}
-            />
+            <span className={classes.stripIcon}>{icon}</span>
           </div>
         )}
       </aside>
