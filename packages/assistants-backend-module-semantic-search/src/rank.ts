@@ -16,6 +16,32 @@ function tokens(phrasing: string): string[] {
     .filter(Boolean);
 }
 
+/** Alternatives embedded per search; extra ones are ignored, not an error. */
+export const MAX_ALTERNATIVES = 3;
+
+/**
+ * The query and its first three distinct alternatives, trimmed: blanks and
+ * repeats of the query or of each other (ignoring case) are dropped, so no
+ * phrasing is embedded twice.
+ */
+export function phrasingsOf(
+  query: string,
+  alternatives: string[] = [],
+): string[] {
+  const seen = new Set([query.trim().toLowerCase()]);
+  const phrasings = [query];
+  for (const alternative of alternatives) {
+    const trimmed = alternative.trim();
+    const key = trimmed.toLowerCase();
+    if (phrasings.length > MAX_ALTERNATIVES || !trimmed || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    phrasings.push(trimmed);
+  }
+  return phrasings;
+}
+
 /**
  * The distinct content words of the given phrasings: lowercased, at least
  * three characters, stopwords dropped, capped at eight. These drive the

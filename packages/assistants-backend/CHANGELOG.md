@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+
+- A failed action call tells the model why. The actions service's error message is only the HTTP status ("Request failed with 400 Bad Request"); the tool result now appends the reason from the response body (the input validation issue, or the action's own message, never its stack) and carries `status`, so the model can correct its input and retry.
+
 ### Changed
 
 - README and the general assistant prompt example: `search-knowledge` finds anything Backstage search indexes, and the prompt tells the model when to pass `types`.

@@ -1,4 +1,47 @@
-import { fuseRankings, joinedWords, queryWords, type RankedList } from './rank';
+import {
+  fuseRankings,
+  joinedWords,
+  phrasingsOf,
+  queryWords,
+  type RankedList,
+} from './rank';
+
+describe('phrasingsOf', () => {
+  it('keeps the query and the first three alternatives', () => {
+    expect(
+      phrasingsOf('Tally', [
+        'Tally service',
+        'Tally component',
+        'settlement ledger',
+        'Tally system',
+      ]),
+    ).toEqual([
+      'Tally',
+      'Tally service',
+      'Tally component',
+      'settlement ledger',
+    ]);
+  });
+
+  it('drops blanks and repeats before counting', () => {
+    expect(
+      phrasingsOf('Pylon', [
+        ' pylon ',
+        '',
+        'Pylon broker',
+        'pylon BROKER',
+        '  ',
+        'DLQ',
+        'retry',
+      ]),
+    ).toEqual(['Pylon', 'Pylon broker', 'DLQ', 'retry']);
+  });
+
+  it('is the query alone without alternatives', () => {
+    expect(phrasingsOf('Pylon')).toEqual(['Pylon']);
+    expect(phrasingsOf('Pylon', [])).toEqual(['Pylon']);
+  });
+});
 
 describe('queryWords', () => {
   it('keeps distinct content words and drops stopwords and short words', () => {

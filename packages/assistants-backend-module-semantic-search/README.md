@@ -203,7 +203,7 @@ fields its collator attached. The table is a rebuildable copy, not migrated
 data.
 
 **Retrieval.** `search-knowledge` takes the question, up to three alternative
-phrasings, and optionally the `types` to search (otherwise every type that is
+phrasings (it uses the first three distinct ones and ignores the rest), and optionally the `types` to search (otherwise every type that is
 on by default, plus unnamed sources). It builds one semantic list per
 phrasing, a keyword list, a rare-word list, and a fuzzy list, each keeping
 its best 30 chunks of every type, so a large source cannot fill a list on its

@@ -6,7 +6,13 @@ import type { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha
 import type { CatalogApi } from '@backstage/catalog-client';
 import { embedMany, type EmbeddingModel } from 'ai';
 import type { KnowledgeTypeSettings } from './config';
-import { fuseRankings, joinedWords, queryWords, type RankedList } from './rank';
+import {
+  fuseRankings,
+  joinedWords,
+  phrasingsOf,
+  queryWords,
+  type RankedList,
+} from './rank';
 import {
   selectTypes,
   typeSettingsOf,
@@ -19,7 +25,7 @@ import type { KnowledgeStore } from './store';
 const CANDIDATES = 30;
 /** Fused candidates checked for permission and ranked; over-fetched so filtering and type caps rarely empty the page. */
 const FUSED = 60;
-/** The most results a caller may ask for, unless `maxResults` is configured higher. */
+/** The most results a call returns, unless `maxResults` is configured higher; a larger `limit` is clamped. */
 const MAX_LIMIT = 20;
 const EXCERPT_CHARS = 1500;
 /** A word in this many chunks or fewer is rare: strong evidence of what the user means. */
@@ -85,9 +91,10 @@ Each result has a title (its heading path), an excerpt, a location, its source t
           query: z.string().min(1).describe('The question or topic to find'),
           alternatives: z
             .array(z.string())
-            .max(3)
             .optional()
-            .describe('Other phrasings or terms for the same thing'),
+            .describe(
+              'Up to three other phrasings or terms for the same thing; extra ones are ignored',
+            ),
           types: z
             .array(z.string())
             .optional()
@@ -98,10 +105,14 @@ Each result has a title (its heading path), an excerpt, a location, its source t
             .number()
             .int()
             .min(1)
-            .max(Math.max(MAX_LIMIT, maxResults))
             .optional()
             .default(maxResults)
-            .describe('Number of results to return'),
+            .describe(
+              `Number of results to return, at most ${Math.max(
+                MAX_LIMIT,
+                maxResults,
+              )}`,
+            ),
         }),
       output: z =>
         z.object({
@@ -130,7 +141,8 @@ Each result has a title (its heading path), an excerpt, a location, its source t
       }
 
       const filter = selectTypes(types, await store.types(), input.types);
-      const phrasings = [input.query, ...(input.alternatives ?? [])];
+      const limit = Math.min(input.limit, Math.max(MAX_LIMIT, maxResults));
+      const phrasings = phrasingsOf(input.query, input.alternatives);
       const words = queryWords(phrasings);
       const joined = joinedWords(phrasings).filter(w => !words.includes(w));
       const [{ embeddings }, frequencies] = await Promise.all([
@@ -210,11 +222,11 @@ Each result has a title (its heading path), an excerpt, a location, its source t
         phrasings,
         types: filter.types,
         candidates,
-        maxResults: input.limit,
+        maxResults: limit,
       });
       const results = ranked
         .filter(candidate => ids.delete(candidate.id))
-        .slice(0, input.limit)
+        .slice(0, limit)
         .map(candidate => ({
           title: candidate.title,
           location: candidate.location,

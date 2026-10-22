@@ -37,7 +37,7 @@ import {
   ActionsServiceAction,
 } from '@backstage/backend-plugin-api/alpha';
 import { SearchResultSet } from '@backstage/plugin-search-common';
-import { InputError } from '@backstage/errors';
+import { InputError, isError, type ResponseError } from '@backstage/errors';
 import { tool, jsonSchema, type Tool } from 'ai';
 import { parse } from 'node-html-parser';
 import TurndownService from 'turndown';
@@ -392,10 +392,14 @@ export function actionsToTools(
             // and the multi-step loop continues. Cap the message too: an action
             // error can embed a full upstream response body, so the error path
             // is just as capable of overflowing the context window as success.
+            const status = isResponseError(error)
+              ? error.statusCode
+              : undefined;
             return {
               _error: true,
+              ...(status ? { status } : {}),
               message: truncateToolResult(
-                error instanceof Error ? error.message : String(error),
+                describeActionError(error),
                 toolResultMaxChars,
               ),
             };
@@ -404,6 +408,32 @@ export function actionsToTools(
       }),
     ]),
   );
+}
+
+// By name, not instanceof: a consumer may resolve a second copy of
+// @backstage/errors for the actions service.
+function isResponseError(error: unknown): error is ResponseError {
+  return isError(error) && error.name === 'ResponseError';
+}
+
+/**
+ * An action error as the model should see it. The actions service throws a
+ * `ResponseError` whose message is only the HTTP status ("Request failed with
+ * 400 Bad Request"); the reason the action or the input validation gave is in
+ * the response body, so it is appended: the model can then fix its input or
+ * follow the action's guidance. The body's stack is never included.
+ */
+export function describeActionError(error: unknown): string {
+  if (isResponseError(error)) {
+    // Validation issues arrive as pretty-printed JSON; one line reads the same.
+    const detail = (error.body?.error?.message ?? error.cause?.message)
+      ?.replace(/\s+/g, ' ')
+      .trim();
+    return detail && !error.message.includes(detail)
+      ? `${error.message}: ${detail}`
+      : error.message;
+  }
+  return isError(error) ? error.message : String(error);
 }
 
 /**

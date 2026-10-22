@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- `search-knowledge` no longer fails with 400 Bad Request when the model passes more than three `alternatives`: it uses the first three distinct ones (trimmed, blanks and repeats of the query dropped) and ignores the rest. A `limit` above the maximum is clamped instead of rejected.
+
 ## 0.3.0 - 2026-10-22
 
 ### Added
