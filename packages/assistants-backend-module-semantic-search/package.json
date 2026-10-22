@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Knowledge index for AI Assistants for Backstage: semantic, fuzzy, and keyword search in Postgres over everything Backstage search indexes.",
   "license": "Apache-2.0",
   "publishConfig": {
