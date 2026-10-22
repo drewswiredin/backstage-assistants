@@ -42,6 +42,11 @@ Types:
   `REASONING_LEVELS` constant (`low`, `medium`, `high`, `max`).
 - `StatusResponse.requireApproval`: the global approval floor as tool names,
   which the browser uses to gate client tools.
+- `StatusResponse.defaultAssistant`, and `isDefault` on `AssistantSummary` and
+  `AssistantDefinition`: the default assistant, the one every signed-in user
+  gets.
+- `PageContext` (`path`, `title`, `entityRef`): the page a surface beside the
+  page sends with a turn.
 
 Client tools (the browser-to-backend contract for tools that run in the
 user's browser; the blueprint itself is in the frontend package):
@@ -53,7 +58,7 @@ user's browser; the blueprint itself is in the frontend package):
   `timeout`, `aborted`, `failed`): the `_error` result a client tool returns
   instead of throwing.
 - `CLIENT_TOOL_NAME_PATTERN` (`<namespace>__<tool>`), `BUILTIN_CLIENT_TOOLS`
-  (`render_form`, `download_file`), `CLIENT_TOOL_LIMITS` (30 per request,
+  (`render_form`, `download_file`, `read_current_page`), `CLIENT_TOOL_LIMITS` (30 per request,
   4000-character description, 8192-character schema), and
   `isClientToolName`.
 

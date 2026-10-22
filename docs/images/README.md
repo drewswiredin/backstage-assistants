@@ -17,12 +17,13 @@ Assets referenced by absolute raw URL on the `main` ref, so they render on GitHu
 `chat.png` and `editor.png` keep their names because published package READMEs
 link to them.
 
-Shots to take at the next deployment, before the READMEs link to them:
+Shots to take at the next deployment. The READMEs mark where each goes with a `<!-- screenshot: … -->` comment; replace the comment with the image once it exists:
 
 | File                         | Shows                                                                                                                                 |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `panel.png`                  | the panel open beside an entity page, mid-answer, with the page content narrowed, not covered                                         |
 | `panel-picker.png`           | the panel header menu listing the accessible assistants with the Default marker                                                       |
+| `panel-page-context.png`     | the panel answering a question about the page beside it, with the `read_current_page` chip                                            |
 | `editor-default.png`         | the editor with the Default chip, the Make default button, and the locked access row                                                  |
 | `editor-tools.png`           | retake: tool assignment now has the Backstage client tools group                                                                      |
 | `home-composer-variants.png` | the homepage composer's four looks on the dev app's home page: `bar` across the top, `padded` and `full` side by side, `titled` below |

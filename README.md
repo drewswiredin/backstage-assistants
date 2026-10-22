@@ -7,13 +7,14 @@
 AI Assistants for your developer portal.
 Every answer comes from your catalog and docs. Every Backstage action runs as the user.
 
-People ask questions in a side panel of your Backstage app. Assistants answer
-from the catalog and TechDocs through the tools you give them, and can run
-Backstage actions (look up entities, search docs, run a scaffolder template)
-with the permissions of the person asking. They can also call MCP servers, which
-run under the credential you configure for each server. Platform admins create
-assistants in-app with a prompt, models, tools, and audience, and connect any
-model provider in app-config.
+People ask questions on a full chat page, in a panel that opens beside any page
+of your Backstage app, or from a composer on the home page. Assistants answer
+from the catalog and TechDocs through the tools you give them, can read the page
+the user is looking at, and can run Backstage actions (look up entities, search
+docs, run a scaffolder template) with the permissions of the person asking.
+They can also call MCP servers, which run under the credential you configure
+for each server. Platform admins create assistants in-app with a prompt,
+models, tools, and audience, and connect any model provider in app-config.
 
 > Requires the new frontend system (`createApp` from
 > `@backstage/frontend-defaults`) on Backstage 1.56 or later, and Node 22.12 or
@@ -45,6 +46,21 @@ their server's configured credential.
 
 ![Tool assignment in the assistant editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor-tools.png)
 
+**An assistant beside any page.** The panel opens next to the page you are on,
+which makes room for it, and continues in the full chat page in one click.
+
+<!-- screenshot: panel.png — the panel open beside an entity page, mid-answer -->
+
+**About what is on screen.** Ask "what does this mean" or "which button do I
+press" and the assistant reads the page you are looking at.
+
+<!-- screenshot: panel-page-context.png — the panel answering a question about the page beside it, with the read_current_page chip -->
+
+**On the home page.** One composer in four looks, from a search-bar style line
+to a titled card; sending opens the panel on the answer.
+
+![The homepage composer's four looks](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer-variants.png)
+
 ## What users get
 
 - **Grounded answers.** Ask "who owns payments-api?" or "how do we onboard a
@@ -64,8 +80,8 @@ their server's configured credential.
   Kubernetes cluster, a repository host behind their OAuth session). A tool
   that writes asks before every call.
 - **Approval gate.** Require an Allow in the conversation before the actions
-  you choose run (Always allow covers the rest of that conversation); nothing is gated by default and nothing runs behind
-  the user's back.
+  you choose run (Always allow covers the rest of that conversation); nothing
+  is gated by default and nothing runs behind the user's back.
 - **Conversations that keep going.** Keep several conversations going across
   several assistants; leave the page mid-reply and come back to the finished
   answer.
@@ -79,10 +95,17 @@ their server's configured credential.
   zoom; and hands back generated text files (CSV, JSON, code, SVG) as download chips.
   Markdown renders in full, tables and code included.
 - **An assistant on every page.** A floating button opens a side panel for a
-  quick question wherever you are, and the assistant can read the page you
-  are on: "what does this mean", "which button do I press". The conversation
-  moves to the full page in one click. A homepage card asks the first
-  question. Both opt-in for the app.
+  quick question wherever you are; the page makes room for it. Pick another
+  assistant, the model, and the reasoning effort in the panel, pick up an
+  earlier conversation from its history, and move the conversation to the full
+  page in one click.
+- **Answers about the page you are on.** The panel tells the assistant which
+  page it sits beside, and the assistant can read that page: "what does this
+  mean", "which button do I press", "why is this pod failing". It works on any
+  page, with no per-plugin code.
+- **A composer on the home page.** Ask from the home page in one of four looks,
+  from a search-bar style line to a titled card; the answer opens in the panel.
+  The panel and the homepage composer are both opt-in for the app.
 - **A full chat surface.** Attach images and text files, pick the model per
   conversation, set reasoning effort on models that support it, watch the
   context gauge, and copy or regenerate replies. Rename, pin, and delete
@@ -92,7 +115,10 @@ their server's configured credential.
 
 - **In-app editor.** Create, edit, and delete assistants in-app; changes are
   live on save. One assistant is the default: the one every signed-in user
-  gets and the panel opens first.
+  gets and the panel and homepage composer open first.
+- **Opt-in surfaces.** Add the panel and the homepage composer as app
+  features; configure the composer's look, width, and title in app-config, and
+  turn page reading off app-wide with one line.
 - **Permissions.** Two Backstage permissions (`assistant.use`,
   `assistant.manage`) plus a per-assistant audience; works with your permission
   policy or the RBAC plugin.

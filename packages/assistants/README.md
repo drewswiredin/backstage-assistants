@@ -5,18 +5,19 @@ Every answer comes from your catalog and docs. Every Backstage action runs as th
 
 This is the frontend plugin of AI Assistants for Backstage, for the new
 frontend system: a collapsible, multi-conversation chat page at `/assistants`,
-a panel that opens beside any page for a quick question, and the in-app
-editor where admins create assistants. The conversation renders generative
-UI: forms built from your scaffolder field extensions, Mermaid
-diagrams with fullscreen pan and zoom, download chips for generated files, and
-approval cards (Allow, Always allow, Deny) for gated tools. It pairs with:
+a panel that opens beside any page and can read that page, a composer for the
+home page, and the in-app editor where admins create assistants. The
+conversation renders generative UI: forms built from your scaffolder field
+extensions, Mermaid diagrams with fullscreen pan and zoom, download chips for
+generated files, and approval cards (Allow, Always allow, Deny) for gated
+tools. It pairs with:
 
 - [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend),
   the backend (required)
 - [`@drewswiredin/backstage-plugin-assistants-common`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-common),
   shared types and permissions (installed transitively)
 
-![AI Assistants chat panel](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
+![The AI Assistants chat page](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
 
 ![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
 
@@ -92,10 +93,11 @@ export default createApp({
 ### Panel
 
 The panel puts a floating button in the lower right of every page. It opens a
-side panel with one quick conversation: the assistant's own suggestions and
-defaults, no conversation list, no pickers. The page content makes room for
-it rather than being covered. "Open in Assistants" moves the conversation to
-the full page; nothing is copied.
+side panel with one conversation at a time, beside the page rather than over
+it: the page content makes room for it. "Open in Assistants" moves the
+conversation to the full page; nothing is copied.
+
+<!-- screenshot: panel.png — the panel open beside an entity page, mid-answer -->
 
 The panel wraps the app layout, which is the app plugin's own extension
 point, so it ships as a module for the `app` plugin. Add it to your features
@@ -129,6 +131,8 @@ screen. The panel remembers your last quick conversation in this browser; only
 attachments work as on the page. The button is hidden on the Assistants page
 itself and for users without `assistant.use`.
 
+<!-- screenshot: panel-picker.png — the assistant menu in the panel header, with the Default marker -->
+
 The panel tells the assistant which page it sits beside (the path, the title,
 and the catalog entity when the page is one), and the assistant can read the
 page itself with the built-in `read_current_page` tool: headings, text,
@@ -142,6 +146,8 @@ app:
   extensions:
     - client-tool:assistants/read-current-page: false
 ```
+
+<!-- screenshot: panel-page-context.png — the panel answering a question about the page beside it, with the read_current_page chip -->
 
 ### Homepage
 
@@ -206,10 +212,10 @@ app:
 ```
 
 The composer's hint text is the assistant's own "Composer placeholder", set in
-the editor, else "Ask about your services, docs, or anything in Backstage…"; for the `bar`, a placeholder such as "Ask anything about our
-systems…" on the default assistant makes it read like a search box. A user's
-saved home layout wins over `defaultConfig` until they choose "Restore
-defaults".
+the editor, else "Ask about your services, docs, or anything in Backstage…".
+For the `bar`, a placeholder such as "Ask anything about our systems…" on the
+default assistant makes it read like a search box. A user's saved home layout
+wins over `defaultConfig` until they choose "Restore defaults".
 
 To render it somewhere else, such as inside your own card or page, use the
 component the entry point exports:
@@ -276,7 +282,9 @@ read tools are provided by `builtinActions`.
 ## First run
 
 On first start the backend seeds one assistant, open to every signed-in user,
-with the three built-in read tools. Open `/assistants` and talk to it.
+with the three built-in read tools, and makes it the default. Open
+`/assistants` and talk to it, or press `Ctrl+/` on any page if the panel is
+installed.
 
 Users with the `assistant.manage` permission see a gear in the chat sidebar
 that opens the editor to create, edit, and delete assistants, and to choose
@@ -345,21 +353,22 @@ export const SidebarContent = NavContentBlueprint.make({
 ### Root entry exports
 
 The plugin itself is the default export of the `./alpha` subpath, which also
-exports `assistantsPanelModule` (see [Panel](#panel)); the `./home` subpath
-exports `assistantsHomeModule` (see [Homepage](#homepage)). The package root
+exports `assistantsPanelModule` (see [Panel](#panel)). The `./home` subpath
+exports `assistantsHomeModule`, the `AssistantComposer` component, and its
+`AssistantComposerVariant` type (see [Homepage](#homepage)). The package root
 exports what a host app needs to integrate with it:
 
-| Export                                                                                                                          | Purpose                                                                                                       |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `rootRouteRef`                                                                                                                  | Route ref for the `/assistants` page.                                                                         |
-| `threadRouteRef`                                                                                                                | Sub-route ref for one conversation, `/assistants/threads/:threadId`.                                          |
-| `assistantsApiRef`                                                                                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.                            |
-| `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none.                       |
-| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                |
-| `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                 |
-| `clientToolsApiRef`, `ClientToolsApi` (type)                                                                                    | The registry of contributed client tools, read by every surface that runs a conversation.                     |
-| `usePanelControl`, `PanelControl` (type)                                                                                        | Open the panel from a page component, with a first message; undefined in an app without the panel.            |
-| `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps`, `ClientToolInterrupt` (types) | The client tool contract; `ClientToolInterrupt` is the approval or connect prompt a custom `render` receives. |
+| Export                                                                                                                          | Purpose                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `rootRouteRef`                                                                                                                  | Route ref for the `/assistants` page.                                                                                   |
+| `threadRouteRef`                                                                                                                | Sub-route ref for one conversation, `/assistants/threads/:threadId`.                                                    |
+| `assistantsApiRef`                                                                                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.                                      |
+| `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none.                                 |
+| `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                          |
+| `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                           |
+| `clientToolsApiRef`, `ClientToolsApi` (type)                                                                                    | The registry of contributed client tools, read by every surface that runs a conversation.                               |
+| `usePanelControl`, `PanelControl`, `PanelOpenOptions` (types)                                                                   | Open the panel from a page component, on a conversation or with a first message; undefined in an app without the panel. |
+| `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps`, `ClientToolInterrupt` (types) | The client tool contract; `ClientToolInterrupt` is the approval or connect prompt a custom `render` receives.           |
 
 ### Chat page
 
@@ -381,12 +390,13 @@ exports what a host app needs to integrate with it:
 
 ### Generative UI
 
-Two built-in client tools render components in the conversation. Both are
-always available and need no config:
+Three built-in client tools are always available and need no config:
 
 - `render_form`: an inline form; the submitted values become the tool result.
 - `download_file`: a download chip for a text file the assistant generates
   (CSV, JSON, Markdown, code, SVG), with Copy for text files.
+- `read_current_page`: the page the user is looking at, as an outline (see
+  [Panel](#panel)). An app can turn it off.
 
 Mermaid code blocks render as diagrams themed to the Backstage light or dark
 mode, with a fullscreen pan-and-zoom view. Markdown renders with GitHub

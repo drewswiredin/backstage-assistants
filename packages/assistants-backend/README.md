@@ -18,7 +18,7 @@ Pairs with the frontend plugin
 - [Give an assistant Backstage actions](#give-an-assistant-backstage-actions)
 - [Add an MCP server](#add-an-mcp-server)
 - [Require approval before a tool runs](#require-approval-before-a-tool-runs)
-- [Forms and downloads in the conversation](#forms-and-downloads-in-the-conversation)
+- [Built-in client tools](#built-in-client-tools)
 - [Client tools: run in the browser as the user](#client-tools-run-in-the-browser-as-the-user)
 - [Platform instructions](#platform-instructions)
 - [Run a scaffolder template from the conversation](#run-a-scaffolder-template-from-the-conversation)
@@ -371,9 +371,9 @@ a page reload.
 The gate is a confirmation checkpoint, orthogonal to authorization: Backstage's
 per-user permissions still apply when an approved Backstage action invokes.
 
-## Forms and downloads in the conversation
+## Built-in client tools
 
-Two built-in client tools are always available and need no config.
+Three built-in client tools are always available and need no config.
 `render_form` renders an inline RJSF form for structured, multi-field, or
 multiple-choice input; the user fills and submits, and the values flow back as
 the tool result. Forms render Backstage scaffolder field extensions (owner,
@@ -383,6 +383,17 @@ so the model can reuse a scaffolder template's parameter block verbatim.
 back as a download chip in the conversation. `render_form` pauses the turn the
 way the approval gate does until the user submits or dismisses, and a pending
 form survives a page reload.
+
+`read_current_page` returns the page the user is looking at as an outline:
+open dialogs first, then the content's headings, text, buttons, links, tabs,
+form fields, tables, alerts, and the first lines of long logs, with `find` for
+the lines around a term, capped at 12,000 characters. It reads the rendered
+page, not app state, so it works on any page with no per-plugin code. When the
+frontend's panel sends a turn, `/chat` also carries `page` (the path, the title,
+and the catalog entity ref when the page is one); this backend appends one note
+naming the page to that turn's instructions, after the assistant's prompt, and
+never persists it. An app turns the tool off in its frontend config; nothing is
+configured here.
 
 ## Client tools: run in the browser as the user
 
@@ -419,7 +430,8 @@ model explains instead of retrying.
 Every turn, the backend sends the model a fixed set of platform instructions
 before the assistant's prompt: what the chat renders (Markdown and Mermaid; not
 raw HTML or LaTeX), formatting, a monotone symbol set, Mermaid syntax that
-parses, and when to use `render_form` and `download_file`. They are the same
+parses, when to use `render_form` and `download_file`, and when to read the
+user's page with `read_current_page`. They are the same
 for every assistant, so a prompt only needs the assistant's role; where the two
 differ, the assistant's prompt takes precedence. The editor shows them
 read-only under the prompt field. The text is `PLATFORM_INSTRUCTIONS` in
