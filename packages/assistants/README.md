@@ -307,34 +307,26 @@ your permission policy, as described in the
 ## Customize the sidebar
 
 The plugin's nav entry has the id `page:assistants`; in a custom
-`NavContentBlueprint`, `take()` it to place it yourself.
+`NavContentBlueprint`, `take()` it to place it yourself. Its icon carries a
+live dot: amber while any of the user's conversations is working, red while
+one is unread, wherever it started.
 
 The auto-registered nav entry is not permission-gated: a user without
 `assistant.use` still sees it and lands on a "You are not permitted to use
-assistants" page. To hide the plugin entirely for them, render the nav entry
-yourself behind a `usePermission(assistantUsePermission)` check in a custom
-`NavContentBlueprint` that `take()`s the auto entry:
+assistants" page. To hide the plugin entirely for them, `take()` the entry
+and render it behind a `usePermission(assistantUsePermission)` check:
 
 ```tsx
 // packages/app/src/modules/nav/Sidebar.tsx
+import type { ReactNode } from 'react';
 import { Sidebar, SidebarItem } from '@backstage/core-components';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { usePermission } from '@backstage/plugin-permission-react';
-import { AssistantsNavIcon } from '@drewswiredin/backstage-plugin-assistants';
 import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
 
-function AssistantsSidebarItem() {
+function IfAssistantsAllowed({ children }: { children: ReactNode }) {
   const { allowed } = usePermission({ permission: assistantUsePermission });
-  if (!allowed) {
-    return null;
-  }
-  return (
-    <SidebarItem
-      icon={() => <AssistantsNavIcon />}
-      to="/assistants"
-      text="Assistants"
-    />
-  );
+  return allowed ? <>{children}</> : null;
 }
 
 export const SidebarContent = NavContentBlueprint.make({
@@ -343,11 +335,11 @@ export const SidebarContent = NavContentBlueprint.make({
       const nav = navItems.withComponent(item => (
         <SidebarItem icon={() => item.icon} to={item.href} text={item.title} />
       ));
-      nav.take('page:assistants'); // consume the auto entry so it is not duplicated
+      const assistants = nav.take('page:assistants');
       return (
         <Sidebar>
           {nav.take('page:catalog')}
-          <AssistantsSidebarItem />
+          <IfAssistantsAllowed>{assistants}</IfAssistantsAllowed>
           {nav.rest({ sortBy: 'title' })}
         </Sidebar>
       );
@@ -355,6 +347,9 @@ export const SidebarContent = NavContentBlueprint.make({
   },
 });
 ```
+
+A sidebar item you build yourself gets the same dot from
+`<AssistantsNavIcon />`.
 
 ## Reference
 
@@ -371,7 +366,7 @@ exports what a host app needs to integrate with it:
 | `rootRouteRef`                                                                                                                  | Route ref for the `/assistants` page.                                                                                   |
 | `threadRouteRef`                                                                                                                | Sub-route ref for one conversation, `/assistants/threads/:threadId`.                                                    |
 | `assistantsApiRef`                                                                                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.                                      |
-| `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none.                                 |
+| `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot; the nav entry's icon, for a sidebar item you build yourself.                   |
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                          |
 | `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                           |
 | `clientToolsApiRef`, `ClientToolsApi` (type)                                                                                    | The registry of contributed client tools, read by every surface that runs a conversation.                               |

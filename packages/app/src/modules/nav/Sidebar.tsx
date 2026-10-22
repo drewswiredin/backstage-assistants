@@ -7,32 +7,23 @@ import {
   SidebarSpace,
 } from '@backstage/core-components';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
+import type { ReactNode } from 'react';
 import { SidebarLogo } from './SidebarLogo';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
-import { AssistantsNavIcon } from '@drewswiredin/backstage-plugin-assistants';
 import { usePermission } from '@backstage/plugin-permission-react';
 import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /**
- * The Assistants nav item, shown only to users who hold the `assistant.use`
+ * Shows the Assistants nav entry only to users who hold the `assistant.use`
  * permission. Hidden entirely otherwise — no nav entry, no error-on-click.
  */
-function AssistantsSidebarItem() {
+function IfAssistantsAllowed({ children }: { children: ReactNode }) {
   const { allowed } = usePermission({ permission: assistantUsePermission });
-  if (!allowed) {
-    return null;
-  }
-  return (
-    <SidebarItem
-      icon={() => <AssistantsNavIcon />}
-      to="/assistants"
-      text="Assistants"
-    />
-  );
+  return allowed ? <>{children}</> : null;
 }
 
 export const SidebarContent = NavContentBlueprint.make({
@@ -44,9 +35,9 @@ export const SidebarContent = NavContentBlueprint.make({
 
       // Skipped items
       nav.take('page:search'); // Using search modal instead
-      // The Assistants page renders via the permission-gated item below;
-      // consume the auto-generated entry so it doesn't duplicate.
-      nav.take('page:assistants');
+      // The plugin's entry (its icon carries the working/unread dot),
+      // placed below behind the permission check.
+      const assistants = nav.take('page:assistants');
 
       return (
         <Sidebar>
@@ -58,7 +49,7 @@ export const SidebarContent = NavContentBlueprint.make({
           <SidebarGroup label="Menu" icon={<MenuIcon />}>
             {nav.take('page:catalog')}
             {nav.take('page:scaffolder')}
-            <AssistantsSidebarItem />
+            <IfAssistantsAllowed>{assistants}</IfAssistantsAllowed>
             <SidebarDivider />
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}

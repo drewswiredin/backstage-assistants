@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The Assistants nav entry shows the working and unread dot without a custom sidebar: `AssistantsNavIcon` is the page's icon, so a turn left running on the Assistants page shows in the nav on every page. A custom sidebar that `take()`s `page:assistants` gets it too.
+- The panel's assistant picker shows each assistant's working or unread dot, and its history menu each conversation's, so a conversation started elsewhere can be found and opened from the panel.
+
 ## 0.20.1 - 2026-10-22
 
 ### Fixed

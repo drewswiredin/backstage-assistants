@@ -66,6 +66,7 @@ import {
   type ThreadCustomMetadata,
 } from '../collapsible/threadListAdapter';
 import { makeRuntimeHook } from '../collapsible/useAssistantRuntime';
+import { StatusDot } from '../collapsible/StatusDot';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { resolvePanelAssistant } from '../panel/panelStorage';
 import type { PanelHandoff } from '../panel/panelControl';
@@ -177,6 +178,13 @@ const useStyles = makeStyles(theme => ({
   },
   headerSpacer: {
     flex: 1,
+  },
+  /** Anchor for a history row's working/unread dot. */
+  historyDot: {
+    display: 'block',
+    width: 8,
+    height: 8,
+    marginLeft: theme.spacing(1.5),
   },
   body: {
     flex: 1,
@@ -664,7 +672,10 @@ function EmbeddedChrome({
   }, [historyAnchor, api, assistant.id]);
 
   // Focus (which marks the conversation read) only while in view.
-  const { usageOf } = useThreadStatus(api, active ? remoteId : undefined);
+  const { usageOf, statusOf, assistantStatus } = useThreadStatus(
+    api,
+    active ? remoteId : undefined,
+  );
 
   // A handed-in first message goes out once the thread list has loaded (so
   // the runtime is on its fresh thread), exactly once.
@@ -726,7 +737,9 @@ function EmbeddedChrome({
                   }}
                 >
                   <ListItemIcon>
-                    <AssistantAvatar color={a.color} size={22} />
+                    <StatusDot status={assistantStatus(a.id)}>
+                      <AssistantAvatar color={a.color} size={22} />
+                    </StatusDot>
                   </ListItemIcon>
                   <ListItemText
                     primary={a.title}
@@ -799,6 +812,9 @@ function EmbeddedChrome({
                 secondary={relativeTime(t.updatedAt)}
                 primaryTypographyProps={{ noWrap: true }}
               />
+              <StatusDot status={statusOf(t.id)}>
+                <span className={classes.historyDot} />
+              </StatusDot>
             </MenuItem>
           ))}
         </Menu>

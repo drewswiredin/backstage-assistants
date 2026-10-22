@@ -9,6 +9,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { AppRootWrapperBlueprint } from '@backstage/plugin-app-react';
 import { RiRobot2Line } from '@remixicon/react';
+import { AssistantsNavIcon } from './AssistantsNavIcon';
 import { rootRouteRef, threadRouteRef } from './routes';
 import { assistantsApiRef, AssistantsClient } from './api';
 import { AssistantClientToolBlueprint, clientToolDataRef } from './clientTools';
@@ -61,6 +62,8 @@ const clientToolsApi = ApiBlueprint.makeWithOverrides({
 const assistantsPage = PageBlueprint.make({
   params: {
     path: '/assistants',
+    // The nav entry takes the page's icon: the live working/unread dot.
+    icon: <AssistantsNavIcon />,
     routeRef: rootRouteRef,
     loader: () =>
       import('./collapsible/CollapsiblePage').then(m => <m.CollapsiblePage />),
