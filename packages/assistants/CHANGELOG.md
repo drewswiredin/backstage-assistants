@@ -3,6 +3,18 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- The panel: a floating button in the lower right of every page opens a side panel with one quick conversation, using the assistant's own suggestions and defaults; the page content makes room for it. "Open in Assistants" moves the conversation to the full page. It is `assistantsPanelModule`, a module for the `app` plugin that the app adds to its features; `config.assistant` on `app-root-wrapper:app/assistants-panel` pins the assistant. Hide (the chevron, `Esc`, or a click on the page) collapses it to a strip at the right edge; Close (the x) brings the button back; either way the conversation is kept. `Ctrl+/` toggles it, the left edge resizes it, and the last conversation is remembered per browser. Contributed client tools, approvals, forms, and attachments work in the panel as on the page.
+- `threadRouteRef`: `/assistants/threads/:threadId` opens one conversation on the page. A conversation the caller cannot see lands on the normal page with a notice.
+- `clientToolsApiRef`: the registry of contributed client tools, read by every surface that runs a conversation.
+
+### Changed
+
+- `AssistantClientToolBlueprint` extensions attach to `api:assistants/client-tools` instead of the page, so the page and the panel share one registration. Contributors are unaffected; a tool is still one `make` call.
+
 ## 0.16.1 - 2026-10-21
 
 ### Changed

@@ -72,11 +72,12 @@ export default createApp({
 ```
 
 The page mounts at `/assistants`; `?assistant=<id>` opens it on a given
-assistant. In an app with `app.packages: all`, the plugin is discovered
-without the `features` entry.
+assistant, and `/assistants/threads/<id>` opens one conversation. In an app
+with `app.packages: all`, the plugin is discovered without the `features`
+entry.
 
 For live working and unread status, add Signals to the app (and
-`@backstage/plugin-signals-backend` to the backend); without it the panel polls
+`@backstage/plugin-signals-backend` to the backend); without it the page polls
 every 10 seconds:
 
 ```ts
@@ -86,6 +87,47 @@ export default createApp({
   features: [assistantsPlugin, signalsPlugin],
 });
 ```
+
+### Panel
+
+The panel puts a floating button in the lower right of every page. It opens a
+side panel with one quick conversation: the assistant's own suggestions and
+defaults, no conversation list, no pickers. The page content makes room for
+it rather than being covered. "Open in Assistants" moves the conversation to
+the full page; nothing is copied.
+
+The panel wraps the app layout, which is the app plugin's own extension
+point, so it ships as a module for the `app` plugin. Add it to your features
+to turn it on:
+
+```ts
+import assistantsPlugin, {
+  assistantsPanelModule,
+} from '@drewswiredin/backstage-plugin-assistants/alpha';
+
+export default createApp({
+  features: [assistantsPlugin, assistantsPanelModule],
+});
+```
+
+To pin the assistant it talks to (the first accessible one otherwise):
+
+```yaml
+app:
+  extensions:
+    - app-root-wrapper:app/assistants-panel:
+        config:
+          assistant: platform
+```
+
+`Ctrl+/` (`⌘/` on macOS) toggles the panel. Hide (the chevron, `Esc`, or a
+click on the page) collapses it to a strip at the right edge with the
+conversation kept; Close (the x) removes the strip and brings the button back.
+Dragging the left edge resizes the panel, and below tablet width it fills the
+screen. The panel remembers your last quick conversation in this browser; only
+"+" and "Open in Assistants" start fresh. Tools, approvals, forms, and
+attachments work as on the page. The button is hidden on the Assistants page
+itself and for users without `assistant.use`.
 
 ### Backend
 
@@ -211,13 +253,14 @@ root exports what a host app needs to integrate with it:
 | Export                                                                                                                          | Purpose                                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `rootRouteRef`                                                                                                                  | Route ref for the `/assistants` page.                                                                         |
+| `threadRouteRef`                                                                                                                | Sub-route ref for one conversation, `/assistants/threads/:threadId`.                                          |
 | `assistantsApiRef`                                                                                                              | API ref for the backend client (`AssistantsApi`): assistant list, threads, status.                            |
 | `AssistantsNavIcon`                                                                                                             | Nav icon with a live working/unread dot, for a custom sidebar; the auto entry has none.                       |
 | `AssistantsApi`, `ConversationStatusRow`, `ThreadPatch` (types)                                                                 | The client interface and its row/patch shapes.                                                                |
 | `AssistantClientToolBlueprint`, `clientToolDataRef`                                                                             | Contribute a client tool (see [Client tools](#client-tools)).                                                 |
 | `AssistantClientTool`, `ClientToolAuthRequirement`, `ClientToolContext`, `ClientToolRenderProps`, `ClientToolInterrupt` (types) | The client tool contract; `ClientToolInterrupt` is the approval or connect prompt a custom `render` receives. |
 
-### Chat panel
+### Chat page
 
 - Conversations: one list per assistant; a row's menu renames, pins, or
   deletes it, and pinned conversations sort first.

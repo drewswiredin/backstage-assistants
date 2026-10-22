@@ -18,9 +18,11 @@ import { ExtensionDataRef } from '@backstage/frontend-plugin-api';
 import type { JsonObject } from '@backstage/types';
 import { JSX as JSX_2 } from 'react';
 import type { OAuthApi } from '@backstage/core-plugin-api';
+import { PathParams } from '@backstage/core-plugin-api';
 import { ReasoningLevel } from '@drewswiredin/backstage-plugin-assistants-common';
 import { RouteRef } from '@backstage/core-plugin-api';
 import { StatusResponse } from '@drewswiredin/backstage-plugin-assistants-common';
+import { SubRouteRef } from '@backstage/core-plugin-api';
 import type { ToolCallMessagePartProps } from '@assistant-ui/react';
 
 // @public
@@ -143,6 +145,14 @@ export type ClientToolRenderProps<
 > = ToolCallMessagePartProps<TInput, TOutput>;
 
 // @public
+export interface ClientToolsApi {
+  readonly tools: ReadonlyArray<AssistantClientTool<any, any>>;
+}
+
+// @public (undocumented)
+export const clientToolsApiRef: ApiRef<ClientToolsApi>;
+
+// @public
 export interface ConversationStatusRow {
   // (undocumented)
   assistantId: string;
@@ -171,6 +181,9 @@ export interface ThreadPatch {
   title?: string;
 }
 
+// @public
+export const threadRouteRef: SubRouteRef<PathParams<'/threads/:threadId'>>;
+
 // Warnings were encountered during analysis:
 //
 // src/api/AssistantsApi.d.ts:10:5 - (ae-undocumented) Missing documentation for "threadId".
@@ -181,5 +194,6 @@ export interface ThreadPatch {
 // src/api/AssistantsApi.d.ts:26:5 - (ae-undocumented) Missing documentation for "model".
 // src/api/AssistantsApi.d.ts:29:5 - (ae-undocumented) Missing documentation for "pinned".
 // src/api/AssistantsApi.d.ts:30:5 - (ae-undocumented) Missing documentation for "archived".
+// src/clientTools/api.d.ts:16:22 - (ae-undocumented) Missing documentation for "clientToolsApiRef".
 // /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```

@@ -6,10 +6,15 @@ import './surface/styles/assistant-ui.css';
 import './surface/styles/assistant-ui-markdown.css';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { useApi, useApiHolder } from '@backstage/core-plugin-api';
+import { alertApiRef, useApi, useApiHolder } from '@backstage/core-plugin-api';
 import {
   Content,
   Progress,
@@ -66,12 +71,13 @@ import {
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { JsonObject } from '@backstage/types';
 import { makeRuntimeHook } from './useAssistantRuntime';
+import { resolveRequestedThread } from './resolveRequestedThread';
 import {
   ClientToolsProvider,
   useClientTools,
 } from '../clientTools/ClientToolsProvider';
 import { ClientToolRegistrations } from '../clientTools/ClientToolRegistrations';
-import type { AssistantClientTool } from '../clientTools/types';
+import { clientToolsApiRef } from '../clientTools/api';
 import { StatusDot } from './StatusDot';
 import {
   useThreadStatus,
@@ -358,12 +364,10 @@ const REASONING_LABELS: Record<ReasoningLevel, string> = {
  * The Assistants page. `clientTools` are the tools contributed through
  * `AssistantClientToolBlueprint`, collected by the page extension.
  */
-export function CollapsiblePage({
-  clientTools = [],
-}: {
-  clientTools?: ReadonlyArray<AssistantClientTool<any, any>>;
-}) {
+export function CollapsiblePage() {
   const api = useApi(assistantsApiRef);
+  // The contributed client tools: every blueprint extension in the app.
+  const { tools: clientTools } = useApi(clientToolsApiRef);
   const [searchParams] = useSearchParams();
   const requestedAssistant = searchParams.get('assistant');
 
@@ -583,6 +587,17 @@ function ChatChrome({
   // Optional: `undefined` when the host app does not install Signals.
   const signals = useApiHolder().get(signalApiRef);
   const [, setSearchParams] = useSearchParams();
+  const alertApi = useApi(alertApiRef);
+  const navigate = useNavigate();
+  // The page is mounted at `<root>/*`; a deep link to one conversation is the
+  // `threads/<server id>` tail (see `threadRouteRef`). Read once below, then
+  // the URL goes back to the root path so a refresh lands normally.
+  const splat = useParams()['*'] ?? '';
+  const requestedThreadId = /^threads\/([^/]+)\/?$/.exec(splat)?.[1];
+  const { pathname } = useLocation();
+  const rootPath = splat
+    ? pathname.slice(0, pathname.length - splat.length)
+    : pathname;
 
   // Active assistant: UI state, with a ref mirror so the adapter/runtime can
   // tag a brand-new thread synchronously (before React re-renders). The active
@@ -637,10 +652,39 @@ function ChatChrome({
   // a bare assistant. An assistant with no conversations stays on the
   // unpersisted draft (the only no-"+" empty state). A new conversation is
   // created ONLY via "+", never by typing.
+  //
+  // A deep-linked conversation (`/threads/:threadId`) wins: focus its
+  // assistant and select it. One the caller cannot see (unknown, deleted,
+  // someone else's: the list simply lacks it) gets a notice and the normal
+  // landing. Either way the URL is replaced with the root path.
   const didSelectInitial = useRef(false);
   useEffect(() => {
     if (didSelectInitial.current || threadList.isLoading) return;
     didSelectInitial.current = true;
+    if (requestedThreadId) {
+      const requested = resolveRequestedThread(threadList, requestedThreadId);
+      if (requested) setActiveAssistantId(requested.assistantId);
+      else {
+        alertApi.post({
+          message: "That conversation isn't available.",
+          severity: 'info',
+          display: 'transient',
+        });
+      }
+      navigate(
+        {
+          pathname: rootPath,
+          search: `?assistant=${encodeURIComponent(
+            requested?.assistantId ?? activeAssistantIdRef.current,
+          )}`,
+        },
+        { replace: true },
+      );
+      if (requested) {
+        void runtime.threads.switchToThread(requested.threadId);
+        return;
+      }
+    }
     // Land on the active assistant's most-recent conversation; if it has none,
     // stay on the blank draft (never empty). Don't override a user pick.
     if (activeId !== threadList.newThreadId) return;

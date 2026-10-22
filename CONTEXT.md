@@ -90,7 +90,21 @@ The single component boundary at which a conversation surface plugs in: a BYO-ru
 The Backstage-side frame around the Conversation surface: assistant rail, conversation list, header model and effort pickers, the manage gear (`assistant.manage`). Owned by the `assistants` frontend plugin.
 
 **Rail**:
-The assistant list on the left of the panel — one entry per accessible Assistant, with its working / unread rollup. Picking one selects that Assistant's conversations.
+The assistant list on the left of the page — one entry per accessible Assistant, with its working / unread rollup. Picking one selects that Assistant's conversations.
+
+**Panel**:
+The floating quick-chat surface: a button in the lower right of every page opens a side panel with one conversation at a time, the Assistant's defaults for model and reasoning, no conversation list, no pickers. An app root wrapper, so the page column shrinks to make room (never an overlay); shipped as `assistantsPanelModule`, a module for the `app` plugin that the app adds to its features, and `config.assistant` on `app-root-wrapper:app/assistants-panel` pins the Assistant. Three states: closed (the button only), open (the panel, no button), and collapsed (a strip at the right edge; Hide, Escape, or a click on the page gets there, and the conversation is kept). Close (the x) returns to closed. A conversation started in the panel is an ordinary Thread; "Open in Assistants" moves it to the page (`/assistants/threads/:threadId`) and the panel forgets it, so a conversation has one owner at a time. The panel remembers its last conversation in the browser.
+_Avoid_: widget, popup, chatbot, drawer (the MUI component, not the concept)
+
+**Embedded surface**:
+The component that renders one conversation outside the page (`embedded/EmbeddedAssistant.tsx`): the `assistant.use` gate, `/status`, the single-thread adapter under the page's runtime hook, the client tool registrations, and the Conversation surface in a compact density. The Panel is its first mount; a homepage composer would be another.
+_Avoid_: mini chat, chat widget
+
+**Client tool registry**:
+The `api:assistants/client-tools` extension (`clientToolsApiRef`): every `AssistantClientToolBlueprint` extension attaches to its `tools` input, and the page and the panel read the tools from it. One registration, read wherever a conversation renders; the frontend system's way to share extensions across locations instead of multiple attachment points.
+
+**Single-thread adapter**:
+The thread-list adapter scoped to one conversation: `list()` is the remembered Thread (fetched by id; a 404 lists as nothing) or empty, and `initialize()` creates a Thread under the surface's Assistant on the first send. Same runtime shape as the page, so history, auto-send, resume, and client tools are unchanged.
 
 **Access policy**:
 The per-Assistant rule deciding who may use it (`allowAuthenticated` / `users[]` / `groups[]`), stored on the definition in the DB. Deny by default. It filters _which_ Assistants a user sees — distinct from the plugin **Permission**s (whether they may use the plugin at all) and from the per-tool Backstage checks at execution.

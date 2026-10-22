@@ -78,6 +78,9 @@ their server's configured credential.
   question at a time; draws Mermaid diagrams you can open fullscreen to pan and
   zoom; and hands back generated text files (CSV, JSON, code, SVG) as download chips.
   Markdown renders in full, tables and code included.
+- **An assistant on every page.** A floating button opens a side panel for a
+  quick question wherever you are, with the conversation moving to the full
+  page in one click. Opt-in for the app.
 - **A full chat surface.** Attach images and text files, pick the model per
   conversation, set reasoning effort on models that support it, watch the
   context gauge, and copy or regenerate replies. Rename, pin, and delete

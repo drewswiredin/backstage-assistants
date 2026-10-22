@@ -212,3 +212,46 @@ export function createHistoryAdapter(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Single-thread adapter — the embedded surface (the panel)
+// ---------------------------------------------------------------------------
+
+/**
+ * The same adapter scoped to ONE conversation, for the embedded surface. The
+ * list is the remembered thread (fetched by id) or nothing; `initialize()`
+ * creates a thread under the surface's assistant on the first send. The
+ * per-thread runtime hook, history adapter, auto-send, and resume all work
+ * unchanged because the runtime shape is the same as the page's.
+ *
+ * A remembered thread that no longer exists (deleted on the page, or
+ * someone else's id) lists as nothing: the server answers 404 and the surface
+ * starts blank.
+ */
+export function createSingleThreadAdapter(
+  api: AssistantsApi,
+  getAssistantId: () => AssistantId,
+  getRemoteId: () => string | undefined,
+): RemoteThreadListAdapter {
+  const full = createThreadListAdapter(api, getAssistantId);
+  return {
+    ...full,
+    async list() {
+      const remoteId = getRemoteId();
+      if (!remoteId) return { threads: [] };
+      try {
+        return { threads: [await full.fetch(remoteId)] };
+      } catch (e) {
+        if (isNotFound(e)) return { threads: [] };
+        throw e;
+      }
+    },
+  };
+}
+
+/** True for the backend's 404 (`ResponseError` from `@backstage/errors`). */
+function isNotFound(e: unknown): boolean {
+  const status = (e as { response?: { status?: number } } | undefined)?.response
+    ?.status;
+  return status === 404;
+}

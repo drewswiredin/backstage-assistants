@@ -42,7 +42,7 @@ export const clientToolDataRef = createExtensionDataRef<
  */
 export const AssistantClientToolBlueprint = createExtensionBlueprint({
   kind: 'assistant-client-tool',
-  attachTo: { id: 'page:assistants', input: 'clientTools' },
+  attachTo: { id: 'api:assistants/client-tools', input: 'tools' },
   output: [clientToolDataRef],
   dataRefs: { tool: clientToolDataRef },
   defineParams<TInput extends JsonObject, TOutput = unknown>(

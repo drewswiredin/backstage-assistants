@@ -14,20 +14,27 @@ import { ConfigurableExtensionDataRef } from '@backstage/frontend-plugin-api';
 import { ExtensionBlueprintParams } from '@backstage/frontend-plugin-api';
 import { ExtensionDataRef } from '@backstage/frontend-plugin-api';
 import { ExtensionInput } from '@backstage/frontend-plugin-api';
+import { FrontendModule } from '@backstage/frontend-plugin-api';
 import { IconElement } from '@backstage/frontend-plugin-api';
 import { JsonObject } from '@backstage/types';
 import { JSX as JSX_2 } from 'react';
 import type { OAuthApi } from '@backstage/core-plugin-api';
 import { OverridableExtensionDefinition } from '@backstage/frontend-plugin-api';
 import { OverridableFrontendPlugin } from '@backstage/frontend-plugin-api';
+import { PathParams } from '@backstage/core-plugin-api';
 import { RouteRef } from '@backstage/core-plugin-api';
 import { RouteRef as RouteRef_2 } from '@backstage/frontend-plugin-api';
+import { SubRouteRef } from '@backstage/core-plugin-api';
 import type { ToolCallMessagePartProps } from '@assistant-ui/react';
+
+// @public
+export const assistantsPanelModule: FrontendModule;
 
 // @public
 const _default: OverridableFrontendPlugin<
   {
     root: RouteRef<undefined>;
+    thread: SubRouteRef<PathParams<'/threads/:threadId'>>;
   },
   {},
   {
@@ -38,6 +45,34 @@ const _default: OverridableFrontendPlugin<
       configInput: {};
       output: ExtensionDataRef<AnyApiFactory, 'core.api.factory', {}>;
       inputs: {};
+      params: <
+        TApi,
+        TImpl extends TApi,
+        TDeps extends { [name in string]: unknown },
+      >(
+        params: ApiFactory<TApi, TImpl, TDeps>,
+      ) => ExtensionBlueprintParams<AnyApiFactory>;
+    }>;
+    'api:assistants/client-tools': OverridableExtensionDefinition<{
+      config: {};
+      configInput: {};
+      output: ExtensionDataRef<AnyApiFactory, 'core.api.factory', {}>;
+      inputs: {
+        tools: ExtensionInput<
+          ConfigurableExtensionDataRef<
+            AssistantClientTool<any, any>,
+            'assistants.client-tool',
+            {}
+          >,
+          {
+            singleton: false;
+            optional: false;
+            internal: false;
+          }
+        >;
+      };
+      kind: 'api';
+      name: 'client-tools';
       params: <
         TApi,
         TImpl extends TApi,
@@ -77,13 +112,15 @@ const _default: OverridableFrontendPlugin<
       ) => ExtensionBlueprintParams<AssistantClientTool<any, any>>;
     }>;
     'page:assistants': OverridableExtensionDefinition<{
+      kind: 'page';
+      name: undefined;
       config: {
         path: string | undefined;
         title: string | undefined;
       };
       configInput: {
-        path?: string | undefined | undefined;
-        title?: string | undefined | undefined;
+        path?: string | undefined;
+        title?: string | undefined;
       };
       output:
         | ExtensionDataRef<string, 'core.routing.path', {}>
@@ -140,21 +177,7 @@ const _default: OverridableFrontendPlugin<
             internal: false;
           }
         >;
-        clientTools: ExtensionInput<
-          ConfigurableExtensionDataRef<
-            AssistantClientTool<any, any>,
-            'assistants.client-tool',
-            {}
-          >,
-          {
-            singleton: false;
-            optional: false;
-            internal: false;
-          }
-        >;
       };
-      kind: 'page';
-      name: undefined;
       params: {
         path: string;
         title?: string;
@@ -170,7 +193,7 @@ export default _default;
 
 // Warnings were encountered during analysis:
 //
-// src/alpha.d.ts:23:9 - (ae-forgotten-export) The symbol "AssistantClientTool" needs to be exported by the entry point alpha.d.ts
+// src/alpha.d.ts:24:13 - (ae-forgotten-export) The symbol "AssistantClientTool" needs to be exported by the entry point alpha.d.ts
 // /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 
 // (No @packageDocumentation comment for this package)

@@ -1,17 +1,22 @@
 import {
   ApiBlueprint,
   createExtensionInput,
+  createFrontendModule,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
+import { AppRootWrapperBlueprint } from '@backstage/plugin-app-react';
 import { RiRobot2Line } from '@remixicon/react';
-import { rootRouteRef } from './routes';
+import { z } from 'zod';
+import { rootRouteRef, threadRouteRef } from './routes';
 import { assistantsApiRef, AssistantsClient } from './api';
 import { AssistantClientToolBlueprint, clientToolDataRef } from './clientTools';
+import { clientToolsApiRef, type ClientToolsApi } from './clientTools/api';
 import { renderFormTool } from './clientTools/builtin/renderForm';
 import { downloadFileTool } from './clientTools/builtin/downloadFile';
+import { AssistantsPanel } from './panel/AssistantsPanel';
 
 /** Backend client (`/status`, threads, manage, base url + authed fetch). */
 const assistantsApi = ApiBlueprint.make({
@@ -28,27 +33,36 @@ const assistantsApi = ApiBlueprint.make({
 });
 
 /**
- * The Assistants chat page (collapsible sidebar). Mounted at `/assistants`.
- * Its `clientTools` input collects every `AssistantClientToolBlueprint`
- * extension in the app: the plugin's own built-ins below and any a host
- * plugin or module contributes.
+ * The client tool registry. Its `tools` input collects every
+ * `AssistantClientToolBlueprint` extension in the app: the plugin's own
+ * built-ins below and any a host plugin or module contributes. The page and
+ * the panel both read it, so a tool is registered once and runs everywhere a
+ * conversation does.
  */
-const assistantsPage = PageBlueprint.makeWithOverrides({
+const clientToolsApi = ApiBlueprint.makeWithOverrides({
+  name: 'client-tools',
   inputs: {
-    clientTools: createExtensionInput([clientToolDataRef]),
+    tools: createExtensionInput([clientToolDataRef]),
   },
   factory(originalFactory, { inputs }) {
-    const clientTools = inputs.clientTools.map(input =>
-      input.get(clientToolDataRef),
+    const tools = inputs.tools.map(input => input.get(clientToolDataRef));
+    return originalFactory(defineParams =>
+      defineParams({
+        api: clientToolsApiRef,
+        deps: {},
+        factory: (): ClientToolsApi => ({ tools }),
+      }),
     );
-    return originalFactory({
-      path: '/assistants',
-      routeRef: rootRouteRef,
-      loader: () =>
-        import('./collapsible/CollapsiblePage').then(m => (
-          <m.CollapsiblePage clientTools={clientTools} />
-        )),
-    });
+  },
+});
+
+/** The Assistants chat page (collapsible sidebar). Mounted at `/assistants`. */
+const assistantsPage = PageBlueprint.make({
+  params: {
+    path: '/assistants',
+    routeRef: rootRouteRef,
+    loader: () =>
+      import('./collapsible/CollapsiblePage').then(m => <m.CollapsiblePage />),
   },
 });
 
@@ -75,11 +89,51 @@ export default createFrontendPlugin({
   icon: <RiRobot2Line />,
   extensions: [
     assistantsApi,
+    clientToolsApi,
     assistantsPage,
     renderFormClientTool,
     downloadFileClientTool,
   ],
   routes: {
     root: rootRouteRef,
+    thread: threadRouteRef,
   },
+});
+
+/**
+ * The panel: a floating button on every page opens a side panel with one quick
+ * conversation, and the page content makes room for it. It wraps the app
+ * layout, so it mounts after sign-in and sits beside the page rather than
+ * over it. An app root wrapper is the app plugin's own input, so this is a
+ * module for the `app` plugin that the host adds to its features:
+ *
+ * ```ts
+ * import assistantsPlugin, { assistantsPanelModule } from '@drewswiredin/backstage-plugin-assistants/alpha';
+ * createApp({ features: [assistantsPlugin, assistantsPanelModule] });
+ * ```
+ *
+ * `config.assistant` on `app-root-wrapper:app/assistants-panel` pins the
+ * assistant.
+ *
+ * @public
+ */
+export const assistantsPanelModule = createFrontendModule({
+  pluginId: 'app',
+  extensions: [
+    AppRootWrapperBlueprint.makeWithOverrides({
+      name: 'assistants-panel',
+      configSchema: {
+        assistant: z.string().optional(),
+      },
+      factory(originalFactory, { config }) {
+        return originalFactory({
+          component: ({ children }) => (
+            <AssistantsPanel assistant={config.assistant}>
+              {children}
+            </AssistantsPanel>
+          ),
+        });
+      },
+    }),
+  ],
 });

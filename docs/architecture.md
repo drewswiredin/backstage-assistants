@@ -25,6 +25,7 @@ The thread and composer components from assistant-ui's registry template are ven
 ```mermaid
 flowchart LR
   RT["Browser runtime\ncollapsible/"]
+  PN["Panel\npanel/, embedded/"]
   ED["Admin editor\ncollapsible/admin/"]
   RO["Router\nrouter.ts, manage.ts"]
   TA["Tool assembly\nactions.ts, mcp.ts, clientTools.ts"]
@@ -35,6 +36,7 @@ flowchart LR
   DB[("Database")]
   PV["LLM providers"]
   RT -->|"/chat /threads"| RO
+  PN -->|"/chat /threads/:id"| RO
   ED -->|"/manage /capabilities"| RO
   RO -->|"per turn"| TA
   TA -->|"tools"| LP
@@ -49,18 +51,19 @@ flowchart LR
   KI --> DB
 ```
 
-| Node            | Module path                                                              | Owns                                                                                      |
-| --------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Browser runtime | `packages/assistants/src/collapsible/`                                   | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                    |
-| Admin editor    | `packages/assistants/src/collapsible/admin/`                             | The `assistant.manage` dialog and client-side delta-validation                            |
-| Router          | `packages/assistants-backend/src/router.ts`, `manage.ts`                 | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`             |
-| Tool assembly   | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts` | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping |
-| AI SDK loop     | `packages/assistants-backend/src/router.ts`                              | `streamText`, the approval map, persistence on start and finish, signals                  |
-| Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts`            | `AssistantStore` with its snapshot; `ThreadService`, the only message writer              |
-| MCP pool        | `packages/assistants-backend/src/mcp.ts`                                 | One client per server per process, the tool cache                                         |
-| Knowledge index | `packages/assistants-backend-module-semantic-search/src/`                | The index refresh task and the `search-knowledge` action                                  |
-| Database        | Backstage `backend.database`                                             | The five plugin tables, plus the two knowledge index tables on Postgres                   |
-| LLM providers   | `packages/assistants-backend/src/config.ts`                              | The AI SDK provider registry built from config                                            |
+| Node            | Module path                                                              | Owns                                                                                        |
+| --------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Browser runtime | `packages/assistants/src/collapsible/`                                   | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                      |
+| Panel           | `packages/assistants/src/panel/`, `embedded/`                            | The app root wrapper: the floating button, the side panel beside the page, one conversation |
+| Admin editor    | `packages/assistants/src/collapsible/admin/`                             | The `assistant.manage` dialog and client-side delta-validation                              |
+| Router          | `packages/assistants-backend/src/router.ts`, `manage.ts`                 | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`               |
+| Tool assembly   | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts` | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping   |
+| AI SDK loop     | `packages/assistants-backend/src/router.ts`                              | `streamText`, the approval map, persistence on start and finish, signals                    |
+| Stores          | `packages/assistants-backend/src/assistants.ts`, `threads.ts`            | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                |
+| MCP pool        | `packages/assistants-backend/src/mcp.ts`                                 | One client per server per process, the tool cache                                           |
+| Knowledge index | `packages/assistants-backend-module-semantic-search/src/`                | The index refresh task and the `search-knowledge` action                                    |
+| Database        | Backstage `backend.database`                                             | The five plugin tables, plus the two knowledge index tables on Postgres                     |
+| LLM providers   | `packages/assistants-backend/src/config.ts`                              | The AI SDK provider registry built from config                                              |
 
 ## Routes
 
@@ -85,6 +88,8 @@ Every route accepts user tokens only. `/chat` applies the per-assistant access p
 | POST   | `/manage/assistants`     | `assistant.manage` | capabilities                                                                                               | `assistants` row, snapshot rebuild                                            |                                      |
 | PUT    | `/manage/assistants/:id` | `assistant.manage` | `assistants` row, capabilities                                                                             | `assistants` row, snapshot rebuild                                            |                                      |
 | DELETE | `/manage/assistants/:id` | `assistant.manage` |                                                                                                            | `assistants` row, snapshot rebuild                                            |                                      |
+
+In the browser the page mounts at `/assistants` (`rootRouteRef`); `?assistant=<id>` focuses an assistant and `/assistants/threads/:threadId` (`threadRouteRef`) selects one conversation once, then the URL is replaced with the root path. A thread the caller cannot see is simply absent from the list, so it lands on the normal page with a notice.
 
 `/status` and `/chat` sit on the typed OpenAPI router (`src/schema/openapi.yaml`); the other routes are plain Express sub-routers. The OpenAPI router's JSON parser runs ahead of every route, so `requestBodyLimit` (default `10mb`, sized for `/chat` attachments) is the body limit for all of them. `PATCH /threads/:id` rejects unknown fields; `POST /threads` answers 201; `/chat/cancel` always answers 204; `/chat/resume` answers 204 for an unknown, foreign, or expired stream.
 
@@ -360,12 +365,23 @@ flowchart TB
   CT["ClientToolRegistrations, ClientToolCall\nclientTools/"]
   BP["AssistantClientToolBlueprint\nclientTools/blueprint.ts"]
   NI["AssistantsNavIcon\nAssistantsNavIcon.tsx"]
+  PN["AssistantsPanel\npanel/AssistantsPanel.tsx"]
+  EA["EmbeddedAssistant\nembedded/EmbeddedAssistant.tsx"]
+  SA["Single-thread adapter\ncollapsible/threadListAdapter.ts"]
+  PN --> EA
+  EA --> SA
+  SA --> RH
+  EA --> CT
+  EA --> CS
+  CA --> PN
   CP --> SP
   CP --> DD
   CP --> TS
   NI --> TS
   RP --> CT
-  BP -->|"clientTools input"| CP
+  CA["clientToolsApiRef\nclientTools/api.ts"]
+  BP -->|"tools input"| CA
+  CA --> CP
   TS --> API
   CP --> HP
   CP --> AD
@@ -379,7 +395,11 @@ flowchart TB
 
 One runtime carries every conversation across all assistants; switching assistant or conversation never remounts it, so in-flight streams keep running. The thread-list adapter lists every thread over `/threads`; the page filters by the active assistant. New conversations are created only by the "+" control or the empty state's New chat button; typing never creates one. Deleting the active conversation lands on the assistant's most recent remaining one. Expanded, `SidePane` holds the assistant list, the conversation list, and the gear; collapsed, `CollapsiblePage` renders a 56 px rail with the same controls as icons. `?assistant=<id>` selects the initial assistant and follows every switch.
 
-The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRuntime`. Its `AssistantChatTransport` wraps the authed fetch to inject `assistantId`, `modelId`, and `reasoningLevel`, copies the transport's `id` to `threadId`, and stamps each client tool's `attributes` onto the `tools` the transport built. When the request signal aborts it posts `/chat/cancel/:threadId`. `ClientToolsProvider` wraps the page with the contributed tools and the approval floor from `/status`; `ClientToolRegistrations` registers them inside the runtime provider, so one registration serves every conversation. The history adapter is load-only over `/threads/:id/messages`, and its `append` is a no-op. The thread-list adapter's `generateTitle` returns an empty stream because the server writes titles.
+The runtime hook runs once per active thread: `useChat` wrapped by `useAISDKRuntime`. Its `AssistantChatTransport` wraps the authed fetch to inject `assistantId`, `modelId`, and `reasoningLevel`, copies the transport's `id` to `threadId`, and stamps each client tool's `attributes` onto the `tools` the transport built. When the request signal aborts it posts `/chat/cancel/:threadId`. Contributed client tools attach to `api:assistants/client-tools` (`clientToolsApiRef`), one registry the page and the panel both read, instead of a page input with multiple attachment points. `ClientToolsProvider` wraps the page with those tools and the approval floor from `/status`; `ClientToolRegistrations` registers them inside the runtime provider, so one registration serves every conversation. The history adapter is load-only over `/threads/:id/messages`, and its `append` is a no-op. The thread-list adapter's `generateTitle` returns an empty stream because the server writes titles.
+
+**The panel.** `assistantsPanelModule` is a module for the `app` plugin whose one extension, `app-root-wrapper:app/assistants-panel`, renders `AssistantsPanel` around the app layout: inside the router and after sign-in, once per session, so it never remounts on navigation and a streaming answer survives it. A wrapper rather than an app-root element because the panel takes space from the page instead of covering it: the wrapper is a flex row of the page column (`flex: 1`, `min-width: 0`) and a sticky, clipping panel column whose width animates between 0, the strip, and the panel. The app adds the module to its features; `config.assistant` pins the assistant. The button (a floating action button with the plugin icon and the conversation's own status dot) is hidden on the Assistants page, for a user without `assistant.use`, and while `/status` lists no assistant. The panel has three states: closed (the button only), open (the panel, no button), and collapsed (a 48 px strip at the right edge with the icon and status dot; clicking it reopens). Hide (the header chevron, `Esc`, or a mousedown on the page outside the panel and any MUI modal, popper, or tooltip) collapses; Close (the x) returns to closed. No backdrop and no focus trap: the page beside it stays usable. Because the panel column clips and the page column shrinks, nothing ever reaches past the viewport (an overlay drawer's slide flashed a horizontal scrollbar and shifted the page). `Ctrl+/` toggles, the left edge resizes (also with arrow keys), and below the `xs` breakpoint it fills the screen. It remembers its conversation and width in `localStorage`; a conversation stays mounted while the panel is collapsed or closed so a stream keeps rendering.
+
+`EmbeddedAssistant` is the page's layering without the chrome: the `assistant.use` gate and `/status`, `ClientToolsProvider`, the base url, `useRemoteThreadListRuntime` over the single-thread adapter with the same `makeRuntimeHook`, `ClientToolRegistrations`, a header (avatar and title, "+", "Open in Assistants", close), and `ConversationSurface` with a compact class. The model is the assistant's default (or the thread's saved one); reasoning is the provider default. The single-thread adapter's `list()` returns the remembered thread fetched by id, or nothing (a 404 lists as nothing); `initialize()` creates the thread on the first send, and the surface reports the new id through `onThreadChange`. "+" and "Open in Assistants" forget the thread and remount the surface, so a conversation has one client at a time; the page then resumes any in-flight stream by thread id as it does for its own threads.
 
 The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<ConversationSurfaceProps>`. The props are `composerPlaceholder`, `suggestions`, `welcome`, `assistantColor`, `contextWindow`, `usedTokens`, and `className`. The surface reads the ambient runtime and owns no transport, auth, or chrome. The composer's attachment adapter caps files at 7 MB.
 
