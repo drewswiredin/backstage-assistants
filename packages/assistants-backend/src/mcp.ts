@@ -17,7 +17,11 @@ import {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { isOAuthServer, type McpServerConfig } from './config';
 import { truncateToolResult } from './truncateToolResult';
-import type { ElicitationBroker, ElicitationCall } from './mcpElicitation';
+import {
+  ElicitationRefused,
+  type ElicitationBroker,
+  type ElicitationCall,
+} from './mcpElicitation';
 import { argumentRuleViolation } from './toolGuards';
 
 /**
@@ -328,12 +332,15 @@ async function refreshServer(
         transport: transportFor(server),
         clientName: 'backstage-plugin-assistants',
         ...elicitationCapability(server),
-        onUncaughtError: e =>
+        onUncaughtError: e => {
+          // A refused question is logged by the broker.
+          if (e instanceof ElicitationRefused) return;
           logger.warn(
             `MCP server '${server.id}' transport error: ${
               e instanceof Error ? e.message : String(e)
             }`,
-          ),
+          );
+        },
       });
       client = await withTimeout(
         connectPromise,
@@ -642,12 +649,15 @@ async function userConnection(
       transport: transportFor(server, token),
       clientName: 'backstage-plugin-assistants',
       ...elicitationCapability(server),
-      onUncaughtError: e =>
+      onUncaughtError: e => {
+        // A refused question is logged by the broker.
+        if (e instanceof ElicitationRefused) return;
         logger.warn(
           `MCP server '${server.id}' transport error: ${
             e instanceof Error ? e.message : String(e)
           }`,
-        ),
+        );
+      },
     });
     let client: MCPClient | undefined;
     try {
@@ -1168,15 +1178,21 @@ export async function buildMcpTools(
               waiting ? ceiling.pause() : ceiling.resume();
           }
           const release = call && broker?.track(c, call);
-          return callMcpTool(
-            c,
-            server,
-            t.name,
-            input,
-            logger,
-            toolResultMaxChars,
-            executeOptions?.abortSignal,
-            ceiling.signal,
+          const callTool = () =>
+            callMcpTool(
+              c,
+              server,
+              t.name,
+              input,
+              logger,
+              toolResultMaxChars,
+              executeOptions?.abortSignal,
+              ceiling.signal,
+            );
+          // Inside the call's scope, a question on its response stream
+          // finds this call.
+          return (
+            call && broker ? broker.within(call, callTool) : callTool()
           ).finally(() => {
             ceiling.clear();
             release?.();

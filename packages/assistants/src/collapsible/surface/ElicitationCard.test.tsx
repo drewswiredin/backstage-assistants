@@ -78,6 +78,13 @@ describe('ElicitationCard', () => {
     expect(await screen.findByText('Declined')).toBeTruthy();
   });
 
+  it("doesn't name a tool when the server didn't say which call asked", () => {
+    render(<ElicitationCard prompt={prompt({ tool: undefined })} />);
+    expect(
+      screen.getByText(/Azure DevOps needs input/).textContent?.trim(),
+    ).toBe('Azure DevOps needs input');
+  });
+
   it('warns about a field that looks like a secret', () => {
     render(
       <ElicitationCard

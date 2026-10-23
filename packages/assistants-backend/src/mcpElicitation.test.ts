@@ -3,7 +3,11 @@ import type { ElicitationRequest } from '@ai-sdk/mcp';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { ElicitationPrompt } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { McpServerConfig } from './config';
-import { ElicitationBroker, type ElicitationCall } from './mcpElicitation';
+import {
+  ElicitationBroker,
+  ElicitationRefused,
+  type ElicitationCall,
+} from './mcpElicitation';
 import { ThreadService } from './threads';
 
 const ANA = 'user:default/ana';
@@ -167,31 +171,31 @@ describe('ElicitationBroker', () => {
     expect(await pending).toEqual({ action: 'decline' });
   });
 
-  it('cancels when no call, or more than one, is in flight on the connection', async () => {
-    expect(await broker.handle(client, server, projectQuestion())).toEqual({
-      action: 'cancel',
-    });
+  it("refuses, as an error rather than the user's cancel, when no call or several users' calls are in flight", async () => {
+    await expect(
+      broker.handle(client, server, projectQuestion()),
+    ).rejects.toThrow(ElicitationRefused);
     broker.track(client, callFor().call);
     broker.track(client, callFor({ userEntityRef: BO }).call);
-    expect(await broker.handle(client, server, projectQuestion())).toEqual({
-      action: 'cancel',
-    });
+    await expect(
+      broker.handle(client, server, projectQuestion()),
+    ).rejects.toThrow("several users' calls are in flight");
   });
 
-  it("cancels when the browser can't show forms, and declines URL mode and unsupported schemas", async () => {
+  it("refuses when the browser can't show forms, for URL mode, and for unsupported schemas", async () => {
     const headless = callFor({ renders: false });
     const release = broker.track(client, headless.call);
-    expect(await broker.handle(client, server, projectQuestion())).toEqual({
-      action: 'cancel',
-    });
+    await expect(
+      broker.handle(client, server, projectQuestion()),
+    ).rejects.toThrow("the browser can't show forms");
     release();
     const { call, shown } = callFor();
     broker.track(client, call);
-    expect(
-      await broker.handle(client, server, projectQuestion({ mode: 'url' })),
-    ).toEqual({ action: 'decline' });
-    expect(
-      await broker.handle(
+    await expect(
+      broker.handle(client, server, projectQuestion({ mode: 'url' })),
+    ).rejects.toThrow(ElicitationRefused);
+    await expect(
+      broker.handle(
         client,
         server,
         projectQuestion({
@@ -201,31 +205,84 @@ describe('ElicitationBroker', () => {
           },
         }),
       ),
-    ).toEqual({ action: 'decline' });
+    ).rejects.toThrow(ElicitationRefused);
     expect(shown).toHaveLength(0);
   });
 
   it('allows three questions per call', async () => {
     const { call } = callFor({ asked: 3 });
     broker.track(client, call);
-    expect(await broker.handle(client, server, projectQuestion())).toEqual({
-      action: 'cancel',
+    await expect(
+      broker.handle(client, server, projectQuestion()),
+    ).rejects.toThrow('more than 3 questions');
+  });
+
+  it('shows a question on the call whose scope it arrives in, naming its tool', async () => {
+    const items = callFor({ tool: 'wit_my_work_items' });
+    const teams = callFor({ tool: 'core_list_project_teams' });
+    broker.track(client, items.call);
+    broker.track(client, teams.call);
+    const pending = broker.within(teams.call, () =>
+      broker.handle(client, server, projectQuestion()),
+    );
+    const prompt = await opened(teams.shown);
+    expect(prompt.tool).toBe('core_list_project_teams');
+    expect(items.shown).toHaveLength(0);
+    await broker.respond(prompt.id, ANA, { action: 'decline' });
+    expect(await pending).toEqual({ action: 'decline' });
+  });
+
+  it("shows two questions at once on two of a user's calls, each answered on its own", async () => {
+    const items = callFor({ tool: 'wit_my_work_items' });
+    const teams = callFor({ tool: 'core_list_project_teams' });
+    broker.track(client, items.call);
+    broker.track(client, teams.call);
+    // Neither arrives in a call's scope (the standalone stream).
+    const first = broker.handle(client, server, projectQuestion());
+    const second = broker.handle(client, server, projectQuestion());
+    const a = await opened(items.shown);
+    const b = await opened(teams.shown);
+    // Which call asked is unknown, so neither names a tool.
+    expect(a.tool).toBeUndefined();
+    expect(b.tool).toBeUndefined();
+    await broker.respond(b.id, ANA, {
+      action: 'accept',
+      content: { project: 'Tally' },
+    });
+    await broker.respond(a.id, ANA, {
+      action: 'accept',
+      content: { project: 'Pylon' },
+    });
+    expect(await first).toEqual({
+      action: 'accept',
+      content: { project: 'Pylon' },
+    });
+    expect(await second).toEqual({
+      action: 'accept',
+      content: { project: 'Tally' },
     });
   });
 
-  it('allows one open question per conversation', async () => {
-    const first = callFor();
-    const second = callFor();
-    const otherClient = {};
-    broker.track(client, first.call);
-    broker.track(otherClient, second.call);
-    const pending = broker.handle(client, server, projectQuestion());
-    const prompt = await opened(first.shown);
-    expect(await broker.handle(otherClient, server, projectQuestion())).toEqual(
-      { action: 'cancel' },
+  it('asks a second question on the same call once the first is answered', async () => {
+    const { call, shown } = callFor();
+    broker.track(client, call);
+    const first = broker.within(call, () =>
+      broker.handle(client, server, projectQuestion()),
     );
-    await broker.respond(prompt.id, ANA, { action: 'cancel' });
-    expect(await pending).toEqual({ action: 'cancel' });
+    const second = broker.within(call, () =>
+      broker.handle(client, server, projectQuestion()),
+    );
+    const a = await opened(shown);
+    await new Promise(r => setTimeout(r, 20));
+    expect(shown).toHaveLength(1);
+    await broker.respond(a.id, ANA, { action: 'decline' });
+    expect(await first).toEqual({ action: 'decline' });
+    for (let i = 0; i < 50 && shown.length < 3; i++) {
+      await new Promise(r => setTimeout(r, 5));
+    }
+    expect(shown.map(p => p.status)).toEqual(['open', 'declined', 'open']);
+    await broker.respond(shown[2].id, ANA, { action: 'decline' });
+    expect(await second).toEqual({ action: 'decline' });
   });
 
   it('refuses another user, unknown and settled questions, and a wrong answer twice', async () => {

@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- A server's question that can't be tied to one tool call reads "<server> needs input" without naming a tool.
+
 ## 0.22.0 - 2026-10-23
 
 ### Added

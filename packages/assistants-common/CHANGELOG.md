@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- `ElicitationPrompt.tool` is optional: absent when several of the user's calls were running and the server's question didn't say which one asked.
+
 ## 0.17.0 - 2026-10-23
 
 ### Added

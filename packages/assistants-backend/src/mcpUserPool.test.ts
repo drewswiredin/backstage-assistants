@@ -453,6 +453,71 @@ describe('per-user MCP connections', () => {
       expect(seen[2]).toEqual([{ type: 'text', text: 'items in Pylon' }]);
     });
 
+    it("ties each of two parallel calls' questions to the call that asked", async () => {
+      const both = [{ server: ado, tools: ['get_me', 'create_branch'] }];
+      const { tools } = await buildMcpTools(both, logger, 0, {
+        ...ana,
+        turn,
+      });
+      const handler = opened[0].onElicitationRequest.mock.calls[0][1];
+      // Each call asks on its own response stream: the handler runs in the
+      // call's async context, as the HTTP transport's reader does.
+      opened[0].callTool.mockImplementation(
+        async ({ name }: { name: string }) => {
+          const answer = await handler({
+            method: 'elicitation/create',
+            params: {
+              message: `Project for ${name}?`,
+              requestedSchema: {
+                type: 'object',
+                properties: { project: { type: 'string' } },
+              },
+            },
+          });
+          return {
+            content: [{ type: 'text', text: `${name}:${answer.action}` }],
+          };
+        },
+      );
+      const drain = async (name: string, id: string) => {
+        const outputs = (
+          tools[name] as {
+            execute: (i: unknown, o: unknown) => AsyncIterable<any>;
+          }
+        ).execute(
+          // create_branch's argument rule wants this prefix.
+          { branch: 'backstage-assistant/x' },
+          { toolCallId: id, messages: [] },
+        );
+        const seen: any[] = [];
+        for await (const output of outputs) {
+          seen.push(output);
+          if (output?._elicitation?.status === 'open') {
+            await broker.respond(output._elicitation.id, 'user:default/ana', {
+              action: 'decline',
+            });
+          }
+        }
+        return seen;
+      };
+      const [me, branch] = await Promise.all([
+        drain('ado__get_me', 'c1'),
+        drain('ado__create_branch', 'c2'),
+      ]);
+      expect(me[0]._elicitation).toMatchObject({
+        tool: 'get_me',
+        message: 'Project for get_me?',
+      });
+      expect(branch[0]._elicitation).toMatchObject({
+        tool: 'create_branch',
+        message: 'Project for create_branch?',
+      });
+      expect(me.at(-1)).toEqual([{ type: 'text', text: 'get_me:decline' }]);
+      expect(branch.at(-1)).toEqual([
+        { type: 'text', text: 'create_branch:decline' },
+      ]);
+    });
+
     it('records how the question ended, for the reply to keep', async () => {
       const declining = { ...turn, elicitations: {} };
       const { tools } = await buildMcpTools(adoSelection, logger, 0, {

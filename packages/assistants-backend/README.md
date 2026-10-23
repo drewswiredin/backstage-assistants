@@ -557,15 +557,21 @@ assistants:
         elicitation: true
 ```
 
-The form's Submit is enabled once the answer fits it. A shared server serves every user over one connection, so a question can only
-be tied to a user when one call is in flight on it; with several, the question
-is cancelled. That is why it is off by default for shared servers.
+The form's Submit is enabled once the answer fits it. A question a server sends on the tool call's own response stream (Streamable
+HTTP) is shown on that call. One sent outside any call (the standalone stream,
+or stdio) goes to the only call running on the connection; with several of the
+user's calls running it goes to one of them, without naming the tool. Several
+calls can each show a question at once; a second question on the same call
+waits for the first. A shared server serves every user over one connection, so
+a question outside any call can't be tied to a user while several users' calls
+run; that is why it is off by default for shared servers.
 
-A question is cancelled when the user doesn't answer in time, when the
-conversation is stopped, after three questions in one call, or while another
-question is open in the same conversation; a request to open a URL, or a form
-with fields outside MCP's restricted set (text, number, yes/no, single and
-multiple choice), is declined. The server decides what a decline or cancel
+A question is cancelled when the user doesn't answer in time or stops the
+conversation. One that can't be shown gets an error back, not a cancel, so the
+server doesn't report that the user cancelled: no call to tie it to, a browser
+that can't show forms, more than three questions in one call, a request to
+open a URL, or a form with fields outside MCP's restricted set (text, number,
+yes/no, single and multiple choice). The server decides what a decline or cancel
 means for its call; the call's row is marked when its question was declined,
 cancelled, or expired. A field that looks like it asks for a secret gets a
 warning: MCP servers must not ask for passwords or tokens this way. Answers

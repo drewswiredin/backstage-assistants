@@ -193,7 +193,13 @@ export function ElicitationCard({
     <Typography variant="body2" component="div" className={classes.header}>
       <HelpOutlineIcon fontSize="small" />
       <span>
-        {prompt.serverTitle} needs input for <strong>{prompt.tool}</strong>
+        {prompt.serverTitle} needs input
+        {prompt.tool && (
+          <>
+            {' '}
+            for <strong>{prompt.tool}</strong>
+          </>
+        )}
       </span>
     </Typography>
   );

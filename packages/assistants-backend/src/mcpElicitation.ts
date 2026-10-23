@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
 import type { Knex } from 'knex';
 import type { ElicitResult, ElicitationRequest } from '@ai-sdk/mcp';
@@ -14,23 +15,43 @@ import type { McpServerConfig } from './config';
 /**
  * MCP elicitation: a server asks the user for input in the middle of a tool
  * call. `@ai-sdk/mcp` hands the request to the handler registered on the
- * client; the broker finds the one tool call waiting on that client, shows
- * the question on it (a preliminary tool output the browser renders as a
- * form), and waits for the answer from `POST /elicitations/:id`.
+ * client; the broker finds the tool call it belongs to, shows the question
+ * on it (a preliminary tool output the browser renders as a form), and waits
+ * for the answer from `POST /elicitations/:id`.
+ *
+ * Each call runs inside {@link ElicitationBroker.within}, an
+ * `AsyncLocalStorage` scope. Over Streamable HTTP a server's question during
+ * a call arrives on that call's response stream, read inside the call's
+ * scope, so the handler knows exactly which call asked. A question that
+ * arrives outside any call's scope (the standalone stream, stdio) goes to the
+ * only call in flight on the client; with several calls of one user it goes
+ * to one that hasn't asked yet (else one with nothing open), without naming
+ * the tool; with several users'
+ * calls (a busy shared server) it is refused. Questions on the same call
+ * wait their turn.
  *
  * A question is stored in `mcp_elicitations` so the answer can arrive at any
  * replica: the replica running the call polls the row (and an answer posted
  * to it resolves at once). Once settled, the row keeps only the action (no
- * values) until it expires, so a late answer is told the question is gone. The answer goes back to the server only; the
- * model sees just the tool's eventual result.
+ * values) until it expires, so a late answer is told the question is gone.
+ * The answer goes back to the server only; the model sees just the tool's
+ * eventual result.
  *
- * A request is cancelled when it can't be tied to one call (none, or several
- * in flight on the client, as on a busy shared server), when the browser
- * can't show forms, after three questions in one call, while another
- * question is open in the same conversation, on timeout, and when the turn
- * stops. A URL-mode request, or a schema outside MCP's restricted subset, is
- * declined.
+ * `decline` and `cancel` mean the user: Decline, or Stop and timeout
+ * (cancel). A question the broker can't show is answered with an error
+ * instead ({@link ElicitationRefused}), so the server doesn't report a
+ * user's cancellation: no call to tie it to, a browser that can't show
+ * forms, more than three questions in one call, URL mode, or a schema
+ * outside MCP's restricted subset.
  */
+
+/** A question the broker can't show; the server gets it as an error. */
+export class ElicitationRefused extends Error {
+  constructor(reason: string) {
+    super(`The client can't ask the user: ${reason}`);
+    this.name = 'ElicitationRefused';
+  }
+}
 
 /** Questions one tool call may ask. */
 const MAX_PER_CALL = 3;
@@ -61,6 +82,10 @@ export interface ElicitationCall {
   asked: number;
   /** Told when a question opens (true) and settles (false). */
   onWait?: (waiting: boolean) => void;
+  /** Settles when the call's open question does; the next one waits on it. */
+  turn?: Promise<unknown>;
+  /** Questions open or waiting their turn on the call. */
+  pending?: number;
 }
 
 interface ElicitationRow {
@@ -90,7 +115,7 @@ export class ElicitationBroker {
     string,
     (answer: ElicitationResponseRequest) => void
   >();
-  private readonly openThreads = new Set<string>();
+  private readonly scope = new AsyncLocalStorage<ElicitationCall>();
 
   constructor(options: ElicitationBrokerOptions) {
     this.db = options.db;
@@ -113,6 +138,35 @@ export class ElicitationBroker {
     };
   }
 
+  /** Run `fn` (the call's `callTool`) as `call`, so its questions find it. */
+  within<T>(call: ElicitationCall, fn: () => T): T {
+    return this.scope.run(call, fn);
+  }
+
+  /**
+   * The call a question belongs to, and whether that is certain (so the
+   * question can name the tool), or why there is none.
+   */
+  private callFor(
+    client: object,
+  ): { call: ElicitationCall; exact: boolean } | { reason: string } {
+    const calls = this.inFlight.get(client);
+    const scoped = this.scope.getStore();
+    if (scoped && calls?.has(scoped)) return { call: scoped, exact: true };
+    if (!calls?.size) return { reason: 'no call is in flight' };
+    const list = [...calls];
+    if (list.length === 1) return { call: list[0], exact: true };
+    if (new Set(list.map(c => c.userEntityRef)).size > 1) {
+      return { reason: "several users' calls are in flight on the connection" };
+    }
+    // Prefer a call that hasn't asked yet, then one with nothing open.
+    const call =
+      list.find(c => !c.pending && c.asked === 0) ??
+      list.find(c => !c.pending) ??
+      list[0];
+    return { call, exact: false };
+  }
+
   /** The handler for a request a server sent on `client`. */
   async handle(
     client: object,
@@ -122,47 +176,53 @@ export class ElicitationBroker {
     const params = request.params as ElicitationRequest['params'] & {
       mode?: string;
     };
-    const calls = this.inFlight.get(client);
-    const call = calls?.size === 1 ? [...calls][0] : undefined;
-    const refuse = (action: 'decline' | 'cancel', reason: string) => {
+    const found = this.callFor(client);
+    const refuse = (reason: string): never => {
       this.logger.info(
-        `MCP server '${server.id}' asked for input: ${action} (${reason})`,
+        `MCP server '${server.id}' asked for input: refused (${reason})`,
       );
-      if (call) this.audit(call, action, []);
-      return { action };
+      if ('call' in found) this.audit(found.call, 'refused', [], found.exact);
+      throw new ElicitationRefused(reason);
     };
-    if (params.mode === 'url') {
-      return refuse('decline', 'URL-mode requests are not supported');
-    }
-    if (!call) {
-      return refuse(
-        'cancel',
-        calls?.size
-          ? 'several calls are in flight on the connection'
-          : 'no call is in flight',
-      );
-    }
-    if (!call.renders) return refuse('cancel', "the client can't show forms");
-    if (call.asked >= MAX_PER_CALL) {
-      return refuse(
-        'cancel',
-        `more than ${MAX_PER_CALL} questions in one call`,
-      );
-    }
-    if (call.threadId && this.openThreads.has(call.threadId)) {
-      return refuse('cancel', 'another question is open in the conversation');
-    }
+    if (params.mode === 'url') refuse('URL-mode requests are not supported');
+    if (!('call' in found)) return refuse(found.reason);
+    const { call, exact } = found;
+    if (!call.renders) refuse("the browser can't show forms");
     const parsed = parseElicitationSchema(params.requestedSchema);
-    if ('unsupported' in parsed) return refuse('decline', parsed.unsupported);
-
+    if ('unsupported' in parsed) refuse(parsed.unsupported);
+    if (call.asked >= MAX_PER_CALL) {
+      refuse(`more than ${MAX_PER_CALL} questions in one call`);
+    }
     call.asked += 1;
+    call.pending = (call.pending ?? 0) + 1;
+
+    // One question at a time on a call: wait for the open one to settle.
+    const before = call.turn;
+    const asking = (async () => {
+      try {
+        await before?.catch(() => {});
+        return await this.ask(server, call, exact, params);
+      } finally {
+        call.pending = (call.pending ?? 1) - 1;
+      }
+    })();
+    call.turn = asking;
+    return asking;
+  }
+
+  private async ask(
+    server: McpServerConfig,
+    call: ElicitationCall,
+    exact: boolean,
+    params: ElicitationRequest['params'],
+  ): Promise<ElicitResult> {
     const id = randomUUID();
     const expiresAt = new Date(Date.now() + this.timeoutMs);
     const prompt: ElicitationPrompt = {
       id,
       server: server.id,
       serverTitle: server.userCredentials?.title ?? server.id,
-      tool: call.tool,
+      ...(exact ? { tool: call.tool } : {}),
       message: params.message,
       requestedSchema: params.requestedSchema,
       expiresAt: expiresAt.toISOString(),
@@ -183,7 +243,6 @@ export class ElicitationBroker {
       response_json: null,
       expires_at: expiresAt,
     });
-    if (call.threadId) this.openThreads.add(call.threadId);
     call.show(prompt);
 
     let answer: ElicitationResponseRequest | undefined;
@@ -195,7 +254,6 @@ export class ElicitationBroker {
     } finally {
       call.onWait?.(false);
       this.waiting.delete(id);
-      if (call.threadId) this.openThreads.delete(call.threadId);
       // Keep the row until it expires, so a late answer gets 410, but
       // without the answer's values.
       await this.db('mcp_elicitations')
@@ -211,7 +269,7 @@ export class ElicitationBroker {
       status,
       ...(status === 'accepted' ? { answered } : {}),
     });
-    this.audit(call, answer?.action ?? 'cancel', answered);
+    this.audit(call, answer?.action ?? 'cancel', answered, exact);
     if (answer?.action === 'accept') {
       return { action: 'accept', content: answer.content ?? {} };
     }
@@ -330,13 +388,19 @@ export class ElicitationBroker {
     });
   }
 
-  private audit(call: ElicitationCall, action: string, fields: string[]) {
+  /** `exact` is false when the question couldn't be tied to one tool. */
+  private audit(
+    call: ElicitationCall,
+    action: string,
+    fields: string[],
+    exact: boolean,
+  ) {
     this.logger.info('assistants.tool.audit', {
       user: call.userEntityRef,
       assistantId: call.assistantId,
       ...(call.threadId ? { threadId: call.threadId } : {}),
       server: call.server.id,
-      tool: call.tool,
+      ...(exact ? { tool: call.tool } : {}),
       decision: 'elicitation',
       action,
       fields,

@@ -39,8 +39,12 @@ export interface ElicitationPrompt {
   server: string;
   /** The server's display name. */
   serverTitle: string;
-  /** The un-namespaced tool whose call is waiting. */
-  tool: string;
+  /**
+   * The un-namespaced tool whose call is waiting. Absent when several of the
+   * user's calls were running and the server's question didn't say which
+   * one asked.
+   */
+  tool?: string;
   /** The server's question. */
   message: string;
   /** The server's requested schema, as sent. */

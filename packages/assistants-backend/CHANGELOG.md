@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- MCP elicitation: when two tool calls asked at once, one question was shown and the other call was told the user cancelled. A question the server sends on its call's response stream (Streamable HTTP) is now tied to exactly that call; one sent outside any call goes to one of the user's running calls without naming the tool. Several calls can each show a question at once, and a second question on one call waits for the first. A question the plugin can't show (no call to tie it to, a browser without forms, more than three per call, URL mode, an unsupported form) is answered with an error instead of `cancel`, so the server doesn't report a cancellation the user didn't make.
+
 ## 0.22.0 - 2026-10-23
 
 ### Added
