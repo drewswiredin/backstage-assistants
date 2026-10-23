@@ -26,6 +26,9 @@ const input = {
   message: 'Scale to two replicas',
 };
 
+// Room for the lazy-loaded diff viewer's first import under a full run.
+jest.setTimeout(20_000);
+
 beforeEach(() => previewApproval.mockReset());
 
 describe('WritePreview', () => {
@@ -45,11 +48,15 @@ describe('WritePreview', () => {
       screen.getByText('acme/pylon · backstage-assistant/scale · deploy.yaml'),
     ).toBeTruthy();
     expect(screen.getByText('Scale to two replicas')).toBeTruthy();
-    // Changed lines are split into word-level spans, so match the text.
-    await waitFor(() => {
-      expect(container.textContent).toContain('replicas: 1');
-      expect(container.textContent).toContain('replicas: 2');
-    });
+    // Changed lines are split into word-level spans, so match the text. The
+    // viewer is lazy-loaded, which can take a few seconds in a busy test run.
+    await waitFor(
+      () => {
+        expect(container.textContent).toContain('replicas: 1');
+        expect(container.textContent).toContain('replicas: 2');
+      },
+      { timeout: 10_000 },
+    );
     expect(previewApproval).toHaveBeenCalledWith(
       'ops',
       'github__create_or_update_file',
@@ -81,7 +88,9 @@ describe('WritePreview', () => {
         input={input}
       />,
     );
-    expect(await screen.findByText('replicas: 2')).toBeTruthy();
+    expect(
+      await screen.findByText('replicas: 2', undefined, { timeout: 10_000 }),
+    ).toBeTruthy();
     await waitFor(() => expect(previewApproval).not.toHaveBeenCalled());
   });
 });
