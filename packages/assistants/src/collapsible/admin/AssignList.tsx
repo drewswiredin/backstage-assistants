@@ -51,6 +51,8 @@ export interface AssignOption {
   secondary?: string;
   /** Group key for the grouped picker (first-seen order is preserved). */
   group?: string;
+  /** Shown but not addable: a note that keeps its group in the picker. */
+  disabled?: boolean;
 }
 
 /** The freeSolo "Add “x”" affordance, injected as a synthetic option. */
@@ -331,7 +333,7 @@ export function AssignList({
   };
 
   const commitOption = (value: AssignOption | string | null) => {
-    if (!value) {
+    if (!value || (typeof value !== 'string' && value.disabled)) {
       return;
     }
     if (typeof value === 'string') {
@@ -461,6 +463,7 @@ export function AssignList({
           }}
           onChange={(_, value) => commitOption(value)}
           getOptionLabel={o => (typeof o === 'string' ? o : o.label)}
+          getOptionDisabled={o => !!o.disabled}
           groupBy={grouped ? o => o.group ?? '' : undefined}
           renderGroup={params => (
             <div key={params.key} className={classes.pickerGroup}>

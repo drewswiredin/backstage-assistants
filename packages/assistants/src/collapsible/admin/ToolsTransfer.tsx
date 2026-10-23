@@ -319,6 +319,18 @@ export function ToolsTransfer({
           });
         }
       }
+      // A server with no tools listed yet (a per-user server nobody has
+      // connected) keeps its group, and so its Connect, in the picker.
+      if (server.tools.length === 0) {
+        opts.push({
+          id: `__none__:${server.id}`,
+          label: server.userCredentials
+            ? `Connect ${server.userCredentials.title} to list its tools`
+            : 'No tools listed',
+          group: server.id,
+          disabled: true,
+        });
+      }
     }
     return { sources: meta, byId: lookup, options: opts };
   }, [capabilities, clientTools, selected]);
