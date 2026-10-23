@@ -61,6 +61,7 @@ import {
   getUserToken,
   getUserTokens,
 } from '../../api/userCredentials';
+import { isOAuthSpec, signInWithPopup } from '../../api/mcpOAuth';
 import { SuggestionsEditor } from './SuggestionsEditor';
 import { PlatformInstructions } from './PlatformInstructions';
 import {
@@ -544,11 +545,17 @@ export function AssistantAdminDialog({
 
   // Capabilities, with per-user MCP servers listed as the admin when they
   // are signed in to the server's provider (silently; Connect opens the
-  // sign-in). Without a token those servers show their cached tools.
+  // sign-in). Without a token those servers show their cached tools. A
+  // server that runs its own OAuth is listed as the admin by the backend,
+  // which holds their sign-in; Connect opens its sign-in popup.
   const apis = useApiHolder();
   const loadCapabilities = useCallback(
     async (connect?: UserCredentialSpec) => {
-      if (connect) await getUserToken(apis, connect, false);
+      if (connect) {
+        await (isOAuthSpec(connect)
+          ? signInWithPopup(api, connect)
+          : getUserToken(apis, connect, false));
+      }
       const caps = await api.getCapabilities();
       const specs = caps.mcpServers.flatMap(s =>
         s.userCredentials ? [s.userCredentials] : [],

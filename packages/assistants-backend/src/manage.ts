@@ -26,7 +26,8 @@ import {
   splitAllowedTools,
   type McpCaller,
 } from './mcp';
-import { readUserCredentials, userCredentialSpec } from './userCredentials';
+import type { McpOAuthService } from './mcpOAuth';
+import { mcpCallerFor, userCredentialSpec } from './userCredentials';
 
 /**
  * The admin management surface for assistant DEFINITIONS — the `/manage/*` CRUD
@@ -49,6 +50,8 @@ export interface ManageRouterOptions {
   assistantStore: AssistantStore;
   /** Permission service used to authorize the `assistant.manage` gate. */
   permissions: PermissionsService;
+  /** Backend-held sign-ins for servers that run their own OAuth. */
+  oauth?: McpOAuthService;
 }
 
 /**
@@ -72,12 +75,9 @@ async function buildCapabilities(
   // false + error), not swallowed, so the editor can show why it's unavailable.
   const mcpServers = await Promise.all(
     [...assistants.mcpServers.values()].map(async server => {
-      // A per-user server is listed as the admin when their browser sent a
-      // token for it, otherwise from its cached inventory.
-      const probe = await probeServerTools(server, logger, {
-        userEntityRef: caller.userEntityRef,
-        token: caller.credentials[server.id],
-      });
+      // A per-user server is listed as the admin when they are connected
+      // to it, otherwise from its cached inventory.
+      const probe = await probeServerTools(server, logger, caller);
       const userCredentials = userCredentialSpec(server);
       return {
         id: server.id,
@@ -340,13 +340,12 @@ export function createManageRouter(
       throw new NotAllowedError('You are not permitted to manage assistants');
     }
     const user = await userInfo.getUserInfo(credentials);
-    const caller: McpCaller = {
-      userEntityRef: user.userEntityRef,
-      credentials: readUserCredentials(
-        req.headers[USER_CREDENTIALS_HEADER],
-        options.assistants.mcpServers,
-      ),
-    };
+    const caller = mcpCallerFor(
+      user.userEntityRef,
+      req.headers[USER_CREDENTIALS_HEADER],
+      options.assistants.mcpServers,
+      options.oauth,
+    );
     return { credentials, user, caller };
   }
 

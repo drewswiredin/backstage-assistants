@@ -90,6 +90,28 @@ export interface Config {
        * ~10s to start).
        */
       connectTimeoutMs?: number;
+      /**
+       * Servers that run their own OAuth (`userCredentials.provider:
+       * oauth`): the backend keeps each user's tokens, encrypted at rest.
+       * Required when such a server is configured.
+       */
+      oauth?: {
+        /**
+         * The AES-256-GCM key the tokens are encrypted with: 32 random
+         * bytes, base64 (e.g. `openssl rand -base64 32`).
+         *
+         * @visibility secret
+         */
+        encryptionKey: string;
+        /**
+         * Earlier keys, still read so tokens stored under them keep
+         * working after a rotation. Each is rewritten under
+         * `encryptionKey` the next time it is refreshed.
+         *
+         * @visibility secret
+         */
+        previousEncryptionKeys?: string[];
+      };
       servers?: {
         [serverId: string]: {
           /**
@@ -142,12 +164,17 @@ export interface Config {
            * APIs and sends with the turn. Never stored. A user who hasn't
            * connected gets none of the server's tools. Excludes a static
            * credential in the same header or environment variable.
+           *
+           * With `provider: oauth` the token comes from the server's own
+           * OAuth instead: the user signs in once through the backend, which
+           * keeps the tokens (encrypted, see `mcp.oauth`) and refreshes them.
            */
           userCredentials?: {
             /**
              * The Backstage auth provider: `github`, `gitlab`, `microsoft`,
              * `google`, `atlassian`, `okta`, `onelogin`, `bitbucket`,
-             * `bitbucketServer`, `openshift`, or `vmwareCloud`.
+             * `bitbucketServer`, `openshift`, or `vmwareCloud`. Or `oauth`
+             * for the MCP server's own OAuth (http/sse only).
              */
             provider: string;
             /**
@@ -165,6 +192,24 @@ export interface Config {
             scheme?: string;
             /** stdio: environment variable the token is set in (required for stdio). */
             env?: string;
+            /**
+             * `oauth`: a client registered with the server's authorization
+             * server by an admin. Without one, the backend registers itself
+             * (dynamic client registration) and keeps the result.
+             */
+            clientId?: string;
+            /**
+             * `oauth`: the secret of `clientId`, for a confidential client.
+             *
+             * @visibility secret
+             */
+            clientSecret?: string;
+            /**
+             * `oauth`: identify the backend by a client metadata document it
+             * serves, instead of registering. The authorization server must
+             * support it and be able to fetch the document from the backend.
+             */
+            clientMetadataDocument?: boolean;
           };
           /**
            * A per-user server's gated tools take the "Always allow" grant

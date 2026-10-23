@@ -2,13 +2,16 @@ import {
   USER_CREDENTIALS_HEADER,
   type UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
-import type { McpServerConfig } from './config';
+import { isOAuthServer, type McpServerConfig } from './config';
+import type { McpCaller } from './mcp';
+import type { McpOAuthService } from './mcpOAuth';
 
 /**
  * The tokens the browser sent for per-user MCP servers, from the
  * {@link USER_CREDENTIALS_HEADER} (base64 JSON keyed by server id). Only
- * configured per-user servers' entries are kept; a malformed header yields
- * none. The header is never logged or stored.
+ * configured per-user servers' entries are kept, and none for a server that
+ * runs its own OAuth (the backend holds those tokens); a malformed header
+ * yields none. The header is never logged or stored.
  */
 export function readUserCredentials(
   header: string | string[] | undefined,
@@ -25,8 +28,10 @@ export function readUserCredentials(
   if (!parsed || typeof parsed !== 'object') return {};
   const credentials: Record<string, string> = {};
   for (const [serverId, token] of Object.entries(parsed)) {
+    const server = servers.get(serverId);
     if (
-      servers.get(serverId)?.userCredentials &&
+      server?.userCredentials &&
+      !isOAuthServer(server) &&
       typeof token === 'string' &&
       token.length > 0 &&
       token.length <= 8192
@@ -49,5 +54,27 @@ export function userCredentialSpec(
     ...(uc.host ? { host: uc.host } : {}),
     ...(uc.scopes ? { scopes: uc.scopes } : {}),
     title: uc.title,
+  };
+}
+
+/**
+ * The MCP caller for a request: the user, the tokens their browser sent, and
+ * their backend-held tokens for servers that run their own OAuth.
+ */
+export function mcpCallerFor(
+  userEntityRef: string,
+  header: string | string[] | undefined,
+  servers: Map<string, McpServerConfig>,
+  oauth: McpOAuthService | undefined,
+): McpCaller {
+  return {
+    userEntityRef,
+    credentials: readUserCredentials(header, servers),
+    ...(oauth
+      ? {
+          oauthToken: (server, options) =>
+            oauth.accessToken(server, userEntityRef, options),
+        }
+      : {}),
   };
 }

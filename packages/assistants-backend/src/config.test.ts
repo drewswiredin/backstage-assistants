@@ -312,3 +312,98 @@ describe('per-user MCP servers and guards', () => {
     ).toThrow(/fields\.files is required/);
   });
 });
+
+describe('servers that run their own OAuth', () => {
+  const KEY = Buffer.alloc(32, 7).toString('base64');
+  const withOAuth = (server: JsonObject, oauth?: JsonObject) =>
+    read({
+      providers,
+      defaultModel: 'openai:gpt-4o',
+      mcp: {
+        ...(oauth ? { oauth } : {}),
+        servers: { tracker: server },
+      },
+    });
+
+  it('reads the server and the encryption keys', () => {
+    const cfg = withOAuth(
+      {
+        url: 'https://mcp.example.com/v1/mcp',
+        userCredentials: { provider: 'oauth', scopes: ['read:me'] },
+      },
+      {
+        encryptionKey: KEY,
+        previousEncryptionKeys: [Buffer.alloc(32, 1).toString('base64')],
+      },
+    );
+    expect(cfg.mcpServers.get('tracker')?.userCredentials).toEqual({
+      provider: 'oauth',
+      scopes: ['read:me'],
+      title: 'tracker',
+      header: 'Authorization',
+      scheme: 'Bearer',
+    });
+    expect(cfg.mcpOAuthKeys?.map(k => k.toString('base64'))).toEqual([
+      KEY,
+      Buffer.alloc(32, 1).toString('base64'),
+    ]);
+  });
+
+  it('refuses to start without a valid encryption key', () => {
+    const server = {
+      url: 'https://mcp.example.com/v1/mcp',
+      userCredentials: { provider: 'oauth', title: 'Tracker' },
+    };
+    expect(() => withOAuth(server)).toThrow(
+      /assistants\.mcp\.oauth\.encryptionKey is required/,
+    );
+    expect(() => withOAuth(server, { encryptionKey: 'c2hvcnQ=' })).toThrow(
+      /encryptionKey must be 32 bytes/,
+    );
+  });
+
+  it('needs no key without such a server', () => {
+    expect(
+      withOAuth({
+        url: 'https://mcp.example.com/',
+        userCredentials: { provider: 'github' },
+      }).mcpOAuthKeys,
+    ).toBeUndefined();
+  });
+
+  it('rejects stdio and contradictory client settings', () => {
+    const oauth = { encryptionKey: KEY };
+    expect(() =>
+      withOAuth(
+        {
+          transport: 'stdio',
+          command: 'x',
+          userCredentials: { provider: 'oauth', env: 'TOKEN' },
+        },
+        oauth,
+      ),
+    ).toThrow(/remote \(http or sse\)/);
+    expect(() =>
+      withOAuth(
+        {
+          url: 'https://mcp.example.com/',
+          userCredentials: { provider: 'oauth', clientSecret: 's' },
+        },
+        oauth,
+      ),
+    ).toThrow(/clientSecret needs clientId/);
+    expect(() =>
+      withOAuth(
+        {
+          url: 'https://mcp.example.com/',
+          userCredentials: {
+            provider: 'oauth',
+            clientId: 'c',
+            clientMetadataDocument: true,
+          },
+        },
+        oauth,
+      ),
+    ).toThrow(/not both/);
+  });
+});

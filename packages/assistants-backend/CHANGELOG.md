@@ -3,6 +3,16 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- MCP servers that run their own OAuth: `userCredentials.provider: oauth` signs each user in to the server's own authorization server (the MCP authorization spec) through `@ai-sdk/mcp`'s `auth()`: discovery, dynamic client registration (or a configured `clientId`, or `clientMetadataDocument: true`), PKCE, `resource`, the code exchange, and refresh. The backend stores each user's tokens AES-256-GCM encrypted with the new required `mcp.oauth.encryptionKey` (rotate with `previousEncryptionKeys`), refreshes them during the user's turns (before expiry, and once after a 401, one refresh at a time per user and server), and never sends them to the browser. New routes `GET /mcp/oauth/status`, `POST /mcp/:serverId/oauth/start`, `GET /mcp/oauth/callback` (bound to the starting user by `state` and Backstage's user cookie), `DELETE /mcp/:serverId/oauth` (revokes and deletes), and `GET /mcp/oauth/client-metadata/:serverId`. New tables `mcp_oauth_tokens`, `mcp_oauth_clients`, `mcp_oauth_state`.
+
+### Changed
+
+- README: `argumentRules` are optional, and the example no longer restricts branch names.
+
 ## 0.21.0 - 2026-10-22
 
 ### Added

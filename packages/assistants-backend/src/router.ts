@@ -57,10 +57,11 @@ import {
   mcpToolName,
   splitAllowedTools,
   summarizeMcpTools,
-  type McpCaller,
   type UnavailableMcpServer,
 } from './mcp';
-import { readUserCredentials, userCredentialSpec } from './userCredentials';
+import type { McpOAuthService } from './mcpOAuth';
+import { createMcpOAuthRouter } from './mcpOAuthRouter';
+import { mcpCallerFor, userCredentialSpec } from './userCredentials';
 import {
   argumentRuleViolation,
   auditTarget,
@@ -114,6 +115,10 @@ export interface RouterOptions {
   streamBuffer: StreamBuffer;
   /** Real-time push for working / unread indicators (per user). */
   signals: SignalsService;
+  /** Backend-held sign-ins for servers that run their own OAuth. */
+  oauth?: McpOAuthService;
+  /** The app's origin, which the sign-in callback page posts to. */
+  appOrigin?: string;
 }
 
 /**
@@ -436,6 +441,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     threadService,
     streamBuffer,
     signals,
+    oauth,
   } = options;
 
   /**
@@ -660,13 +666,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         throw new InputError(`'${body.tool}' has no preview to read`);
       }
       const { server } = selection;
-      const caller: McpCaller = {
-        userEntityRef: user.userEntityRef,
-        credentials: readUserCredentials(
-          req.headers[USER_CREDENTIALS_HEADER],
-          assistants.mcpServers,
-        ),
-      };
+      const caller = mcpCallerFor(
+        user.userEntityRef,
+        req.headers[USER_CREDENTIALS_HEADER],
+        assistants.mcpServers,
+        oauth,
+      );
       const files = await Promise.all(
         calls.map(
           async ({
@@ -919,13 +924,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     one they offer no tools and the model is told why (step 9).
     //     Every gated call, and every call an argument rule rejects, is
     //     written to the audit log.
-    const caller: McpCaller = {
-      userEntityRef: user.userEntityRef,
-      credentials: readUserCredentials(
-        req.headers[USER_CREDENTIALS_HEADER],
-        assistants.mcpServers,
-      ),
-    };
+    const caller = mcpCallerFor(
+      user.userEntityRef,
+      req.headers[USER_CREDENTIALS_HEADER],
+      assistants.mcpServers,
+      oauth,
+    );
     const audit = (
       server: string,
       tool: string,
@@ -1605,8 +1609,22 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       assistants,
       assistantStore,
       permissions,
+      oauth,
     }),
   );
+
+  // Sign-in to servers that run their own OAuth (see mcpOAuthRouter).
+  if (oauth && options.appOrigin) {
+    router.use(
+      createMcpOAuthRouter({
+        oauth,
+        httpAuth,
+        userInfo,
+        permissions,
+        appOrigin: options.appOrigin,
+      }),
+    );
+  }
 
   // Thrown @backstage/errors types reach the root HTTP router's error
   // middleware, which serializes them to { error: { name, message }, request,

@@ -43,6 +43,9 @@ _Avoid_: treating it as authorization (it is a checkpoint, not a permission), or
 **Per-user MCP server**:
 An MCP server configured with `userCredentials`: no shared credential; every call carries the signed-in user's own token for that provider, which the browser gets from Backstage's auth APIs and sends in the `x-assistants-credentials` header on each request. Never stored. Without a token its tools are not offered and the model is told to ask the user to **Connect** (the chip beside the model picker). Its gated tools are approved call by call (no Always allow) unless the server sets `allowStandingApproval`.
 
+**OAuth MCP server**:
+A **Per-user MCP server** with `userCredentials.provider: oauth`: the server runs its own OAuth (the MCP authorization spec) and won't take a Backstage sign-in's token. The user **Connect**s once through a popup; the backend runs the sign-in with `@ai-sdk/mcp`'s `auth()`, keeps the user's tokens sealed in the database (`mcp.oauth.encryptionKey`), refreshes them during the user's turns, and never sends them to the browser. **Disconnect** revokes and deletes them. Unlike a token from a Backstage sign-in, these are stored.
+
 **Argument rule**:
 A server-side check on one MCP tool argument (`argumentRules`: `pattern` or `equals`), enforced before the approval prompt (a breaking call is denied at once with the reason) and again before the call. Optional: for a policy that must hold whatever the model was told, such as draft-only pull requests. None are configured by default.
 

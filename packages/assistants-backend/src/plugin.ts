@@ -20,7 +20,10 @@ import {
   closeMcpPool,
   databaseToolCacheStore,
   initMcpToolCache,
+  closeUserConnection,
 } from './mcp';
+import { McpOAuthService } from './mcpOAuth';
+import { MCP_OAUTH_PUBLIC_PATHS } from './mcpOAuthRouter';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -31,8 +34,11 @@ import {
  * (building the provider registry), registers the built-in core actions when
  * configured, and mounts the router.
  *
- * No `addAuthPolicy` is applied — the routes accept user header tokens only via
- * `httpAuth.credentials(req, { allow: ['user'] })`.
+ * The routes accept user tokens only via
+ * `httpAuth.credentials(req, { allow: ['user'] })`. The one exception, when a
+ * server runs its own OAuth, is the sign-in callback (and the client metadata
+ * document): they are unauthenticated paths, and the callback checks
+ * Backstage's user cookie itself.
  *
  * @public
  */
@@ -122,6 +128,27 @@ export const assistantsPlugin = createBackendPlugin({
           );
         }
 
+        // Servers that run their own OAuth: the backend keeps each user's
+        // tokens (sealed with the configured key) and runs the sign-in.
+        const oauth = assistants.mcpOAuthKeys
+          ? new McpOAuthService({
+              db,
+              keys: assistants.mcpOAuthKeys,
+              servers: assistants.mcpServers,
+              baseUrl: await discovery.getExternalBaseUrl('assistants'),
+              logger,
+              onDisconnect: closeUserConnection,
+            })
+          : undefined;
+        if (oauth) {
+          for (const path of MCP_OAUTH_PUBLIC_PATHS) {
+            httpRouter.addAuthPolicy({ path, allow: 'unauthenticated' });
+          }
+          logger.info(
+            `MCP OAuth sign-in redirects to ${oauth.redirectUrl}; register it with each server's authorization server if it needs pre-registration`,
+          );
+        }
+
         const router = await createRouter({
           logger,
           httpAuth,
@@ -133,6 +160,8 @@ export const assistantsPlugin = createBackendPlugin({
           threadService,
           streamBuffer,
           signals,
+          oauth,
+          appOrigin: new URL(config.getString('app.baseUrl')).origin,
         });
 
         httpRouter.use(router);

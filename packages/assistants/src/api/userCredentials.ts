@@ -19,13 +19,15 @@ import {
   USER_CREDENTIALS_HEADER,
   type UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
+import { isOAuthSpec } from './mcpOAuth';
 
 /**
  * The signed-in user's tokens for per-user MCP servers, from Backstage's own
  * auth APIs: SCM auth when the server names a host (it picks the provider
  * from the app's integrations), otherwise the provider's auth API. Tokens are
  * fetched per request (the auth APIs cache and refresh them) and only ever
- * sent in the credentials header.
+ * sent in the credentials header. A server that runs its own OAuth has no
+ * token here: the backend holds it.
  */
 
 const AUTH_APIS: Record<string, ApiRef<OAuthApi>> = {
@@ -52,6 +54,7 @@ export async function getUserToken(
   spec: UserCredentialSpec,
   optional: boolean,
 ): Promise<string | undefined> {
+  if (isOAuthSpec(spec)) return undefined;
   try {
     if (spec.host) {
       const scmAuth = apis.get(scmAuthApiRef);

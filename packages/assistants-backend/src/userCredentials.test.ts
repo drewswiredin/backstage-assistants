@@ -13,18 +13,30 @@ const github: McpServerConfig = {
     scheme: 'Bearer',
   },
 };
+const tracker: McpServerConfig = {
+  id: 'tracker',
+  transport: 'http',
+  url: 'https://tracker.example.com/mcp',
+  userCredentials: {
+    provider: 'oauth',
+    title: 'Tracker',
+    header: 'Authorization',
+    scheme: 'Bearer',
+  },
+};
 const servers = new Map<string, McpServerConfig>([
   ['github', github],
+  ['tracker', tracker],
   ['docs', { id: 'docs', transport: 'http', url: 'http://docs' }],
 ]);
 const encode = (value: unknown) =>
   Buffer.from(JSON.stringify(value)).toString('base64');
 
 describe('readUserCredentials', () => {
-  it("keeps per-user servers' tokens only", () => {
+  it("keeps per-user servers' tokens only, never one for a server whose tokens the backend holds", () => {
     expect(
       readUserCredentials(
-        encode({ github: 'ghu_one', docs: 'x', unknown: 'y' }),
+        encode({ github: 'ghu_one', docs: 'x', unknown: 'y', tracker: 'z' }),
         servers,
       ),
     ).toEqual({ github: 'ghu_one' });

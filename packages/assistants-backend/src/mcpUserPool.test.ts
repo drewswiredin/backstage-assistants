@@ -239,4 +239,111 @@ describe('per-user MCP connections', () => {
     expect(Object.keys(tools)).toEqual(['docs__get_me']);
     expect(userConnectionCount()).toBe(0);
   });
+
+  describe('a server that runs its own OAuth', () => {
+    const tracker: McpServerConfig = {
+      id: 'tracker',
+      transport: 'http',
+      url: 'https://tracker.example.com/mcp',
+      userCredentials: {
+        provider: 'oauth',
+        title: 'Tracker',
+        header: 'Authorization',
+        scheme: 'Bearer',
+      },
+    };
+    const trackerSelection = [{ server: tracker, tools: ['get_me'] }];
+
+    /** A caller whose backend-held token is `current`, refreshed to `next` once refused. */
+    function oauthCaller(current: string, next?: string) {
+      const oauthToken = jest.fn(
+        async (_server: McpServerConfig, options?: { rejected?: string }) =>
+          options?.rejected ? next : current,
+      );
+      return {
+        oauthToken,
+        options: {
+          caller: {
+            userEntityRef: 'user:default/ana',
+            // A token the browser sent for it is ignored.
+            credentials: { tracker: 'from-browser' },
+            oauthToken,
+          },
+        },
+      };
+    }
+
+    it('connects with the backend-held token', async () => {
+      const { options } = oauthCaller('at_1');
+      const { tools } = await buildMcpTools(
+        trackerSelection,
+        logger,
+        0,
+        options,
+      );
+      expect(Object.keys(tools)).toEqual(['tracker__get_me']);
+      expect(opened[0].headers?.Authorization).toBe('Bearer at_1');
+    });
+
+    it('offers no tools when the user is not connected', async () => {
+      const { options } = oauthCaller(undefined as unknown as string);
+      const { tools, unavailable } = await buildMcpTools(
+        trackerSelection,
+        logger,
+        0,
+        options,
+      );
+      expect(tools).toEqual({});
+      expect(unavailable).toEqual([{ server: tracker }]);
+    });
+
+    it('refreshes a token refused at connect and connects again', async () => {
+      const { options, oauthToken } = oauthCaller('revoked', 'at_2');
+      const { tools } = await buildMcpTools(
+        trackerSelection,
+        logger,
+        0,
+        options,
+      );
+      expect(Object.keys(tools)).toEqual(['tracker__get_me']);
+      expect(oauthToken).toHaveBeenLastCalledWith(tracker, {
+        rejected: 'revoked',
+      });
+      expect(opened[0].headers?.Authorization).toBe('Bearer at_2');
+    });
+
+    it('refreshes a token refused mid-turn and retries the call once', async () => {
+      const { options, oauthToken } = oauthCaller('at_1', 'at_2');
+      const { tools } = await buildMcpTools(
+        trackerSelection,
+        logger,
+        0,
+        options,
+      );
+      opened[0].callTool.mockRejectedValueOnce(
+        new Error('MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): '),
+      );
+      expect(await run(tools.tracker__get_me, {})).toEqual([
+        { type: 'text', text: 'ok' },
+      ]);
+      expect(oauthToken).toHaveBeenCalledWith(tracker, { rejected: 'at_1' });
+      expect(opened[1].headers?.Authorization).toBe('Bearer at_2');
+      expect(opened[1].callTool).toHaveBeenCalledTimes(1);
+    });
+
+    it('tells the model to reconnect when the refresh fails', async () => {
+      const { options } = oauthCaller('at_1', undefined);
+      const { tools } = await buildMcpTools(
+        trackerSelection,
+        logger,
+        0,
+        options,
+      );
+      opened[0].callTool.mockRejectedValueOnce(new Error('HTTP 401'));
+      expect(await run(tools.tracker__get_me, {})).toEqual({
+        _error: true,
+        message: 'The Tracker sign-in expired; reconnect Tracker',
+      });
+    });
+  });
 });

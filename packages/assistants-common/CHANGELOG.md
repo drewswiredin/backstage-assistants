@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `McpOAuthConnection`, `McpOAuthStatusResponse`, `McpOAuthStartResponse`, and `MCP_OAUTH_MESSAGE_TYPE` for MCP servers that run their own OAuth; `UserCredentialSpec.provider` may be `oauth`.
+
 ## 0.16.0 - 2026-10-22
 
 ### Added

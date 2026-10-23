@@ -123,6 +123,20 @@ export interface McpUserCredentials {
   scheme: string;
   /** stdio: the environment variable the token is set in. */
   env?: string;
+  /** `oauth`: an admin-registered client id; otherwise the backend registers itself. */
+  clientId?: string;
+  /** `oauth`: the secret of `clientId`, for a confidential client. */
+  clientSecret?: string;
+  /** `oauth`: identify the backend by the client metadata document it serves. */
+  clientMetadataDocument?: boolean;
+}
+
+/** The `provider` of a server that runs its own OAuth, signed in through the backend. */
+export const OAUTH_PROVIDER = 'oauth';
+
+/** True for a per-user server whose tokens the backend holds (its own OAuth). */
+export function isOAuthServer(server: McpServerConfig): boolean {
+  return server.userCredentials?.provider === OAUTH_PROVIDER;
 }
 
 /**
@@ -206,6 +220,11 @@ export interface AssistantsConfig {
   builtinActions: boolean;
   /** Configured external MCP servers keyed by id. */
   mcpServers: Map<string, McpServerConfig>;
+  /**
+   * The keys stored OAuth tokens are encrypted with, current first; set when
+   * a server runs its own OAuth.
+   */
+  mcpOAuthKeys?: Buffer[];
   /** Flat, browser-safe list of every `provider:model` option (the pool). */
   models: ModelOption[];
   /** Global initial model selection (`provider:model`) — the platform default. */
@@ -382,6 +401,40 @@ function readUserCredentials(
   if (!uc) return undefined;
   const provider = uc.getString('provider');
   const env = uc.getOptionalString('env');
+  if (provider === OAUTH_PROVIDER) {
+    if (transport === 'stdio') {
+      throw new InputError(
+        `${path}.userCredentials: provider 'oauth' needs a remote (http or sse) server`,
+      );
+    }
+    const clientId = uc.getOptionalString('clientId');
+    const clientSecret = uc.getOptionalString('clientSecret');
+    const clientMetadataDocument =
+      uc.getOptionalBoolean('clientMetadataDocument') ?? false;
+    if (clientSecret && !clientId) {
+      throw new InputError(
+        `${path}.userCredentials: clientSecret needs clientId`,
+      );
+    }
+    if (clientId && clientMetadataDocument) {
+      throw new InputError(
+        `${path}.userCredentials: set clientId or clientMetadataDocument, not both`,
+      );
+    }
+    const scopes = uc.getOptionalStringArray('scopes');
+    return {
+      provider,
+      ...(scopes && scopes.length > 0 ? { scopes } : {}),
+      title:
+        uc.getOptionalString('title') ??
+        path.slice('assistants.mcp.servers.'.length),
+      header: 'Authorization',
+      scheme: 'Bearer',
+      ...(clientId ? { clientId } : {}),
+      ...(clientSecret ? { clientSecret } : {}),
+      ...(clientMetadataDocument ? { clientMetadataDocument } : {}),
+    };
+  }
   if (transport === 'stdio' && !env) {
     throw new InputError(
       `${path}.userCredentials: a stdio server takes the token in an environment variable; set 'env'`,
@@ -398,6 +451,35 @@ function readUserCredentials(
     scheme: uc.getOptionalString('scheme') ?? 'Bearer',
     ...(env ? { env } : {}),
   };
+}
+
+/**
+ * `assistants.mcp.oauth`: the token encryption key, then any previous keys.
+ * Each must be 32 bytes, base64.
+ */
+function readOAuthKeys(mcpConfig: Config): Buffer[] {
+  const path = 'assistants.mcp.oauth';
+  const oauth = mcpConfig.getOptionalConfig('oauth');
+  if (!oauth?.has('encryptionKey')) {
+    throw new InputError(
+      `${path}.encryptionKey is required: a server runs its own OAuth, and its tokens are stored encrypted. Generate one with 'openssl rand -base64 32'`,
+    );
+  }
+  const values = [
+    oauth.getString('encryptionKey'),
+    ...(oauth.getOptionalStringArray('previousEncryptionKeys') ?? []),
+  ];
+  return values.map((value, i) => {
+    const key = Buffer.from(value, 'base64');
+    if (key.length !== 32) {
+      throw new InputError(
+        `${path}.${
+          i === 0 ? 'encryptionKey' : `previousEncryptionKeys[${i - 1}]`
+        } must be 32 bytes, base64`,
+      );
+    }
+    return key;
+  });
 }
 
 /** A server's `argumentRules`, with each pattern compiled once. */
@@ -715,6 +797,11 @@ export function readConfig(config: Config): AssistantsConfig {
     }
   }
 
+  // --- Encryption keys for servers that run their own OAuth ---------------
+  const mcpOAuthKeys = [...mcpServers.values()].some(isOAuthServer)
+    ? readOAuthKeys(mcpConfig!)
+    : undefined;
+
   // --- Global approval floor (top-level action ids) -----------------------
   for (const actionId of root.getOptionalStringArray('requireApproval') ?? []) {
     requireApproval.add(actionId);
@@ -730,6 +817,7 @@ export function readConfig(config: Config): AssistantsConfig {
   return {
     builtinActions,
     mcpServers,
+    ...(mcpOAuthKeys ? { mcpOAuthKeys } : {}),
     models,
     defaultModel,
     maxSteps,

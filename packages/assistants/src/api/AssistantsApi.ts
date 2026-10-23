@@ -10,6 +10,9 @@ import {
   ApprovalPreviewRequest,
   ApprovalPreviewResponse,
   CapabilitiesResponse,
+  McpOAuthConnection,
+  McpOAuthStartResponse,
+  McpOAuthStatusResponse,
   ReasoningLevel,
   StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
@@ -113,6 +116,22 @@ export interface AssistantsApi {
     request: ApprovalPreviewRequest,
     headers?: Record<string, string>,
   ): Promise<ApprovalPreviewResponse>;
+
+  /**
+   * The user's connection to each MCP server that runs its own OAuth, keyed
+   * by server id. The backend holds those tokens; the browser only sees this.
+   */
+  getMcpOAuthStatus(): Promise<Record<string, McpOAuthConnection>>;
+
+  /**
+   * Start signing in to a server that runs its own OAuth: has the backend
+   * issue Backstage's user cookie (the callback checks it belongs to the
+   * same user) and returns the authorization URL to open in a popup.
+   */
+  startMcpOAuth(serverId: string): Promise<string>;
+
+  /** Disconnect from a server that runs its own OAuth. */
+  disconnectMcpOAuth(serverId: string): Promise<void>;
 
   /**
    * List the full assistant definitions for the editor
@@ -253,6 +272,32 @@ export class AssistantsClient implements AssistantsApi {
       method: 'POST',
       body: JSON.stringify(request),
       headers,
+    });
+  }
+
+  async getMcpOAuthStatus(): Promise<Record<string, McpOAuthConnection>> {
+    const body = await this.requestJson<McpOAuthStatusResponse>(
+      '/mcp/oauth/status',
+    );
+    return body.servers ?? {};
+  }
+
+  async startMcpOAuth(serverId: string): Promise<string> {
+    // The sign-in callback is a top-level navigation with no Backstage token:
+    // it identifies the user by the cookie this sets.
+    await this.requestJson('/.backstage/auth/v1/cookie', {
+      credentials: 'include',
+    });
+    const { authorizationUrl } = await this.requestJson<McpOAuthStartResponse>(
+      `/mcp/${encodeURIComponent(serverId)}/oauth/start`,
+      { method: 'POST' },
+    );
+    return authorizationUrl;
+  }
+
+  async disconnectMcpOAuth(serverId: string): Promise<void> {
+    await this.requestJson(`/mcp/${encodeURIComponent(serverId)}/oauth`, {
+      method: 'DELETE',
     });
   }
 

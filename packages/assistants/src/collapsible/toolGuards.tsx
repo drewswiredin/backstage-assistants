@@ -7,15 +7,17 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useApiHolder } from '@backstage/core-plugin-api';
+import { alertApiRef, useApiHolder } from '@backstage/core-plugin-api';
 import type {
   ApprovalPreview,
   ApprovalPreviewResponse,
   AssistantId,
+  McpOAuthConnection,
   StatusResponse,
   UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api/AssistantsApi';
+import { isOAuthSpec, signInWithPopup } from '../api/mcpOAuth';
 import {
   credentialsHeader,
   getUserToken,
@@ -51,6 +53,13 @@ export interface ToolGuardsValue {
   connectedVersion: number;
   /** Open the provider's sign-in for a server, then re-check. */
   connect: (spec: UserCredentialSpec) => Promise<void>;
+  /**
+   * The user's connection to each server that runs its own OAuth (the
+   * backend holds those tokens), by server id.
+   */
+  oauthConnections: Readonly<Record<string, McpOAuthConnection>>;
+  /** Disconnect from a server that runs its own OAuth. */
+  disconnect: (spec: UserCredentialSpec) => Promise<void>;
 }
 
 const EMPTY: ToolGuardsValue = {
@@ -62,6 +71,8 @@ const EMPTY: ToolGuardsValue = {
   assistantForTool: () => undefined,
   connectedVersion: 0,
   connect: async () => {},
+  oauthConnections: {},
+  disconnect: async () => {},
 };
 
 const ToolGuardsContext = createContext<ToolGuardsValue>(EMPTY);
@@ -77,6 +88,27 @@ export function ToolGuardsProvider({
 }) {
   const apis = useApiHolder();
   const [connectedVersion, setConnectedVersion] = useState(0);
+  const [oauthConnections, setOAuthConnections] = useState<
+    Record<string, McpOAuthConnection>
+  >({});
+  // Servers that run their own OAuth report their connection from the
+  // backend: checked once, and again after each Connect or Disconnect.
+  const hasOAuth = status.assistants.some(a =>
+    a.userCredentials?.some(isOAuthSpec),
+  );
+  useEffect(() => {
+    if (!hasOAuth) return undefined;
+    let active = true;
+    api
+      .getMcpOAuthStatus()
+      .then(next => {
+        if (active) setOAuthConnections(next);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [api, hasOAuth, connectedVersion]);
   const value = useMemo<ToolGuardsValue>(() => {
     const specsFor = (assistantId: AssistantId) =>
       status.assistants.find(a => a.id === assistantId)?.userCredentials ?? [];
@@ -97,11 +129,37 @@ export function ToolGuardsProvider({
           ?.id,
       connectedVersion,
       connect: async spec => {
-        await getUserToken(apis, spec, false);
+        if (isOAuthSpec(spec)) {
+          const outcome = await signInWithPopup(api, spec);
+          if (outcome.ok === false) {
+            apis.get(alertApiRef)?.post({
+              message: `Couldn't connect ${spec.title}: ${
+                outcome.error ?? 'the sign-in failed'
+              }`,
+              severity: 'error',
+              display: 'transient',
+            });
+          }
+        } else {
+          await getUserToken(apis, spec, false);
+        }
+        setConnectedVersion(v => v + 1);
+      },
+      oauthConnections,
+      disconnect: async spec => {
+        await api.disconnectMcpOAuth(spec.server).catch(error =>
+          apis.get(alertApiRef)?.post({
+            message: `Couldn't disconnect ${spec.title}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            severity: 'error',
+            display: 'transient',
+          }),
+        );
         setConnectedVersion(v => v + 1);
       },
     };
-  }, [status, api, apis, connectedVersion]);
+  }, [status, api, apis, connectedVersion, oauthConnections]);
   return (
     <ToolGuardsContext.Provider value={value}>
       {children}
@@ -121,21 +179,58 @@ export function useUnconnectedServers(
   assistantId: AssistantId | undefined,
 ): UserCredentialSpec[] {
   const apis = useApiHolder();
-  const { credentialSpecs, connectedVersion } = useToolGuards();
-  const [missing, setMissing] = useState<UserCredentialSpec[]>([]);
+  const { credentialSpecs, connectedVersion, oauthConnections } =
+    useToolGuards();
+  const [missingTokens, setMissingTokens] = useState<UserCredentialSpec[]>([]);
   const check = useCallback(async () => {
-    const specs = assistantId ? credentialSpecs(assistantId) : [];
+    const specs = (assistantId ? credentialSpecs(assistantId) : []).filter(
+      spec => !isOAuthSpec(spec),
+    );
     const tokens = await getUserTokens(apis, specs);
     return specs.filter(spec => !tokens[spec.server]);
   }, [apis, assistantId, credentialSpecs]);
   useEffect(() => {
     let active = true;
     check().then(next => {
-      if (active) setMissing(next);
+      if (active) setMissingTokens(next);
     });
     return () => {
       active = false;
     };
   }, [check, connectedVersion]);
-  return missing;
+  // Servers that run their own OAuth follow the backend's status as it
+  // arrives; one it hasn't reported yet isn't offered.
+  return useMemo(() => {
+    const specs = assistantId ? credentialSpecs(assistantId) : [];
+    const missingOAuth = new Set(
+      specs
+        .filter(spec => {
+          const connection = oauthConnections[spec.server];
+          return isOAuthSpec(spec) && connection && connection !== 'connected';
+        })
+        .map(spec => spec.server),
+    );
+    const missingToken = new Set(missingTokens.map(spec => spec.server));
+    return specs.filter(
+      spec => missingOAuth.has(spec.server) || missingToken.has(spec.server),
+    );
+  }, [assistantId, credentialSpecs, oauthConnections, missingTokens]);
+}
+
+/**
+ * The servers of an assistant that run their own OAuth and the user is
+ * connected to: each gets a chip to disconnect from.
+ */
+export function useConnectedOAuthServers(
+  assistantId: AssistantId | undefined,
+): UserCredentialSpec[] {
+  const { credentialSpecs, oauthConnections } = useToolGuards();
+  return useMemo(
+    () =>
+      (assistantId ? credentialSpecs(assistantId) : []).filter(
+        spec =>
+          isOAuthSpec(spec) && oauthConnections[spec.server] === 'connected',
+      ),
+    [assistantId, credentialSpecs, oauthConnections],
+  );
 }

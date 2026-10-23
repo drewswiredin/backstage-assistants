@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Connecting to an MCP server that runs its own OAuth (backend `provider: oauth`): the Connect chip opens the server's sign-in in a popup through the backend, which keeps the tokens; once connected the chip reads "✓ <name>" and its × disconnects. An expired sign-in shows "Reconnect <name>". The editor's Connect does the same. New `AssistantsApi` methods: `getMcpOAuthStatus`, `startMcpOAuth`, `disconnectMcpOAuth`.
+
 ## 0.21.1 - 2026-10-23
 
 ### Changed

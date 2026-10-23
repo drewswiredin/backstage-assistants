@@ -12,7 +12,7 @@ import {
   CLIENT_TOOL_NAME_PATTERN,
   type ToolSummary,
 } from '@drewswiredin/backstage-plugin-assistants-common';
-import type { McpServerConfig } from './config';
+import { isOAuthServer, type McpServerConfig } from './config';
 import { truncateToolResult } from './truncateToolResult';
 import { argumentRuleViolation } from './toolGuards';
 
@@ -26,8 +26,9 @@ import { argumentRuleViolation } from './toolGuards';
  *
  * Auth is either a single static credential per server (the configured headers
  * / stdio env: one shared identity for all users), or, for a server with
- * `userCredentials`, the signed-in user's own token, sent by the browser with
- * each turn and held only in that user's pooled connection. Access is gated by
+ * `userCredentials`, the signed-in user's own token, held only in that user's
+ * pooled connection: sent by the browser with each turn, or, for a server
+ * that runs its own OAuth, kept by the backend ({@link McpOAuthService}). Access is gated by
  * the assistant's `access` policy and its explicit per-tool `allowedTools`
  * entries (`<serverId>__<tool>`; no wildcard); a per-user server additionally
  * caps every call at what the user's own token may do.
@@ -354,19 +355,15 @@ export interface ServerToolProbe {
 export async function probeServerTools(
   server: McpServerConfig,
   logger: LoggerService,
-  caller?: { userEntityRef: string; token?: string },
+  caller?: McpCaller,
 ): Promise<ServerToolProbe> {
-  // A per-user server is listed as the caller when they sent a token, and
+  // A per-user server is listed as the caller when they are connected, and
   // otherwise from its shared inventory: the last listing any user got.
   if (server.userCredentials) {
-    if (caller?.token) {
+    const token = caller && (await callerToken(server, caller));
+    if (caller && token) {
       try {
-        const conn = await userConnection(
-          server,
-          caller.userEntityRef,
-          caller.token,
-          logger,
-        );
+        const { conn } = await connectAs(server, caller, token, logger);
         return { reachable: true, tools: conn.tools };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -665,6 +662,77 @@ export function userConnectionCount(): number {
   return userPool.size;
 }
 
+/** Close a user's connection to a server, e.g. after they disconnect. */
+export async function closeUserConnection(
+  serverId: string,
+  userEntityRef: string,
+): Promise<void> {
+  const key = userKey(serverId, userEntityRef);
+  const conn = userPool.get(key);
+  userPool.delete(key);
+  await conn?.client.close().catch(() => {});
+}
+
+/** True for an error that says the server answered 401 to the token. */
+function isUnauthorized(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b401\b/.test(message);
+}
+
+/**
+ * The caller's token for a per-user server: the one their browser sent, or,
+ * for a server that runs its own OAuth, the backend-held one (refreshed when
+ * due, or when `rejected` is the token the server just refused).
+ */
+export async function callerToken(
+  server: McpServerConfig,
+  caller: McpCaller,
+  rejected?: string,
+): Promise<string | undefined> {
+  if (isOAuthServer(server)) {
+    return caller.oauthToken?.(server, rejected ? { rejected } : {});
+  }
+  return rejected ? undefined : caller.credentials[server.id];
+}
+
+/**
+ * The caller's connection to a per-user server, opened with `token`. When the
+ * server refuses a backend-held OAuth token, it is refreshed once and the
+ * connect retried.
+ */
+async function connectAs(
+  server: McpServerConfig,
+  caller: McpCaller,
+  token: string,
+  logger: LoggerService,
+): Promise<{ conn: UserConnection; token: string }> {
+  try {
+    const conn = await userConnection(
+      server,
+      caller.userEntityRef,
+      token,
+      logger,
+    );
+    return { conn, token };
+  } catch (error) {
+    if (!isOAuthServer(server) || !isUnauthorized(error)) throw error;
+    const fresh = await callerToken(server, caller, token);
+    if (!fresh) throw signInExpired(server);
+    const conn = await userConnection(
+      server,
+      caller.userEntityRef,
+      fresh,
+      logger,
+    );
+    return { conn, token: fresh };
+  }
+}
+
+function signInExpired(server: McpServerConfig): Error {
+  const title = server.userCredentials?.title ?? server.id;
+  return new Error(`The ${title} sign-in expired; reconnect ${title}`);
+}
+
 /**
  * Scheduler-driven maintenance: ensure every configured server has a live
  * connection and a fresh tool inventory, keeping the connections OPEN for reuse
@@ -757,11 +825,19 @@ export interface McpToolCallEvent {
   input: unknown;
 }
 
-/** The signed-in user and the tokens their browser sent for per-user servers. */
+/** The signed-in user and their tokens for per-user servers. */
 export interface McpCaller {
   userEntityRef: string;
-  /** Token per per-user server id. */
+  /** Token per per-user server id, as the browser sent them. */
   credentials: Record<string, string>;
+  /**
+   * The user's backend-held token for a server that runs its own OAuth;
+   * refreshed when due, or when `rejected` is the token the server refused.
+   */
+  oauthToken?: (
+    server: McpServerConfig,
+    options?: { rejected?: string },
+  ) => Promise<string | undefined>;
 }
 
 /** A selected per-user server that offers no tools this turn, and why. */
@@ -779,12 +855,12 @@ async function clientFor(
   server: McpServerConfig,
   caller: McpCaller | undefined,
   logger: LoggerService,
-): Promise<MCPClient | undefined> {
-  if (!server.userCredentials) return pool.get(server.id)?.client;
-  const token = caller?.credentials[server.id];
-  if (!caller || !token) return undefined;
-  return (await userConnection(server, caller.userEntityRef, token, logger))
-    .client;
+): Promise<{ client?: MCPClient; token?: string }> {
+  if (!server.userCredentials) return { client: pool.get(server.id)?.client };
+  const token = caller && (await callerToken(server, caller));
+  if (!caller || !token) return {};
+  const connected = await connectAs(server, caller, token, logger);
+  return { client: connected.conn.client, token: connected.token };
 }
 
 /**
@@ -887,15 +963,13 @@ export async function buildMcpTools(
   for (const { server, tools: allowlist } of selections) {
     let listed: RawMcpTool[];
     if (server.userCredentials) {
-      const token = caller?.credentials[server.id];
+      const token = caller && (await callerToken(server, caller));
       if (!caller || !token) {
         unavailable.push({ server });
         continue;
       }
       try {
-        listed = (
-          await userConnection(server, caller.userEntityRef, token, logger)
-        ).tools;
+        listed = (await connectAs(server, caller, token, logger)).conn.tools;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(
@@ -937,8 +1011,9 @@ export async function buildMcpTools(
             return { _error: true, message: violation };
           }
           let client: MCPClient | undefined;
+          let token: string | undefined;
           try {
-            client = await clientFor(server, caller, logger);
+            ({ client, token } = await clientFor(server, caller, logger));
           } catch (error) {
             const message =
               error instanceof Error ? error.message : String(error);
@@ -969,7 +1044,7 @@ export async function buildMcpTools(
               ),
             };
           }
-          const { ok, value } = await callMcpTool(
+          let { ok, value } = await callMcpTool(
             client,
             server,
             t.name,
@@ -978,6 +1053,49 @@ export async function buildMcpTools(
             toolResultMaxChars,
             executeOptions?.abortSignal,
           );
+          // A backend-held OAuth token the server refused mid-turn: refresh
+          // it once and retry the call on a connection with the new token.
+          // A 401 comes before the server acts, so the retry can't repeat it.
+          if (
+            !ok &&
+            caller &&
+            token &&
+            isOAuthServer(server) &&
+            isUnauthorized((value as { message?: unknown })?.message)
+          ) {
+            const fresh = await callerToken(server, caller, token);
+            if (!fresh) {
+              value = { _error: true, message: signInExpired(server).message };
+            } else {
+              try {
+                const retry = await userConnection(
+                  server,
+                  caller.userEntityRef,
+                  fresh,
+                  logger,
+                );
+                ({ ok, value } = await callMcpTool(
+                  retry.client,
+                  server,
+                  t.name,
+                  input,
+                  logger,
+                  toolResultMaxChars,
+                  executeOptions?.abortSignal,
+                ));
+              } catch (error) {
+                value = {
+                  _error: true,
+                  message: truncateToolResult(
+                    `MCP server '${server.id}' could not be reached: ${
+                      error instanceof Error ? error.message : String(error)
+                    }`,
+                    toolResultMaxChars,
+                  ),
+                };
+              }
+            }
+          }
           onCall?.({
             server: server.id,
             tool: t.name,
@@ -1005,7 +1123,7 @@ export async function callServerTool(
   caller: McpCaller | undefined,
   logger: LoggerService,
 ): Promise<{ isError: boolean; content: unknown }> {
-  const client = await clientFor(server, caller, logger);
+  const { client } = await clientFor(server, caller, logger);
   if (!client) {
     throw new Error(
       server.userCredentials

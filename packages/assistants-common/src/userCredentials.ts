@@ -4,6 +4,10 @@
  * signed-in user's tokens to `/chat`, and how the approval card previews a
  * write. Tokens travel only in a request header, so they never reach a
  * request body, a persisted message, or a thread export.
+ *
+ * A server that runs its own OAuth (`provider: 'oauth'`) is different: the
+ * backend holds the user's tokens, and the browser only starts the sign-in
+ * and asks whether the user is connected.
  */
 
 /**
@@ -27,7 +31,8 @@ export interface UserCredentialSpec {
   /**
    * The Backstage auth provider: `github`, `gitlab`, `microsoft`, `google`,
    * `atlassian`, `okta`, `onelogin`, `bitbucket`, `bitbucketServer`,
-   * `openshift`, or `vmwareCloud`.
+   * `openshift`, or `vmwareCloud`. Or `oauth`: the MCP server's own OAuth,
+   * signed in through the backend, which keeps the tokens.
    */
   provider: string;
   /**
@@ -42,6 +47,43 @@ export interface UserCredentialSpec {
   /** Display name for the sign-in, e.g. `GitHub` in "Connect GitHub". */
   title: string;
 }
+
+/**
+ * Whether the user is signed in to a server that runs its own OAuth:
+ * `connected`, `missing` (never connected, or disconnected), or `expired`
+ * (the sign-in lapsed and can't be refreshed; connect again).
+ *
+ * @public
+ */
+export type McpOAuthConnection = 'connected' | 'missing' | 'expired';
+
+/**
+ * Body of `GET /api/assistants/mcp/oauth/status`: the signed-in user's
+ * connection to each server that runs its own OAuth, keyed by server id.
+ *
+ * @public
+ */
+export interface McpOAuthStatusResponse {
+  servers: Record<string, McpOAuthConnection>;
+}
+
+/**
+ * Body of `POST /api/assistants/mcp/:serverId/oauth/start`: where to send the
+ * user to sign in. The browser opens it in a popup.
+ *
+ * @public
+ */
+export interface McpOAuthStartResponse {
+  authorizationUrl: string;
+}
+
+/**
+ * The `type` of the message the sign-in callback page posts to the app window
+ * that opened it, as `{ type, serverId, ok, error? }`.
+ *
+ * @public
+ */
+export const MCP_OAUTH_MESSAGE_TYPE = 'assistants-mcp-oauth';
 
 /**
  * How the approval card shows a write instead of raw JSON: the call's target

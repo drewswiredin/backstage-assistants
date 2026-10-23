@@ -12,7 +12,9 @@ extensions, Mermaid diagrams with fullscreen pan and zoom, download chips for
 generated files, and approval cards (Allow, Always allow, Deny) for gated
 tools, which show a write to a repository as its branch, path, and a diff.
 Tools from an MCP server connected per user run with the user's own sign-in;
-a "Connect GitHub" chip beside the model picker signs them in. It pairs with:
+a "Connect GitHub" chip beside the model picker signs them in. For a server
+that runs its own OAuth the chip opens that server's sign-in in a popup, then
+shows "✓ <name>" with an × to disconnect. It pairs with:
 
 - [`@drewswiredin/backstage-plugin-assistants-backend`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-backend),
   the backend (required)
