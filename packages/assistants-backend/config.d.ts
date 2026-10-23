@@ -20,11 +20,10 @@
  * frontend). The browser receives only the projection the plugin serves over
  * `GET /status` — the accessible assistants, the model pool + defaults, and
  * each assistant's `ui`. `apiKey` and every value under `mcp.servers.*.env` /
- * `mcp.servers.*.headers` are additionally `@visibility secret` so they are
- * redacted everywhere (logs, frontend, DevTools config view, etc.). The secret
- * annotation sits on the index signature — on the leaf — because Backstage
- * applies visibility per leaf and an object-level annotation never reaches the
- * values under `additionalProperties`.
+ * `mcp.servers.*.headers` are additionally secret, so they are
+ * redacted everywhere (logs, frontend, DevTools config view, etc.); `headers`
+ * and `env` use `@deepVisibility secret` so the annotation covers every value
+ * under them.
  *
  * Theme is intentionally NOT configurable: the chat uses one built-in palette
  * that follows Backstage's light/dark mode automatically.
@@ -131,9 +130,10 @@ export interface Config {
           /**
            * Headers sent on every request (http/sse), e.g. an `Authorization`
            * bearer. Every value is secret.
+           *
+           * @deepVisibility secret
            */
           headers?: {
-            /** @visibility secret */
             [name: string]: string;
           };
           /** stdio: executable to spawn (e.g. `npx`, `node`, `docker`). */
@@ -143,9 +143,10 @@ export interface Config {
           /**
            * stdio: extra environment for the child process, merged over a safe
            * default env. Every value is secret.
+           *
+           * @deepVisibility secret
            */
           env?: {
-            /** @visibility secret */
             [name: string]: string;
           };
           /** stdio: working directory for the child process. */

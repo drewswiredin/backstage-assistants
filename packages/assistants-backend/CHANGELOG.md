@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- `mcp.servers.*.headers` and `mcp.servers.*.env` mark every value secret with `@deepVisibility secret` on the map instead of `@visibility secret` on its index signature. Both redact the same keys; `@deepVisibility` is Backstage's documented form.
+
 ## 0.22.1 - 2026-10-23
 
 ### Fixed
