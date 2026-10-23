@@ -1,5 +1,6 @@
 import {
   createMCPClient,
+  ElicitationRequestSchema,
   type MCPClient,
   type MCPClientConfig,
 } from '@ai-sdk/mcp';
@@ -10,10 +11,12 @@ import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import {
   CLIENT_TOOL_NAME_PATTERN,
+  type ElicitationPrompt,
   type ToolSummary,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { isOAuthServer, type McpServerConfig } from './config';
 import { truncateToolResult } from './truncateToolResult';
+import type { ElicitationBroker, ElicitationCall } from './mcpElicitation';
 import { argumentRuleViolation } from './toolGuards';
 
 /**
@@ -192,6 +195,35 @@ function transportFor(
   };
 }
 
+// --- Elicitation -----------------------------------------------------------
+// A server with `elicitation` may ask the user for input mid-call. Its
+// clients declare the capability and hand each request to the broker, which
+// the plugin installs at startup; without one nothing is declared, and such
+// a server's request fails as it did before.
+
+let elicitationBroker: ElicitationBroker | undefined;
+
+/** Install (or remove) the broker that answers servers' questions. */
+export function setElicitationBroker(broker: ElicitationBroker | undefined) {
+  elicitationBroker = broker;
+}
+
+function elicitationCapability(
+  server: McpServerConfig,
+): Pick<MCPClientConfig, 'capabilities'> {
+  return server.elicitation && elicitationBroker
+    ? { capabilities: { elicitation: {} } }
+    : {};
+}
+
+function answerElicitations(client: MCPClient, server: McpServerConfig) {
+  const broker = elicitationBroker;
+  if (!server.elicitation || !broker) return;
+  client.onElicitationRequest(ElicitationRequestSchema, request =>
+    broker.handle(client, server, request),
+  );
+}
+
 // --- MCP connection pool ----------------------------------------------------
 // One PERSISTENT client per configured server, established and refreshed by the
 // scheduler (maintainMcpConnections, wired in the plugin) — NOT per request.
@@ -294,6 +326,7 @@ async function refreshServer(
       connectPromise = createMCPClient({
         transport: transportFor(server),
         clientName: 'backstage-plugin-assistants',
+        ...elicitationCapability(server),
         onUncaughtError: e =>
           logger.warn(
             `MCP server '${server.id}' transport error: ${
@@ -306,6 +339,7 @@ async function refreshServer(
         timeoutMs,
         `MCP '${server.id}' connect`,
       );
+      answerElicitations(client, server);
       entry.client = client;
     }
     const { tools } = await client.listTools({
@@ -606,6 +640,7 @@ async function userConnection(
     const connectPromise = createMCPClient({
       transport: transportFor(server, token),
       clientName: 'backstage-plugin-assistants',
+      ...elicitationCapability(server),
       onUncaughtError: e =>
         logger.warn(
           `MCP server '${server.id}' transport error: ${
@@ -620,6 +655,7 @@ async function userConnection(
         timeoutMs,
         `MCP '${server.id}' connect`,
       );
+      answerElicitations(client, server);
       const { tools } = await client.listTools({
         options: { signal: AbortSignal.timeout(timeoutMs) },
       });
@@ -840,6 +876,76 @@ export interface McpCaller {
   ) => Promise<string | undefined>;
 }
 
+/** The turn a tool call belongs to, for a server's questions (elicitation). */
+export interface McpTurn {
+  assistantId: string;
+  threadId?: string;
+  /** The browser renders question forms (it said so on the request). */
+  renders: boolean;
+}
+
+/**
+ * Run a call whose server may ask the user for input. The call is an async
+ * generator: each question (and its outcome) is yielded as a preliminary
+ * tool output `{ _elicitation }`, which streams to the browser but never to
+ * the model; the call's result is yielded last, as the final output.
+ */
+async function* runAskingUser(
+  server: McpServerConfig,
+  toolName: string,
+  caller: McpCaller,
+  turn: McpTurn | undefined,
+  executeOptions: { abortSignal?: AbortSignal } | undefined,
+  run: (call: ElicitationCall) => Promise<unknown>,
+): AsyncGenerator<unknown> {
+  const shown: ElicitationPrompt[] = [];
+  // Settled by the call; `wake` resumes the loop below.
+  const state: {
+    wake?: () => void;
+    done: boolean;
+    result?: unknown;
+    failure?: unknown;
+  } = { done: false };
+  const call: ElicitationCall = {
+    userEntityRef: caller.userEntityRef,
+    assistantId: turn?.assistantId ?? '',
+    ...(turn?.threadId ? { threadId: turn.threadId } : {}),
+    server,
+    tool: toolName,
+    renders: turn?.renders ?? false,
+    ...(executeOptions?.abortSignal
+      ? { signal: executeOptions.abortSignal }
+      : {}),
+    show: prompt => {
+      shown.push(prompt);
+      state.wake?.();
+    },
+    asked: 0,
+  };
+  run(call).then(
+    value => {
+      state.result = value;
+      state.done = true;
+      state.wake?.();
+    },
+    error => {
+      state.failure = error;
+      state.done = true;
+      state.wake?.();
+    },
+  );
+  for (;;) {
+    while (shown.length > 0) yield { _elicitation: shown.shift() };
+    if (state.done) break;
+    await new Promise<void>(resolve => {
+      state.wake = resolve;
+    });
+    state.wake = undefined;
+  }
+  if (state.failure) throw state.failure;
+  yield state.result;
+}
+
 /** A selected per-user server that offers no tools this turn, and why. */
 export interface UnavailableMcpServer {
   server: McpServerConfig;
@@ -951,12 +1057,15 @@ export async function buildMcpTools(
   options: {
     caller?: McpCaller;
     onCall?: (event: McpToolCallEvent) => void;
+    /** The turn, for questions a server asks mid-call (elicitation). */
+    turn?: McpTurn;
   } = {},
 ): Promise<{
   tools: Record<string, Tool>;
   unavailable: UnavailableMcpServer[];
 }> {
-  const { caller, onCall } = options;
+  const { caller, onCall, turn } = options;
+  const broker = elicitationBroker;
   const tools: Record<string, Tool> = {};
   const unavailable: UnavailableMcpServer[] = [];
 
@@ -993,118 +1102,132 @@ export async function buildMcpTools(
       }
       const name = mcpToolName(server.id, t.name);
       const rules = server.argumentRules?.[t.name];
-      tools[name] = tool({
-        description: t.description,
-        inputSchema: jsonSchema(
-          (t.inputSchema ?? {}) as Parameters<typeof jsonSchema>[0],
-        ),
-        execute: async (input, executeOptions) => {
-          const violation = argumentRuleViolation(t.name, rules, input);
-          if (violation) {
-            onCall?.({
-              server: server.id,
-              tool: t.name,
-              name,
-              outcome: 'rejected-by-rule',
-              input,
-            });
-            return { _error: true, message: violation };
-          }
-          let client: MCPClient | undefined;
-          let token: string | undefined;
-          try {
-            ({ client, token } = await clientFor(server, caller, logger));
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            onCall?.({
-              server: server.id,
-              tool: t.name,
-              name,
-              outcome: 'failed',
-              input,
-            });
-            return {
-              _error: true,
-              message: truncateToolResult(
-                `MCP server '${server.id}' could not be reached: ${message}`,
-                toolResultMaxChars,
-              ),
-            };
-          }
-          if (!client) {
-            logger.warn(
-              `MCP server '${server.id}' not connected; '${t.name}' skipped this turn`,
-            );
-            return {
-              _error: true,
-              message: truncateToolResult(
-                `MCP server '${server.id}' is not currently connected — try again shortly.`,
-                toolResultMaxChars,
-              ),
-            };
-          }
-          let { ok, value } = await callMcpTool(
-            client,
+      // One call: rule check, client, the call (tracked on its client while
+      // it runs, so a question the server asks finds it), and the OAuth retry.
+      const run = async (
+        input: unknown,
+        executeOptions: { abortSignal?: AbortSignal } | undefined,
+        call?: ElicitationCall,
+      ): Promise<unknown> => {
+        const callOn = (c: MCPClient) => {
+          const release = call && broker?.track(c, call);
+          return callMcpTool(
+            c,
             server,
             t.name,
             input,
             logger,
             toolResultMaxChars,
             executeOptions?.abortSignal,
-          );
-          // A backend-held OAuth token the server refused mid-turn: refresh
-          // it once and retry the call on a connection with the new token.
-          // A 401 comes before the server acts, so the retry can't repeat it.
-          if (
-            !ok &&
-            caller &&
-            token &&
-            isOAuthServer(server) &&
-            isUnauthorized((value as { message?: unknown })?.message)
-          ) {
-            const fresh = await callerToken(server, caller, token);
-            if (!fresh) {
-              value = { _error: true, message: signInExpired(server).message };
-            } else {
-              try {
-                const retry = await userConnection(
-                  server,
-                  caller.userEntityRef,
-                  fresh,
-                  logger,
-                );
-                ({ ok, value } = await callMcpTool(
-                  retry.client,
-                  server,
-                  t.name,
-                  input,
-                  logger,
-                  toolResultMaxChars,
-                  executeOptions?.abortSignal,
-                ));
-              } catch (error) {
-                value = {
-                  _error: true,
-                  message: truncateToolResult(
-                    `MCP server '${server.id}' could not be reached: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                    toolResultMaxChars,
-                  ),
-                };
-              }
-            }
-          }
+          ).finally(() => release?.());
+        };
+        const violation = argumentRuleViolation(t.name, rules, input);
+        if (violation) {
           onCall?.({
             server: server.id,
             tool: t.name,
             name,
-            outcome: ok ? 'executed' : 'failed',
+            outcome: 'rejected-by-rule',
             input,
           });
-          return value;
-        },
+          return { _error: true, message: violation };
+        }
+        let client: MCPClient | undefined;
+        let token: string | undefined;
+        try {
+          ({ client, token } = await clientFor(server, caller, logger));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          onCall?.({
+            server: server.id,
+            tool: t.name,
+            name,
+            outcome: 'failed',
+            input,
+          });
+          return {
+            _error: true,
+            message: truncateToolResult(
+              `MCP server '${server.id}' could not be reached: ${message}`,
+              toolResultMaxChars,
+            ),
+          };
+        }
+        if (!client) {
+          logger.warn(
+            `MCP server '${server.id}' not connected; '${t.name}' skipped this turn`,
+          );
+          return {
+            _error: true,
+            message: truncateToolResult(
+              `MCP server '${server.id}' is not currently connected — try again shortly.`,
+              toolResultMaxChars,
+            ),
+          };
+        }
+        let { ok, value } = await callOn(client);
+        // A backend-held OAuth token the server refused mid-turn: refresh
+        // it once and retry the call on a connection with the new token.
+        // A 401 comes before the server acts, so the retry can't repeat it.
+        if (
+          !ok &&
+          caller &&
+          token &&
+          isOAuthServer(server) &&
+          isUnauthorized((value as { message?: unknown })?.message)
+        ) {
+          const fresh = await callerToken(server, caller, token);
+          if (!fresh) {
+            value = { _error: true, message: signInExpired(server).message };
+          } else {
+            try {
+              const retry = await userConnection(
+                server,
+                caller.userEntityRef,
+                fresh,
+                logger,
+              );
+              ({ ok, value } = await callOn(retry.client));
+            } catch (error) {
+              value = {
+                _error: true,
+                message: truncateToolResult(
+                  `MCP server '${server.id}' could not be reached: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                  toolResultMaxChars,
+                ),
+              };
+            }
+          }
+        }
+        onCall?.({
+          server: server.id,
+          tool: t.name,
+          name,
+          outcome: ok ? 'executed' : 'failed',
+          input,
+        });
+        return value;
+      };
+      tools[name] = tool({
+        description: t.description,
+        inputSchema: jsonSchema(
+          (t.inputSchema ?? {}) as Parameters<typeof jsonSchema>[0],
+        ),
+        execute:
+          server.elicitation && broker && caller
+            ? (input, executeOptions) =>
+                runAskingUser(
+                  server,
+                  t.name,
+                  caller,
+                  turn,
+                  executeOptions,
+                  call => run(input, executeOptions, call),
+                )
+            : (input, executeOptions) => run(input, executeOptions),
       });
     }
   }

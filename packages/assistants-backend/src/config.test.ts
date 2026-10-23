@@ -407,3 +407,44 @@ describe('servers that run their own OAuth', () => {
     ).toThrow(/not both/);
   });
 });
+
+describe('elicitation', () => {
+  const withServers = (mcp: JsonObject) =>
+    read({ providers, defaultModel: 'openai:gpt-4o', mcp });
+
+  it('is on for per-user servers and off for shared ones unless set', () => {
+    const cfg = withServers({
+      servers: {
+        mine: {
+          url: 'https://a.example.com/',
+          userCredentials: { provider: 'github' },
+        },
+        shared: { url: 'https://b.example.com/' },
+        sharedOn: { url: 'https://c.example.com/', elicitation: true },
+        mineOff: {
+          url: 'https://d.example.com/',
+          userCredentials: { provider: 'github' },
+          elicitation: false,
+        },
+      },
+    });
+    expect(
+      [...cfg.mcpServers.values()].map(s => [s.id, s.elicitation]),
+    ).toEqual([
+      ['mine', true],
+      ['shared', false],
+      ['sharedOn', true],
+      ['mineOff', false],
+    ]);
+    expect(cfg.elicitationTimeoutMs).toBe(300_000);
+  });
+
+  it('reads and checks the timeout', () => {
+    expect(
+      withServers({ elicitationTimeoutMs: 1000 }).elicitationTimeoutMs,
+    ).toBe(1000);
+    expect(() => withServers({ elicitationTimeoutMs: 0 })).toThrow(
+      /elicitationTimeoutMs must be a positive/,
+    );
+  });
+});

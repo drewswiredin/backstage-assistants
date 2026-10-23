@@ -24,6 +24,10 @@ export interface StatusResponse {
    */
   defaultModel: string;
   /**
+   * The default assistant\'s id, open to every signed-in user and listed first. Absent only when none is designated.
+   */
+  defaultAssistant?: string;
+  /**
    * The global approval floor as tool names. The browser gates a client tool named here before running it.
    */
   requireApproval: Array<string>;

@@ -153,6 +153,10 @@ export const spec = {
           },
           "ui": {
             "$ref": "#/components/schemas/UiOptions"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "True for the default assistant, the one every signed-in user gets and the panel opens until the user picks another."
           }
         }
       },
@@ -204,6 +208,10 @@ export const spec = {
             "type": "string",
             "description": "The default `provider:model` selection."
           },
+          "defaultAssistant": {
+            "type": "string",
+            "description": "The default assistant's id, open to every signed-in user and listed first. Absent only when none is designated."
+          },
           "requireApproval": {
             "type": "array",
             "description": "The global approval floor as tool names. The browser gates a client tool named here before running it.",
@@ -253,6 +261,34 @@ export const spec = {
             "description": "The conversation as a non-empty array of UI messages. The internal shape of each message is intentionally not over-constrained here.",
             "items": {
               "type": "object"
+            }
+          },
+          "elicitation": {
+            "type": "boolean",
+            "description": "True when the browser renders an MCP server's questions as forms (MCP elicitation). Without it a server's question is cancelled."
+          },
+          "page": {
+            "type": "object",
+            "description": "The portal page the user is viewing, sent by a surface beside the page (the panel). Added to this turn's instructions; never persisted.",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "The location pathname."
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "The document title."
+              },
+              "entityRef": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "`kind:namespace/name` when the page is a catalog entity."
+              }
             }
           },
           "tools": {

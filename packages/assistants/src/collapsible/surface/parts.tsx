@@ -21,6 +21,8 @@ import type {
 import { useTurnEndReason } from '../interruptedTurns';
 import { useToolGuards } from '../toolGuards';
 import { WritePreview } from './WritePreview';
+import { ElicitationCard } from './ElicitationCard';
+import type { ElicitationPrompt } from '@drewswiredin/backstage-plugin-assistants-common';
 
 const useStyles = makeStyles(theme => ({
   thinkingMessage: {
@@ -300,6 +302,8 @@ export function ToolFallback({
         ?.assistantId,
   ) as string | undefined;
   const [showRaw, setShowRaw] = useState(false);
+  // A question left open by a turn that stopped can't be answered any more.
+  const messageRunning = useAuiState(s => s.message.status?.type === 'running');
 
   // Same-tool sibling approvals in this message, as a value-stable JSON snapshot
   // (a string, so the external-store selector never churns its identity).
@@ -486,6 +490,21 @@ export function ToolFallback({
           </Typography>
         )}
       </Box>
+    );
+  }
+
+  // An MCP server's question mid-call (elicitation), streamed as a
+  // preliminary output: the call shows the form until the result arrives.
+  const question = (
+    result as { _elicitation?: ElicitationPrompt } | null | undefined
+  )?._elicitation;
+  if (question) {
+    return (
+      <ElicitationCard
+        key={question.id}
+        prompt={question}
+        closed={!messageRunning}
+      />
     );
   }
 

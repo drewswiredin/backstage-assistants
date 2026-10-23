@@ -40,4 +40,8 @@ export interface AssistantSummary {
    */
   tools?: Array<ToolSummary>;
   ui?: UiOptions;
+  /**
+   * True for the default assistant, the one every signed-in user gets and the panel opens until the user picks another.
+   */
+  isDefault?: boolean;
 }

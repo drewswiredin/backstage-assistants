@@ -2,6 +2,7 @@
 
 export * from '../models/AssistantSummary.model';
 export * from '../models/ChatRequest.model';
+export * from '../models/ChatRequestPage.model';
 export * from '../models/ErrorError.model';
 export * from '../models/ErrorRequest.model';
 export * from '../models/ErrorResponse.model';

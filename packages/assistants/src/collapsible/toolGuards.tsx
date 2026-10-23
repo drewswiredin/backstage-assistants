@@ -12,6 +12,7 @@ import type {
   ApprovalPreview,
   ApprovalPreviewResponse,
   AssistantId,
+  ElicitationResponseRequest,
   McpOAuthConnection,
   StatusResponse,
   UserCredentialSpec,
@@ -60,6 +61,11 @@ export interface ToolGuardsValue {
   oauthConnections: Readonly<Record<string, McpOAuthConnection>>;
   /** Disconnect from a server that runs its own OAuth. */
   disconnect: (spec: UserCredentialSpec) => Promise<void>;
+  /** Answer an MCP server's question (elicitation). */
+  respondElicitation: (
+    id: string,
+    answer: ElicitationResponseRequest,
+  ) => Promise<void>;
 }
 
 const EMPTY: ToolGuardsValue = {
@@ -73,6 +79,9 @@ const EMPTY: ToolGuardsValue = {
   connect: async () => {},
   oauthConnections: {},
   disconnect: async () => {},
+  respondElicitation: async () => {
+    throw new Error('Answers are not available here');
+  },
 };
 
 const ToolGuardsContext = createContext<ToolGuardsValue>(EMPTY);
@@ -146,6 +155,7 @@ export function ToolGuardsProvider({
         setConnectedVersion(v => v + 1);
       },
       oauthConnections,
+      respondElicitation: (id, answer) => api.respondElicitation(id, answer),
       disconnect: async spec => {
         await api.disconnectMcpOAuth(spec.server).catch(error =>
           apis.get(alertApiRef)?.post({

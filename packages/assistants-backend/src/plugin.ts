@@ -21,8 +21,10 @@ import {
   databaseToolCacheStore,
   initMcpToolCache,
   closeUserConnection,
+  setElicitationBroker,
 } from './mcp';
 import { McpOAuthService } from './mcpOAuth';
+import { ElicitationBroker } from './mcpElicitation';
 import { MCP_OAUTH_PUBLIC_PATHS } from './mcpOAuthRouter';
 
 /**
@@ -149,6 +151,19 @@ export const assistantsPlugin = createBackendPlugin({
           );
         }
 
+        // Servers may ask the user for input mid-call (elicitation); the
+        // broker routes each question to the waiting call and its answer back.
+        const elicitations = [...assistants.mcpServers.values()].some(
+          server => server.elicitation,
+        )
+          ? new ElicitationBroker({
+              db,
+              logger,
+              timeoutMs: assistants.elicitationTimeoutMs,
+            })
+          : undefined;
+        setElicitationBroker(elicitations);
+
         const router = await createRouter({
           logger,
           httpAuth,
@@ -161,6 +176,7 @@ export const assistantsPlugin = createBackendPlugin({
           streamBuffer,
           signals,
           oauth,
+          elicitations,
           appOrigin: new URL(config.getString('app.baseUrl')).origin,
         });
 

@@ -20,6 +20,7 @@
  */
 
 export * from './clientTools';
+export * from './elicitation';
 export * from './permissions';
 export * from './platformInstructions';
 export * from './userCredentials';

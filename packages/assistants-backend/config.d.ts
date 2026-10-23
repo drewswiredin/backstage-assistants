@@ -91,6 +91,12 @@ export interface Config {
        */
       connectTimeoutMs?: number;
       /**
+       * How long a server's request for input (MCP elicitation) waits for
+       * the user's answer before it is cancelled, in milliseconds. Defaults
+       * to 300000 (5 minutes).
+       */
+      elicitationTimeoutMs?: number;
+      /**
        * Servers that run their own OAuth (`userCredentials.provider:
        * oauth`): the backend keeps each user's tokens, encrypted at rest.
        * Required when such a server is configured.
@@ -211,6 +217,14 @@ export interface Config {
              */
             clientMetadataDocument?: boolean;
           };
+          /**
+           * Let the server stop mid-call to ask the user for input (MCP
+           * elicitation): the question appears as a form on the tool call,
+           * and the answer goes only to the server. Defaults to true for a
+           * per-user server and false for a shared one, whose one connection
+           * serves every user.
+           */
+          elicitation?: boolean;
           /**
            * A per-user server's gated tools take the "Always allow" grant
            * only when true; otherwise every call is approved on its own.

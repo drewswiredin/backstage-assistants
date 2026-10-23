@@ -46,6 +46,9 @@ An MCP server configured with `userCredentials`: no shared credential; every cal
 **OAuth MCP server**:
 A **Per-user MCP server** with `userCredentials.provider: oauth`: the server runs its own OAuth (the MCP authorization spec) and won't take a Backstage sign-in's token. The user **Connect**s once through a popup; the backend runs the sign-in with `@ai-sdk/mcp`'s `auth()`, keeps the user's tokens sealed in the database (`mcp.oauth.encryptionKey`), refreshes them during the user's turns, and never sends them to the browser. **Disconnect** revokes and deletes them. Unlike a token from a Backstage sign-in, these are stored.
 
+**Elicitation**:
+An MCP server's question to the user in the middle of a tool call (MCP `elicitation/create`). It appears on the call as a form; the user answers, declines, or cancels, and the answer goes only to the server that asked, never to the model. On by default for a **Per-user MCP server**; a shared server must opt in (`elicitation: true`), and its question is cancelled unless exactly one call is in flight on its connection.
+
 **Argument rule**:
 A server-side check on one MCP tool argument (`argumentRules`: `pattern` or `equals`), enforced before the approval prompt (a breaking call is denied at once with the reason) and again before the call. Optional: for a policy that must hold whatever the model was told, such as draft-only pull requests. None are configured by default.
 

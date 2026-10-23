@@ -19,6 +19,7 @@ Pairs with the frontend plugin
 - [Add an MCP server](#add-an-mcp-server)
 - [Connect an MCP server per user](#connect-an-mcp-server-per-user)
 - [Connect a server that runs its own OAuth](#connect-a-server-that-runs-its-own-oauth)
+- [Let a server ask the user for input](#let-a-server-ask-the-user-for-input)
 - [Require approval before a tool runs](#require-approval-before-a-tool-runs)
 - [Built-in client tools](#built-in-client-tools)
 - [Client tools: run in the browser as the user](#client-tools-run-in-the-browser-as-the-user)
@@ -537,6 +538,42 @@ every user connects again.
 
 Tokens are used only during the user's own turns, never in the background.
 
+## Let a server ask the user for input
+
+Some MCP servers stop mid-call to ask the user something (MCP elicitation),
+such as which project to use when the call left it out. The question appears
+on the tool call as a form, under the server's name; the user submits,
+declines, or cancels, and the answer goes back to that server only. The model
+never sees the question or the answer, only the tool's result.
+
+```yaml
+assistants:
+  mcp:
+    elicitationTimeoutMs: 300000 # how long a question waits (default 5 minutes)
+    servers:
+      ado:
+        # On by default for a per-user server, off for a shared one.
+        elicitation: true
+```
+
+A shared server serves every user over one connection, so a question can only
+be tied to a user when one call is in flight on it; with several, the question
+is cancelled. That is why it is off by default for shared servers.
+
+A question is cancelled when the user doesn't answer in time, when the
+conversation is stopped, after three questions in one call, or while another
+question is open in the same conversation; a request to open a URL, or a form
+with fields outside MCP's restricted set (text, number, yes/no, single and
+multiple choice), is declined. The server decides what a decline or cancel
+means for its call. A field that looks like it asks for a secret gets a
+warning: MCP servers must not ask for passwords or tokens this way. Answers
+are checked against the server's form on the backend too; a second answer that
+doesn't fit cancels the question.
+
+Each question writes an `assistants.tool.audit` line with
+`decision: elicitation`, the action, and the names of the fields answered,
+never their values.
+
 ## Require approval before a tool runs
 
 The approval gate is global, not per-assistant. List action ids in
@@ -837,6 +874,8 @@ designated: the oldest assistant open to every signed-in user`, or the
 - At info, per gated MCP call and per argument-rule rejection:
   `assistants.tool.audit` with `user`, `assistantId`, `threadId`, `server`,
   `tool`, `decision`, and `target`.
+- `MCP server '<id>' asked for input: <action> (<reason>)` when a question is
+  declined or cancelled before it reaches the user.
 - Servers that run their own OAuth: `MCP server '<id>' connected` and
   `... disconnected` (with `user`), `MCP server '<id>' sign-in failed for <user>: ...`,
   `MCP server '<id>' token refresh failed for <user>: ...`, and
@@ -900,7 +939,9 @@ token, AES-256-GCM encrypted with `mcp.oauth.encryptionKey`, until they
 disconnect or the server refuses a refresh; `mcp_oauth_clients` the client the
 backend registered (its secret encrypted); and `mcp_oauth_state` a sign-in in
 progress (its PKCE verifier encrypted), deleted when the callback consumes it
-or after ten minutes. Every message (user text,
+or after ten minutes. `mcp_elicitations` holds an MCP server's open question; the
+user's answer is in it only until the replica running the call picks it up,
+after which the row keeps just the action until it expires. Every message (user text,
 attachments, assistant output, and tool results truncated at
 `toolResultMaxChars`, default 30000) persists in `messages.content_json` until
 the user deletes the conversation, which is a hard delete; nothing is retained
@@ -935,39 +976,41 @@ call code in that user's own browser with that user's own credentials.
 All keys sit under `assistants`. `assistants.semanticSearch` belongs to the
 [semantic search module](../assistants-backend-module-semantic-search#reference).
 
-| Key                                       | Default    | Description                                                                                                                                                                                                                                                             |
-| ----------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `defaultModel`                            | required   | Initial `<providerId>:<model>`; must exist in a provider.                                                                                                                                                                                                               |
-| `maxSteps`                                | `10`       | Max tool-call steps per turn.                                                                                                                                                                                                                                           |
-| `builtinActions`                          | `false`    | Register built-in catalog/TechDocs read tools.                                                                                                                                                                                                                          |
-| `toolResultMaxChars`                      | `30000`    | Max chars of a single tool result (head+tail truncation; `0` disables).                                                                                                                                                                                                 |
-| `requireApproval`                         | `[]`       | Action ids, MCP tool names, and client tool names gated by Allow / Deny in the conversation.                                                                                                                                                                            |
-| `requestBodyLimit`                        | `10mb`     | JSON body limit for every plugin request, sized for `/chat` attachments.                                                                                                                                                                                                |
-| `providers.<id>.type`                     | required   | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                                                                                                                              |
-| `providers.<id>.apiKey`                   | required   | Provider key (secret).                                                                                                                                                                                                                                                  |
-| `providers.<id>.baseUrl`                  |            | Base URL override.                                                                                                                                                                                                                                                      |
-| `providers.<id>.options`                  |            | Untyped passthrough object spread into the `@ai-sdk/*` factory (e.g. Azure `useDeploymentBasedUrls`). Not schema-validated; keep credentials out of it and use `apiKey`.                                                                                                |
-| `providers.<id>.models`                   | required   | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. A plain string list is rejected at startup.                                                                                                                                                 |
-| `providers.<id>.models[].contextWindow`   |            | Max input tokens; drives the context gauge.                                                                                                                                                                                                                             |
-| `providers.<id>.models[].reasoning`       | `false`    | `true` if the model reasons; adds the effort picker (see Per-model options).                                                                                                                                                                                            |
-| `providers.<id>.models[].maxOutputTokens` |            | Output-token ceiling; must be > 0. Only needed when the provider misjudges an unrecognized model id.                                                                                                                                                                    |
-| `mcp.connectTimeoutMs`                    | `8000`     | Global MCP connect/list-tools timeout ceiling in ms; must be > 0.                                                                                                                                                                                                       |
-| `mcp.servers.<id>`                        |            | External MCP server connections (see Add an MCP server).                                                                                                                                                                                                                |
-| `mcp.servers.<id>.transport`              | `http`     | `http` \| `sse` \| `stdio`.                                                                                                                                                                                                                                             |
-| `mcp.servers.<id>.url`                    | http/sse   | Endpoint URL; required for `http` and `sse`.                                                                                                                                                                                                                            |
-| `mcp.servers.<id>.headers`                |            | Headers sent on every request (`http`/`sse`); values are secret.                                                                                                                                                                                                        |
-| `mcp.servers.<id>.command`                | stdio      | Executable to spawn; required for `stdio`.                                                                                                                                                                                                                              |
-| `mcp.servers.<id>.args`                   |            | Arguments for `command` (`stdio`).                                                                                                                                                                                                                                      |
-| `mcp.servers.<id>.env`                    |            | Extra environment for the child process, merged over a safe default (`stdio`); values are secret.                                                                                                                                                                       |
-| `mcp.servers.<id>.cwd`                    |            | Working directory for the child process (`stdio`).                                                                                                                                                                                                                      |
-| `mcp.servers.<id>.connectTimeoutMs`       | the global | Per-server connect/list-tools ceiling; must be > 0.                                                                                                                                                                                                                     |
-| `mcp.servers.<id>.requireApproval`        | `[]`       | Tool names of this server gated by Allow / Deny.                                                                                                                                                                                                                        |
-| `mcp.servers.<id>.userCredentials`        |            | Connect per user: `{ provider, host?, scopes?, title?, header?, scheme?, env? }` (see Connect an MCP server per user); with `provider: oauth`, `{ scopes?, title?, clientId?, clientSecret?, clientMetadataDocument? }` (see Connect a server that runs its own OAuth). |
-| `mcp.oauth.encryptionKey`                 | oauth      | 32 bytes, base64; encrypts stored OAuth tokens. Secret. Required when a server uses `provider: oauth`.                                                                                                                                                                  |
-| `mcp.oauth.previousEncryptionKeys`        |            | Earlier keys, still read after a rotation. Secret.                                                                                                                                                                                                                      |
-| `mcp.servers.<id>.allowStandingApproval`  | `false`    | Offer Always allow for a per-user server's gated tools.                                                                                                                                                                                                                 |
-| `mcp.servers.<id>.argumentRules`          |            | `<tool>.<argument>: { pattern?, equals? }`, enforced before approval and before the call.                                                                                                                                                                               |
-| `mcp.servers.<id>.approvalPreview`        |            | `<tool>: { type: file \| files, fields, base? }`: the approval card's write preview and diff.                                                                                                                                                                           |
+| Key                                       | Default                           | Description                                                                                                                                                                                                                                                             |
+| ----------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defaultModel`                            | required                          | Initial `<providerId>:<model>`; must exist in a provider.                                                                                                                                                                                                               |
+| `maxSteps`                                | `10`                              | Max tool-call steps per turn.                                                                                                                                                                                                                                           |
+| `builtinActions`                          | `false`                           | Register built-in catalog/TechDocs read tools.                                                                                                                                                                                                                          |
+| `toolResultMaxChars`                      | `30000`                           | Max chars of a single tool result (head+tail truncation; `0` disables).                                                                                                                                                                                                 |
+| `requireApproval`                         | `[]`                              | Action ids, MCP tool names, and client tool names gated by Allow / Deny in the conversation.                                                                                                                                                                            |
+| `requestBodyLimit`                        | `10mb`                            | JSON body limit for every plugin request, sized for `/chat` attachments.                                                                                                                                                                                                |
+| `providers.<id>.type`                     | required                          | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                                                                                                                              |
+| `providers.<id>.apiKey`                   | required                          | Provider key (secret).                                                                                                                                                                                                                                                  |
+| `providers.<id>.baseUrl`                  |                                   | Base URL override.                                                                                                                                                                                                                                                      |
+| `providers.<id>.options`                  |                                   | Untyped passthrough object spread into the `@ai-sdk/*` factory (e.g. Azure `useDeploymentBasedUrls`). Not schema-validated; keep credentials out of it and use `apiKey`.                                                                                                |
+| `providers.<id>.models`                   | required                          | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. A plain string list is rejected at startup.                                                                                                                                                 |
+| `providers.<id>.models[].contextWindow`   |                                   | Max input tokens; drives the context gauge.                                                                                                                                                                                                                             |
+| `providers.<id>.models[].reasoning`       | `false`                           | `true` if the model reasons; adds the effort picker (see Per-model options).                                                                                                                                                                                            |
+| `providers.<id>.models[].maxOutputTokens` |                                   | Output-token ceiling; must be > 0. Only needed when the provider misjudges an unrecognized model id.                                                                                                                                                                    |
+| `mcp.connectTimeoutMs`                    | `8000`                            | Global MCP connect/list-tools timeout ceiling in ms; must be > 0.                                                                                                                                                                                                       |
+| `mcp.servers.<id>`                        |                                   | External MCP server connections (see Add an MCP server).                                                                                                                                                                                                                |
+| `mcp.servers.<id>.transport`              | `http`                            | `http` \| `sse` \| `stdio`.                                                                                                                                                                                                                                             |
+| `mcp.servers.<id>.url`                    | http/sse                          | Endpoint URL; required for `http` and `sse`.                                                                                                                                                                                                                            |
+| `mcp.servers.<id>.headers`                |                                   | Headers sent on every request (`http`/`sse`); values are secret.                                                                                                                                                                                                        |
+| `mcp.servers.<id>.command`                | stdio                             | Executable to spawn; required for `stdio`.                                                                                                                                                                                                                              |
+| `mcp.servers.<id>.args`                   |                                   | Arguments for `command` (`stdio`).                                                                                                                                                                                                                                      |
+| `mcp.servers.<id>.env`                    |                                   | Extra environment for the child process, merged over a safe default (`stdio`); values are secret.                                                                                                                                                                       |
+| `mcp.servers.<id>.cwd`                    |                                   | Working directory for the child process (`stdio`).                                                                                                                                                                                                                      |
+| `mcp.servers.<id>.connectTimeoutMs`       | the global                        | Per-server connect/list-tools ceiling; must be > 0.                                                                                                                                                                                                                     |
+| `mcp.servers.<id>.requireApproval`        | `[]`                              | Tool names of this server gated by Allow / Deny.                                                                                                                                                                                                                        |
+| `mcp.servers.<id>.userCredentials`        |                                   | Connect per user: `{ provider, host?, scopes?, title?, header?, scheme?, env? }` (see Connect an MCP server per user); with `provider: oauth`, `{ scopes?, title?, clientId?, clientSecret?, clientMetadataDocument? }` (see Connect a server that runs its own OAuth). |
+| `mcp.elicitationTimeoutMs`                | `300000`                          | How long an MCP server's question waits for the user, in ms; must be > 0.                                                                                                                                                                                               |
+| `mcp.servers.<id>.elicitation`            | per user: `true`; shared: `false` | Let the server ask the user for input mid-call (see Let a server ask the user for input).                                                                                                                                                                               |
+| `mcp.oauth.encryptionKey`                 | oauth                             | 32 bytes, base64; encrypts stored OAuth tokens. Secret. Required when a server uses `provider: oauth`.                                                                                                                                                                  |
+| `mcp.oauth.previousEncryptionKeys`        |                                   | Earlier keys, still read after a rotation. Secret.                                                                                                                                                                                                                      |
+| `mcp.servers.<id>.allowStandingApproval`  | `false`                           | Offer Always allow for a per-user server's gated tools.                                                                                                                                                                                                                 |
+| `mcp.servers.<id>.argumentRules`          |                                   | `<tool>.<argument>: { pattern?, equals? }`, enforced before approval and before the call.                                                                                                                                                                               |
+| `mcp.servers.<id>.approvalPreview`        |                                   | `<tool>: { type: file \| files, fields, base? }`: the approval card's write preview and diff.                                                                                                                                                                           |
 
 ### Startup errors
 
@@ -995,6 +1038,7 @@ Backstage's own missing-config error naming the key.
 - `assistants.mcp.servers.<id>.userCredentials: provider 'oauth' needs a remote (http or sse) server`,
   `... clientSecret needs clientId`, or `... set clientId or clientMetadataDocument, not both`.
 - `assistants.mcp.oauth.encryptionKey is required: ...`, or `... must be 32 bytes, base64`.
+- `assistants.mcp.elicitationTimeoutMs must be a positive number of milliseconds`.
 - `assistants.mcp.servers.<id>.argumentRules.<tool>.<argument>.pattern is not a valid regular expression: ...`,
   or `... needs 'pattern' or 'equals'`.
 - `assistants.mcp.servers.<id>.approvalPreview.<tool>.type must be 'file' or 'files'`, or
@@ -1021,6 +1065,7 @@ every conversation route is scoped to the owning user.
 | `POST /threads/:id/read`                   | `assistant.use`                    | Mark a conversation read.                                                                                   |
 | `GET /threads/:id/messages`                | `assistant.use`                    | A conversation's messages.                                                                                  |
 | `POST /preview`                            | `assistant.use`                    | The current content behind a pending write, for the approval card's diff.                                   |
+| `POST /elicitations/:id`                   | `assistant.use`                    | Answer an MCP server's question; only the user whose call it interrupts.                                    |
 | `GET /mcp/oauth/status`                    | `assistant.use`                    | The caller's connection to each server that runs its own OAuth.                                             |
 | `POST /mcp/:serverId/oauth/start`          | `assistant.use`                    | Start a sign-in; returns the authorization URL.                                                             |
 | `DELETE /mcp/:serverId/oauth`              | `assistant.use`                    | Disconnect: revoke, and delete the stored tokens.                                                           |

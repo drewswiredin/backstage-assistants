@@ -202,6 +202,8 @@ export interface McpServerConfig {
    * when this is true; otherwise every call is approved on its own.
    */
   allowStandingApproval?: boolean;
+  /** The server may ask the user for input mid-call (MCP elicitation). */
+  elicitation?: boolean;
 }
 
 /**
@@ -225,6 +227,8 @@ export interface AssistantsConfig {
    * a server runs its own OAuth.
    */
   mcpOAuthKeys?: Buffer[];
+  /** How long an MCP server's request for input waits for the user, in ms. */
+  elicitationTimeoutMs: number;
   /** Flat, browser-safe list of every `provider:model` option (the pool). */
   models: ModelOption[];
   /** Global initial model selection (`provider:model`) — the platform default. */
@@ -735,6 +739,8 @@ export function readConfig(config: Config): AssistantsConfig {
         approvalPreview: readApprovalPreviews(sc, path),
         requireApproval: serverRequireApproval,
         allowStandingApproval,
+        elicitation:
+          sc.getOptionalBoolean('elicitation') ?? userCredentials !== undefined,
       };
 
       if (transport === 'stdio') {
@@ -797,6 +803,14 @@ export function readConfig(config: Config): AssistantsConfig {
     }
   }
 
+  const elicitationTimeoutMs =
+    mcpConfig?.getOptionalNumber('elicitationTimeoutMs') ?? 300_000;
+  if (elicitationTimeoutMs <= 0) {
+    throw new InputError(
+      'assistants.mcp.elicitationTimeoutMs must be a positive number of milliseconds',
+    );
+  }
+
   // --- Encryption keys for servers that run their own OAuth ---------------
   const mcpOAuthKeys = [...mcpServers.values()].some(isOAuthServer)
     ? readOAuthKeys(mcpConfig!)
@@ -818,6 +832,7 @@ export function readConfig(config: Config): AssistantsConfig {
     builtinActions,
     mcpServers,
     ...(mcpOAuthKeys ? { mcpOAuthKeys } : {}),
+    elicitationTimeoutMs,
     models,
     defaultModel,
     maxSteps,

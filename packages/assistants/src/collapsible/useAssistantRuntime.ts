@@ -120,6 +120,8 @@ function createInjectingFetch(
       if (reasoningLevelRef.current) {
         body.reasoningLevel = reasoningLevelRef.current;
       }
+      // The tool call renders an MCP server's questions as a form.
+      body.elicitation = true;
       if (typeof body.id === 'string' && body.threadId === undefined) {
         body.threadId = body.id;
       }

@@ -10,6 +10,7 @@ import {
   ApprovalPreviewRequest,
   ApprovalPreviewResponse,
   CapabilitiesResponse,
+  ElicitationResponseRequest,
   McpOAuthConnection,
   McpOAuthStartResponse,
   McpOAuthStatusResponse,
@@ -132,6 +133,16 @@ export interface AssistantsApi {
 
   /** Disconnect from a server that runs its own OAuth. */
   disconnectMcpOAuth(serverId: string): Promise<void>;
+
+  /**
+   * Answer an MCP server's question (elicitation). Rejects with the
+   * problems when the answer doesn't fit, or when the question was already
+   * answered or has expired.
+   */
+  respondElicitation(
+    id: string,
+    answer: ElicitationResponseRequest,
+  ): Promise<void>;
 
   /**
    * List the full assistant definitions for the editor
@@ -299,6 +310,28 @@ export class AssistantsClient implements AssistantsApi {
     await this.requestJson(`/mcp/${encodeURIComponent(serverId)}/oauth`, {
       method: 'DELETE',
     });
+  }
+
+  async respondElicitation(
+    id: string,
+    answer: ElicitationResponseRequest,
+  ): Promise<void> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/elicitations/${encodeURIComponent(id)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(answer),
+      },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(
+        body?.error?.message ??
+          `The answer was not accepted (${response.status})`,
+      );
+    }
   }
 
   async listManagedAssistants(): Promise<AssistantDefinition[]> {

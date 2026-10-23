@@ -60,6 +60,7 @@ import {
   type UnavailableMcpServer,
 } from './mcp';
 import type { McpOAuthService } from './mcpOAuth';
+import type { ElicitationBroker } from './mcpElicitation';
 import { createMcpOAuthRouter } from './mcpOAuthRouter';
 import { mcpCallerFor, userCredentialSpec } from './userCredentials';
 import {
@@ -119,6 +120,8 @@ export interface RouterOptions {
   oauth?: McpOAuthService;
   /** The app's origin, which the sign-in callback page posts to. */
   appOrigin?: string;
+  /** Answers MCP servers' questions (elicitation). */
+  elicitations?: ElicitationBroker;
 }
 
 /**
@@ -442,6 +445,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     streamBuffer,
     signals,
     oauth,
+    elicitations,
   } = options;
 
   /**
@@ -711,6 +715,37 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     })().catch(next);
   });
 
+  // A user's answer to an MCP server's question (elicitation), for the call
+  // waiting on it on whichever replica runs the turn. Only the user whose
+  // turn asked may answer.
+  streamRouter.post('/elicitations/:id', (req, res, next) => {
+    (async () => {
+      const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      await requireUse(credentials);
+      if (!elicitations) throw new NotFoundError('No question is open');
+      const user = await userInfo.getUserInfo(credentials);
+      const { status, errors } = await elicitations.respond(
+        req.params.id,
+        user.userEntityRef,
+        req.body,
+      );
+      if (status === 204) {
+        res.status(204).end();
+        return;
+      }
+      const messages: Record<number, string> = {
+        400: errors?.join('; ') ?? 'Invalid answer',
+        403: 'This question belongs to another user',
+        404: 'No such question',
+        410: 'This question was already answered or has expired',
+      };
+      res.status(status).json({
+        error: { name: 'ElicitationError', message: messages[status] },
+        ...(errors ? { errors } : {}),
+      });
+    })().catch(next);
+  });
+
   router.use(streamRouter);
 
   /**
@@ -829,14 +864,21 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // 2. The request body shape (assistantId/modelId present + non-empty,
     //    messages a non-empty array) is already validated by the OpenAPI router
     //    against `src/schema/openapi.yaml`, so no hand-checks are needed here.
-    const { assistantId, modelId, threadId, reasoningLevel, page } =
-      req.body as {
-        assistantId: string;
-        modelId: string;
-        threadId?: string;
-        reasoningLevel?: ReasoningLevel;
-        page?: PageContext;
-      };
+    const {
+      assistantId,
+      modelId,
+      threadId,
+      reasoningLevel,
+      page,
+      elicitation,
+    } = req.body as {
+      assistantId: string;
+      modelId: string;
+      threadId?: string;
+      reasoningLevel?: ReasoningLevel;
+      page?: PageContext;
+      elicitation?: boolean;
+    };
     let messages = req.body.messages as unknown[];
 
     // 3. Resolve the assistant from the AUTHORITATIVE DB (not the snapshot) so the
@@ -952,6 +994,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         assistants.toolResultMaxChars,
         {
           caller,
+          turn: {
+            assistantId,
+            ...(threadId ? { threadId } : {}),
+            renders: elicitation === true,
+          },
           onCall: event => {
             if (
               event.outcome === 'rejected-by-rule' ||

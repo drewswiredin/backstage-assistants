@@ -8,6 +8,7 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `McpOAuthConnection`, `McpOAuthStatusResponse`, `McpOAuthStartResponse`, and `MCP_OAUTH_MESSAGE_TYPE` for MCP servers that run their own OAuth; `UserCredentialSpec.provider` may be `oauth`.
+- MCP elicitation: `ElicitationPrompt`, `ElicitationResponseRequest`, `ElicitationField`, `parseElicitationSchema`, `validateElicitationContent`, and `isSensitiveElicitationField`, shared by the form and the backend's check.
 
 ## 0.16.0 - 2026-10-22
 

@@ -1,32 +1,45 @@
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { McpServerConfig } from './config';
+import knexFactory from 'knex';
+import { stepCountIs, streamText, toUIMessageStream } from 'ai';
+import { MockLanguageModelV4 } from 'ai/test';
 import {
   buildMcpTools,
   closeMcpPool,
   maintainMcpConnections,
+  setElicitationBroker,
   userConnectionCount,
   type McpToolCallEvent,
 } from './mcp';
+import { ElicitationBroker } from './mcpElicitation';
+import { ThreadService } from './threads';
 
 /** Every client the mocked library opened, with the headers it was given. */
 const opened: Array<{
   headers?: Record<string, string>;
+  capabilities?: unknown;
   callTool: jest.Mock;
   close: jest.Mock;
+  onElicitationRequest: jest.Mock;
 }> = [];
 
 jest.mock('@ai-sdk/mcp', () => ({
+  ElicitationRequestSchema: { name: 'ElicitationRequestSchema' },
   createMCPClient: jest.fn(
     async ({
       transport,
+      capabilities,
     }: {
       transport: { headers?: Record<string, string> };
+      capabilities?: unknown;
     }) => {
       if (transport.headers?.Authorization === 'Bearer revoked') {
         throw new Error('HTTP 401: Bad credentials');
       }
       const client = {
         headers: transport.headers,
+        capabilities,
+        onElicitationRequest: jest.fn(),
         listTools: jest.fn(async () => ({
           tools: [
             { name: 'get_me', inputSchema: { type: 'object' } },
@@ -344,6 +357,201 @@ describe('per-user MCP connections', () => {
         _error: true,
         message: 'The Tracker sign-in expired; reconnect Tracker',
       });
+    });
+  });
+
+  describe('a server that asks the user for input', () => {
+    const ado: McpServerConfig = { ...github, id: 'ado', elicitation: true };
+    const adoSelection = [{ server: ado, tools: ['get_me'] }];
+    const db = knexFactory({
+      client: 'better-sqlite3',
+      connection: { filename: ':memory:' },
+      useNullAsDefault: true,
+    });
+    const broker = new ElicitationBroker({
+      db,
+      logger,
+      timeoutMs: 60_000,
+      pollMs: 10,
+    });
+
+    beforeAll(async () => {
+      await new ThreadService(db).runMigrations();
+    });
+    beforeEach(() => setElicitationBroker(broker));
+    afterEach(() => setElicitationBroker(undefined));
+    afterAll(async () => {
+      await db.destroy();
+    });
+
+    const turn = { assistantId: 'ops', threadId: 't1', renders: true };
+    const ana = {
+      caller: {
+        userEntityRef: 'user:default/ana',
+        credentials: { ado: 'tok' },
+      },
+    };
+
+    it('declares the capability only for a server that enables it, with a broker installed', async () => {
+      await buildMcpTools(adoSelection, logger, 0, {
+        ...ana,
+        turn,
+      });
+      expect(opened[0].capabilities).toEqual({ elicitation: {} });
+      expect(opened[0].onElicitationRequest).toHaveBeenCalled();
+
+      await buildMcpTools(selection, logger, 0, asUser('user:default/bo', 't'));
+      expect(opened[1].capabilities).toBeUndefined();
+      expect(opened[1].onElicitationRequest).not.toHaveBeenCalled();
+    });
+
+    it("yields the question as a preliminary output, then the server's result once answered", async () => {
+      const { tools } = await buildMcpTools(adoSelection, logger, 0, {
+        ...ana,
+        turn,
+      });
+      const handler = opened[0].onElicitationRequest.mock.calls[0][1];
+      // The server asks mid-call, then uses the answer.
+      opened[0].callTool.mockImplementationOnce(async () => {
+        const answer = await handler({
+          method: 'elicitation/create',
+          params: {
+            message: 'Select the project.',
+            requestedSchema: {
+              type: 'object',
+              required: ['project'],
+              properties: { project: { type: 'string', enum: ['Pylon'] } },
+            },
+          },
+        });
+        return {
+          content: [
+            { type: 'text', text: `items in ${answer.content.project}` },
+          ],
+        };
+      });
+      const outputs = (
+        tools.ado__get_me as {
+          execute: (i: unknown, o: unknown) => AsyncIterable<any>;
+        }
+      ).execute({}, { toolCallId: 'c1', messages: [] });
+      const seen: any[] = [];
+      for await (const output of outputs) {
+        seen.push(output);
+        if (output?._elicitation?.status === 'open') {
+          await broker.respond(output._elicitation.id, 'user:default/ana', {
+            action: 'accept',
+            content: { project: 'Pylon' },
+          });
+        }
+      }
+      expect(seen.map(o => o._elicitation?.status ?? 'final')).toEqual([
+        'open',
+        'accepted',
+        'final',
+      ]);
+      expect(seen[2]).toEqual([{ type: 'text', text: 'items in Pylon' }]);
+    });
+
+    it('streams the question to the browser, and only the result to the model', async () => {
+      const { tools } = await buildMcpTools(adoSelection, logger, 0, {
+        ...ana,
+        turn,
+      });
+      const handler = opened[0].onElicitationRequest.mock.calls[0][1];
+      opened[0].callTool.mockImplementationOnce(async () => {
+        const answer = await handler({
+          method: 'elicitation/create',
+          params: {
+            message: 'Select the project.',
+            requestedSchema: {
+              type: 'object',
+              properties: { project: { type: 'string', enum: ['Pylon'] } },
+            },
+          },
+        });
+        return {
+          content: [{ type: 'text', text: `in ${answer.content.project}` }],
+        };
+      });
+      const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      };
+      const streamOf = (parts: unknown[]) => ({
+        stream: new ReadableStream({
+          start(controller) {
+            for (const part of parts) controller.enqueue(part);
+            controller.close();
+          },
+        }),
+      });
+      const model = new MockLanguageModelV4({
+        doStream: [
+          streamOf([
+            { type: 'stream-start', warnings: [] },
+            {
+              type: 'tool-call',
+              toolCallId: 'c1',
+              toolName: 'ado__get_me',
+              input: '{}',
+            },
+            {
+              type: 'finish',
+              finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+              usage,
+            },
+          ]),
+          streamOf([
+            { type: 'stream-start', warnings: [] },
+            {
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage,
+            },
+          ]),
+        ] as never,
+      });
+      const result = streamText({
+        model,
+        prompt: 'list my items',
+        tools,
+        stopWhen: stepCountIs(3),
+      });
+      const chunks: any[] = [];
+      const reader = toUIMessageStream({
+        stream: result.stream,
+        tools,
+      }).getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        const question = (value as any).output?._elicitation;
+        if (question?.status === 'open') {
+          await broker.respond(question.id, 'user:default/ana', {
+            action: 'accept',
+            content: { project: 'Pylon' },
+          });
+        }
+      }
+      const outputs = chunks.filter(c => c.type === 'tool-output-available');
+      expect(
+        outputs.map(o => [
+          o.preliminary ?? false,
+          o.output?._elicitation?.status ?? o.output,
+        ]),
+      ).toEqual([
+        [true, 'open'],
+        [true, 'accepted'],
+        // The SDK streams every yield as preliminary, then the last as final.
+        [true, [{ type: 'text', text: 'in Pylon' }]],
+        [false, [{ type: 'text', text: 'in Pylon' }]],
+      ]);
+      // The model's second step sees the final result, not the question.
+      const prompt = JSON.stringify(model.doStreamCalls[1].prompt);
+      expect(prompt).toContain('in Pylon');
+      expect(prompt).not.toContain('_elicitation');
     });
   });
 });

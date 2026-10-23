@@ -217,6 +217,11 @@ components:
             shape of each message is intentionally not over-constrained here.
           items:
             type: object
+        elicitation:
+          type: boolean
+          description: >-
+            True when the browser renders an MCP server's questions as forms
+            (MCP elicitation). Without it a server's question is cancelled.
         page:
           type: object
           description: >-
