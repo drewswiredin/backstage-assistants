@@ -44,7 +44,7 @@ _Avoid_: treating it as authorization (it is a checkpoint, not a permission), or
 An MCP server configured with `userCredentials`: no shared credential; every call carries the signed-in user's own token for that provider, which the browser gets from Backstage's auth APIs and sends in the `x-assistants-credentials` header on each request. Never stored. Without a token its tools are not offered and the model is told to ask the user to **Connect** (the chip beside the model picker). Its gated tools are approved call by call (no Always allow) unless the server sets `allowStandingApproval`.
 
 **Argument rule**:
-A server-side check on one MCP tool argument (`argumentRules`: `pattern` or `equals`), enforced before the approval prompt (a breaking call is denied at once with the reason) and again before the call. Keeps writes inside bounds such as an assistant-only branch prefix or draft-only pull requests, whatever the model was told.
+A server-side check on one MCP tool argument (`argumentRules`: `pattern` or `equals`), enforced before the approval prompt (a breaking call is denied at once with the reason) and again before the call. Optional: for a policy that must hold whatever the model was told, such as draft-only pull requests. None are configured by default.
 
 **Write preview**:
 The approval card's rendering of a gated write (`approvalPreview`): target, commit message, and a diff against the current content, which `POST /preview` reads with the server's configured read tool as the same user.

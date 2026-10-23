@@ -148,12 +148,8 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.secondary,
   },
   approvalDenied: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    margin: theme.spacing(0.5, 0),
     color: theme.palette.text.secondary,
-    fontSize: theme.typography.caption.fontSize,
+    textAlign: 'left',
   },
 }));
 
@@ -335,9 +331,20 @@ export function ToolFallback({
       }>,
     [groupJson],
   );
-  const groupDecided = group.find(g => g.approved !== null)?.approved as
-    | boolean
-    | undefined;
+  // Only a decision made while this call was waiting is mirrored. Calls of
+  // the same tool answered earlier in the message (an earlier step, or one a
+  // server rule denied) are not part of this batch.
+  const settledRef = useRef<{ id: string; ids: Set<string | undefined> }>();
+  if (settledRef.current?.id !== toolCallId) {
+    settledRef.current = {
+      id: toolCallId,
+      ids: new Set(group.filter(g => g.approved !== null).map(g => g.id)),
+    };
+  }
+  const settledBefore = settledRef.current.ids;
+  const groupDecided = group.find(
+    g => g.approved !== null && !settledBefore.has(g.id),
+  )?.approved as boolean | undefined;
   const groupPending = group.filter(g => g.approved === null);
   const isGroupLeader =
     groupPending.length > 0 && groupPending[0].id === toolCallId;
@@ -487,26 +494,30 @@ export function ToolFallback({
   const deniedReason = denied
     ? (approval as { reason?: string }).reason
     : undefined;
+  // One row per call. A denied call never ran, so its row says so in place
+  // of the result size, with the rule's reason when a rule denied it.
   return (
     <div>
-      {denied && (
-        <Typography
-          variant="caption"
-          component="div"
-          className={classes.approvalDenied}
-        >
-          <BlockIcon style={{ fontSize: 14 }} /> Denied — not run
-          {deniedReason ? `: ${deniedReason}` : ''}
-        </Typography>
-      )}
       <button
         type="button"
         className={classes.toolToggle}
         onClick={() => setOpen(v => !v)}
       >
-        {icon}
+        {denied ? (
+          <BlockIcon
+            fontSize="small"
+            htmlColor={theme.palette.text.secondary as string}
+          />
+        ) : (
+          icon
+        )}
         <span>{toolName}</span>
-        {hasResult && !open && (
+        {denied && (
+          <span className={classes.approvalDenied}>
+            — Denied, not run{deniedReason ? `: ${deniedReason}` : ''}
+          </span>
+        )}
+        {!denied && hasResult && !open && (
           <span>({formatBytes(formatPayload(result).length)})</span>
         )}
         {open ? (

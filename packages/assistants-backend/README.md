@@ -369,14 +369,6 @@ assistants:
             push_files,
             create_pull_request,
           ]
-        argumentRules:
-          create_branch: { branch: { pattern: '^backstage-assistant/' } }
-          create_or_update_file:
-            { branch: { pattern: '^backstage-assistant/' } }
-          push_files: { branch: { pattern: '^backstage-assistant/' } }
-          create_pull_request:
-            head: { pattern: '^backstage-assistant/' }
-            draft: { equals: true }
         approvalPreview:
           create_or_update_file:
             type: file
@@ -436,12 +428,22 @@ startup.
 allow**: every call is approved on its own. Set `allowStandingApproval: true`
 on the server to offer it.
 
-**Argument rules.** `argumentRules` checks a tool's arguments on the server
-before the call is offered for approval and again before it runs: `pattern`
-(the argument must be a string matching the regular expression) or `equals`.
-A missing argument fails. A call that breaks a rule is denied at once with the
-reason, which the model and the card both see, so the user never approves a
-call that would be refused. Rules work on any server, shared or per user.
+**Argument rules (optional).** A per-user server already limits every call
+to what the user may do, and approval puts each write in front of them, so
+most setups need no rules. When a policy should hold whatever the model is
+told, `argumentRules` checks a tool's arguments on the server before the call
+is offered for approval and again before it runs: `pattern` (the argument must
+be a string matching the regular expression) or `equals`. A missing argument
+fails. A call that breaks a rule is denied at once with the reason, which the
+model and the card both see, so the user never approves a call that would be
+refused. Rules work on any server, shared or per user. For example, to keep
+pull requests opened from the portal as drafts:
+
+```yaml
+argumentRules:
+  create_pull_request:
+    draft: { equals: true }
+```
 
 **Write previews.** `approvalPreview` makes the approval card show a write as
 its target (`owner/repo · branch · path`), the commit message, and a diff

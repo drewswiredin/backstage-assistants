@@ -12,6 +12,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Adding a tool, model, or access entry no longer scrolls the picker back to the top or clears the search, so a run of adds keeps its place.
+- A denied tool call shows as one row with a block icon and "Denied, not run" (with the rule's reason when a rule denied it), instead of a separate note followed by a green check on the same line.
+- A new call is no longer denied without asking because an earlier call of the same tool in the message was denied: only calls waiting together follow one approval.
 
 ## 0.21.0 - 2026-10-22
 
