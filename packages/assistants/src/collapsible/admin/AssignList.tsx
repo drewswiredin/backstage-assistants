@@ -1,8 +1,9 @@
 /**
  * The compact assignment control shared by the Models, Tools and Access
  * sections: a bare list of assigned rows (no surrounding box — each row carries
- * its own inline actions + a remove ✕) followed by a single "＋ Add …" button
- * that opens a searchable popover to add one unassigned item at a time. Each
+ * its own inline actions + a remove ✕) followed, set apart, by a full-width
+ * dashed "＋ Add …" button that opens a searchable popover to add one
+ * unassigned item at a time. Each
  * wrapper supplies its rows, its addable options (optionally grouped), and any
  * per-row action (e.g. the model default ★ or a tool ⓘ); this file owns only the
  * layout, the picker, and the add/remove plumbing.
@@ -146,10 +147,16 @@ const useStyles = makeStyles(theme => ({
   action: {
     flexShrink: 0,
   },
+  // Set apart from the rows: full width, dashed, with space above, so it
+  // reads as "add another" rather than one more row.
   addButton: {
-    marginTop: theme.spacing(0.5),
+    marginTop: theme.spacing(1.5),
     textTransform: 'none',
-    color: theme.palette.text.secondary,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    '&:hover': {
+      borderStyle: 'dashed',
+    },
   },
   emptyHint: {
     color: theme.palette.text.secondary,
@@ -414,6 +421,9 @@ export function AssignList({
 
       <Button
         size="small"
+        variant="outlined"
+        color="primary"
+        fullWidth
         className={classes.addButton}
         startIcon={<AddIcon />}
         onClick={e => setAnchor(e.currentTarget)}
