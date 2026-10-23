@@ -57,6 +57,7 @@ import {
   mcpToolName,
   splitAllowedTools,
   summarizeMcpTools,
+  type McpTurn,
   type UnavailableMcpServer,
 } from './mcp';
 import type { McpOAuthService } from './mcpOAuth';
@@ -987,6 +988,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         decision,
         target: auditTarget(input),
       });
+    const turn: McpTurn = {
+      assistantId,
+      ...(threadId ? { threadId } : {}),
+      renders: elicitation === true,
+      elicitations: {},
+    };
     const { tools: mcpTools, unavailable: unavailableServers } =
       await buildMcpTools(
         mcpSelections,
@@ -994,11 +1001,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         assistants.toolResultMaxChars,
         {
           caller,
-          turn: {
-            assistantId,
-            ...(threadId ? { threadId } : {}),
-            renders: elicitation === true,
-          },
+          turn,
           onCall: event => {
             if (
               event.outcome === 'rejected-by-rule' ||
@@ -1375,6 +1378,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
               last.metadata = {
                 ...(last.metadata as Record<string, unknown> | undefined),
                 canceled: true,
+              };
+            }
+          }
+          // How each call's last question ended, so its row still shows a
+          // declined, cancelled, or expired question after a reload.
+          const asked = turn.elicitations ?? {};
+          if (Object.keys(asked).length > 0 && finalMessages.length > 0) {
+            const last = finalMessages[finalMessages.length - 1];
+            if (last.role === 'assistant') {
+              last.metadata = {
+                ...(last.metadata as Record<string, unknown> | undefined),
+                elicitations: asked,
               };
             }
           }

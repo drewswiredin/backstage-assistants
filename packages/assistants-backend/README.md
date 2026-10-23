@@ -321,7 +321,8 @@ selected tool becomes an `allowedTools` entry namespaced `<serverId>__<tool>`,
 and the detail modal shows only the selected tools. There is no per-assistant
 server allowlist in config. When the editor opens it shows each server's reachability and
 its last `error`, from a listing no older than 5 minutes. An MCP tool call is
-capped at 60 seconds and stops with the turn.
+capped at 60 seconds, not counting time the user spends answering the server's
+question, and stops with the turn.
 
 With `headers` or `env`, a server runs on one static credential: one shared
 identity for every user. Gate access with the assistant's `access` policy, or
@@ -556,7 +557,7 @@ assistants:
         elicitation: true
 ```
 
-A shared server serves every user over one connection, so a question can only
+The form's Submit is enabled once the answer fits it. A shared server serves every user over one connection, so a question can only
 be tied to a user when one call is in flight on it; with several, the question
 is cancelled. That is why it is off by default for shared servers.
 
@@ -565,7 +566,8 @@ conversation is stopped, after three questions in one call, or while another
 question is open in the same conversation; a request to open a URL, or a form
 with fields outside MCP's restricted set (text, number, yes/no, single and
 multiple choice), is declined. The server decides what a decline or cancel
-means for its call. A field that looks like it asks for a secret gets a
+means for its call; the call's row is marked when its question was declined,
+cancelled, or expired. A field that looks like it asks for a secret gets a
 warning: MCP servers must not ask for passwords or tokens this way. Answers
 are checked against the server's form on the backend too; a second answer that
 doesn't fit cancels the question.

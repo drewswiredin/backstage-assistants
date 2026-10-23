@@ -59,6 +59,8 @@ export interface ElicitationCall {
   show: (prompt: ElicitationPrompt) => void;
   /** Questions asked so far in this call. */
   asked: number;
+  /** Told when a question opens (true) and settles (false). */
+  onWait?: (waiting: boolean) => void;
 }
 
 interface ElicitationRow {
@@ -186,10 +188,12 @@ export class ElicitationBroker {
 
     let answer: ElicitationResponseRequest | undefined;
     let status: ElicitationStatus;
+    call.onWait?.(true);
     try {
       answer = await this.wait(id, expiresAt, call.signal);
       status = answer ? STATUS_OF[answer.action] : 'expired';
     } finally {
+      call.onWait?.(false);
       this.waiting.delete(id);
       if (call.threadId) this.openThreads.delete(call.threadId);
       // Keep the row until it expires, so a late answer gets 410, but

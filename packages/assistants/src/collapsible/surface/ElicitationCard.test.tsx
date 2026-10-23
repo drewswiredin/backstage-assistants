@@ -38,16 +38,19 @@ const prompt = (
 beforeEach(() => respondElicitation.mockReset().mockResolvedValue(undefined));
 
 describe('ElicitationCard', () => {
-  it('shows who asks, checks required fields, and sends the answer only on Submit', async () => {
+  it('shows who asks, enables Submit once the answer fits, and sends it only on Submit', async () => {
     render(<ElicitationCard prompt={prompt()} />);
     expect(screen.getByText(/Azure DevOps needs input for/)).toBeTruthy();
     expect(screen.getByText('Select the project.')).toBeTruthy();
 
-    fireEvent.click(screen.getByText('Submit'));
-    expect(screen.getByText('Project is required')).toBeTruthy();
+    const submit = () =>
+      screen.getByText('Submit').closest('button') as HTMLButtonElement;
+    expect(submit().disabled).toBe(true);
+    fireEvent.click(submit());
     expect(respondElicitation).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByLabelText('Pylon'));
+    expect(submit().disabled).toBe(false);
     fireEvent.change(screen.getByLabelText('Count'), {
       target: { value: '4' },
     });

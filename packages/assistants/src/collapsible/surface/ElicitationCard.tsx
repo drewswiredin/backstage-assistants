@@ -160,8 +160,9 @@ function settledState(
  * An MCP server's question in the middle of a tool call (elicitation),
  * shown on the call as a form. The answer goes to that server only; the
  * model sees just the tool's result. Nothing is sent until the user chooses
- * Submit, Decline, or Cancel. A field that looks like a secret gets a
- * warning, and Decline becomes the main button.
+ * Submit (enabled once the answer fits the form), Decline, or Cancel. A
+ * field that looks like a secret gets a warning, and Decline becomes the
+ * main button.
  */
 export function ElicitationCard({
   prompt,
@@ -183,6 +184,9 @@ export function ElicitationCard({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<{ status: string; summary?: string }>();
   const sensitive = fields.some(isSensitiveElicitationField);
+  // Submit waits until the answer fits the form.
+  const incomplete =
+    validateElicitationContent(fields, contentOf(fields, values)).length > 0;
 
   const header = (
     <Typography variant="body2" component="div" className={classes.header}>
@@ -211,13 +215,6 @@ export function ElicitationCard({
   }
 
   const send = async (answer: ElicitationResponseRequest) => {
-    if (answer.action === 'accept') {
-      const problems = validateElicitationContent(fields, answer.content);
-      if (problems.length > 0) {
-        setErrors(problems);
-        return;
-      }
-    }
     setSending(true);
     setErrors([]);
     try {
@@ -416,7 +413,7 @@ export function ElicitationCard({
             size="small"
             color="primary"
             variant={sensitive ? 'outlined' : 'contained'}
-            disabled={sending}
+            disabled={sending || incomplete}
             onClick={() =>
               send({ action: 'accept', content: contentOf(fields, values) })
             }

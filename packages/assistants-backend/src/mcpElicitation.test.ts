@@ -145,6 +145,18 @@ describe('ElicitationBroker', () => {
     });
   });
 
+  it('tells the call while a question is open, so its ceiling can pause', async () => {
+    const waits: boolean[] = [];
+    const { call, shown } = callFor({ onWait: w => waits.push(w) });
+    broker.track(client, call);
+    const pending = broker.handle(client, server, projectQuestion());
+    const prompt = await opened(shown);
+    expect(waits).toEqual([true]);
+    await broker.respond(prompt.id, ANA, { action: 'decline' });
+    await pending;
+    expect(waits).toEqual([true, false]);
+  });
+
   it('takes an answer posted to another replica', async () => {
     const other = new ElicitationBroker({ db, logger, timeoutMs: 60_000 });
     const { call, shown } = callFor();

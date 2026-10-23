@@ -4,9 +4,10 @@ import { ToolFallback } from './parts';
 
 /** The message parts the approval card reads from the assistant-ui store. */
 let parts: unknown[] = [];
+let metadata: unknown;
 jest.mock('@assistant-ui/react', () => ({
   useAuiState: (select: (s: unknown) => unknown) =>
-    select({ message: { parts }, threadListItem: { custom: {} } }),
+    select({ message: { parts, metadata }, threadListItem: { custom: {} } }),
 }));
 jest.mock('../toolGuards', () => ({
   useToolGuards: () => ({
@@ -93,5 +94,60 @@ describe('ToolFallback approvals', () => {
       `${TOOL}— Denied, not run: 'branch' must match x`,
     );
     expect(container.querySelectorAll('button')).toHaveLength(1);
+  });
+});
+
+describe('ToolFallback questions from MCP servers', () => {
+  const question = (status: string) => ({
+    _elicitation: {
+      id: 'q1',
+      server: 'tracker',
+      serverTitle: 'Tracker',
+      tool: 'pick_project',
+      message: 'Select the project.',
+      requestedSchema: { type: 'object', properties: {} },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      status,
+    },
+  });
+  const finished = {
+    toolName: 'tracker__pick_project',
+    status: { type: 'complete' },
+    result: [{ type: 'text', text: 'No project chosen' }],
+  };
+
+  beforeEach(() => {
+    parts = [];
+    metadata = undefined;
+  });
+
+  it('marks the row when the question was declined during the turn', () => {
+    const { rerender } = render(
+      <ToolFallback
+        {...props({
+          toolName: 'tracker__pick_project',
+          status: { type: 'running' },
+          result: question('declined'),
+        })}
+      />,
+    );
+    rerender(<ToolFallback {...props(finished)} />);
+    expect(screen.getByRole('button').textContent).toContain(
+      '— You declined its question',
+    );
+  });
+
+  it('marks the row from the saved reply after a reload', () => {
+    metadata = { elicitations: { c2: 'expired' } };
+    render(<ToolFallback {...props(finished)} />);
+    expect(screen.getByRole('button').textContent).toContain(
+      '— Its question expired',
+    );
+  });
+
+  it('leaves an answered question as a plain result', () => {
+    metadata = { elicitations: { c2: 'accepted' } };
+    render(<ToolFallback {...props(finished)} />);
+    expect(screen.getByRole('button').textContent).not.toContain('—');
   });
 });

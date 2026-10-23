@@ -22,7 +22,17 @@ import { useTurnEndReason } from '../interruptedTurns';
 import { useToolGuards } from '../toolGuards';
 import { WritePreview } from './WritePreview';
 import { ElicitationCard } from './ElicitationCard';
-import type { ElicitationPrompt } from '@drewswiredin/backstage-plugin-assistants-common';
+import type {
+  ElicitationPrompt,
+  ElicitationStatus,
+} from '@drewswiredin/backstage-plugin-assistants-common';
+
+/** What a call's row says when the server's question went unanswered. */
+const UNANSWERED: Partial<Record<ElicitationStatus, string>> = {
+  declined: 'You declined its question',
+  cancelled: 'Its question was cancelled',
+  expired: 'Its question expired',
+};
 
 const useStyles = makeStyles(theme => ({
   thinkingMessage: {
@@ -304,6 +314,28 @@ export function ToolFallback({
   const [showRaw, setShowRaw] = useState(false);
   // A question left open by a turn that stopped can't be answered any more.
   const messageRunning = useAuiState(s => s.message.status?.type === 'running');
+  // How the call's last question ended: seen live on its preliminary output,
+  // or stamped on the saved reply by the backend.
+  const question = (
+    result as { _elicitation?: ElicitationPrompt } | null | undefined
+  )?._elicitation;
+  const lastQuestion = useRef<{ id: string; status?: ElicitationStatus }>();
+  if (lastQuestion.current?.id !== toolCallId) {
+    lastQuestion.current = { id: toolCallId };
+  }
+  if (question && question.status !== 'open') {
+    lastQuestion.current.status = question.status;
+  }
+  const savedQuestion = useAuiState(
+    s =>
+      (
+        s.message.metadata as
+          | { elicitations?: Record<string, ElicitationStatus> }
+          | undefined
+      )?.elicitations?.[toolCallId],
+  ) as ElicitationStatus | undefined;
+  const unanswered =
+    UNANSWERED[savedQuestion ?? lastQuestion.current.status ?? 'accepted'];
 
   // Same-tool sibling approvals in this message, as a value-stable JSON snapshot
   // (a string, so the external-store selector never churns its identity).
@@ -495,9 +527,6 @@ export function ToolFallback({
 
   // An MCP server's question mid-call (elicitation), streamed as a
   // preliminary output: the call shows the form until the result arrives.
-  const question = (
-    result as { _elicitation?: ElicitationPrompt } | null | undefined
-  )?._elicitation;
   if (question) {
     return (
       <ElicitationCard
@@ -522,19 +551,27 @@ export function ToolFallback({
         className={classes.toolToggle}
         onClick={() => setOpen(v => !v)}
       >
-        {denied ? (
+        {denied && (
           <BlockIcon
             fontSize="small"
             htmlColor={theme.palette.text.secondary as string}
           />
-        ) : (
-          icon
         )}
+        {!denied && unanswered && (
+          <ErrorOutlineIcon
+            fontSize="small"
+            htmlColor={theme.palette.warning?.main ?? '#ff9800'}
+          />
+        )}
+        {!denied && !unanswered && icon}
         <span>{toolName}</span>
         {denied && (
           <span className={classes.approvalDenied}>
             — Denied, not run{deniedReason ? `: ${deniedReason}` : ''}
           </span>
+        )}
+        {!denied && unanswered && (
+          <span className={classes.approvalDenied}>— {unanswered}</span>
         )}
         {!denied && hasResult && !open && (
           <span>({formatBytes(formatPayload(result).length)})</span>

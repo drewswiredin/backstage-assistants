@@ -12,6 +12,7 @@ import type { LoggerService } from '@backstage/backend-plugin-api';
 import {
   CLIENT_TOOL_NAME_PATTERN,
   type ElicitationPrompt,
+  type ElicitationStatus,
   type ToolSummary,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { isOAuthServer, type McpServerConfig } from './config';
@@ -882,6 +883,12 @@ export interface McpTurn {
   threadId?: string;
   /** The browser renders question forms (it said so on the request). */
   renders: boolean;
+  /**
+   * Filled in as questions settle: the last question's status per tool call
+   * id, which the router stamps on the persisted reply so the call's row
+   * shows a declined, cancelled, or expired question after a reload.
+   */
+  elicitations?: Record<string, ElicitationStatus>;
 }
 
 /**
@@ -895,7 +902,9 @@ async function* runAskingUser(
   toolName: string,
   caller: McpCaller,
   turn: McpTurn | undefined,
-  executeOptions: { abortSignal?: AbortSignal } | undefined,
+  executeOptions:
+    | { abortSignal?: AbortSignal; toolCallId?: string }
+    | undefined,
   run: (call: ElicitationCall) => Promise<unknown>,
 ): AsyncGenerator<unknown> {
   const shown: ElicitationPrompt[] = [];
@@ -917,6 +926,11 @@ async function* runAskingUser(
       ? { signal: executeOptions.abortSignal }
       : {}),
     show: prompt => {
+      if (prompt.status !== 'open' && executeOptions?.toolCallId) {
+        if (turn?.elicitations) {
+          turn.elicitations[executeOptions.toolCallId] = prompt.status;
+        }
+      }
       shown.push(prompt);
       state.wake?.();
     },
@@ -969,6 +983,42 @@ async function clientFor(
   return { client: connected.conn.client, token: connected.token };
 }
 
+/** A timeout whose clock stops between `pause()` and `resume()`. */
+export function pausableTimeout(ms: number) {
+  const controller = new AbortController();
+  let remaining = ms;
+  let started = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const start = () => {
+    started = Date.now();
+    timer = setTimeout(
+      () =>
+        controller.abort(
+          new DOMException(`Tool call timed out after ${ms}ms`, 'TimeoutError'),
+        ),
+      Math.max(0, remaining),
+    );
+  };
+  start();
+  return {
+    signal: controller.signal,
+    pause() {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = undefined;
+      remaining -= Date.now() - started;
+    },
+    resume() {
+      if (timer || controller.signal.aborted) return;
+      start();
+    },
+    clear() {
+      clearTimeout(timer);
+      timer = undefined;
+    },
+  };
+}
+
 /**
  * Run one MCP tool call, bounded by the turn's abort and the call ceiling.
  * Returns the result's content, or `{ _error, message }` for an error result
@@ -983,16 +1033,14 @@ async function callMcpTool(
   logger: LoggerService,
   toolResultMaxChars: number,
   abortSignal?: AbortSignal,
+  ceiling: AbortSignal = AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS),
 ): Promise<{ ok: boolean; value: unknown }> {
   try {
     // Bounded: the turn's abort (Stop) cancels an in-flight call, and a hung
     // server can't hold the turn past the call ceiling.
     const signal = abortSignal
-      ? AbortSignal.any([
-          abortSignal,
-          AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS),
-        ])
-      : AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS);
+      ? AbortSignal.any([abortSignal, ceiling])
+      : ceiling;
     const result = await client.callTool({
       name,
       arguments: (input ?? {}) as Record<string, unknown>,
@@ -1106,10 +1154,19 @@ export async function buildMcpTools(
       // it runs, so a question the server asks finds it), and the OAuth retry.
       const run = async (
         input: unknown,
-        executeOptions: { abortSignal?: AbortSignal } | undefined,
+        executeOptions:
+          | { abortSignal?: AbortSignal; toolCallId?: string }
+          | undefined,
         call?: ElicitationCall,
       ): Promise<unknown> => {
         const callOn = (c: MCPClient) => {
+          // The ceiling stops counting while the user answers a question;
+          // the question has its own timeout.
+          const ceiling = pausableTimeout(TOOL_CALL_TIMEOUT_MS);
+          if (call) {
+            call.onWait = waiting =>
+              waiting ? ceiling.pause() : ceiling.resume();
+          }
           const release = call && broker?.track(c, call);
           return callMcpTool(
             c,
@@ -1119,7 +1176,11 @@ export async function buildMcpTools(
             logger,
             toolResultMaxChars,
             executeOptions?.abortSignal,
-          ).finally(() => release?.());
+            ceiling.signal,
+          ).finally(() => {
+            ceiling.clear();
+            release?.();
+          });
         };
         const violation = argumentRuleViolation(t.name, rules, input);
         if (violation) {

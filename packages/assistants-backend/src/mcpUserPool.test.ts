@@ -453,6 +453,41 @@ describe('per-user MCP connections', () => {
       expect(seen[2]).toEqual([{ type: 'text', text: 'items in Pylon' }]);
     });
 
+    it('records how the question ended, for the reply to keep', async () => {
+      const declining = { ...turn, elicitations: {} };
+      const { tools } = await buildMcpTools(adoSelection, logger, 0, {
+        ...ana,
+        turn: declining,
+      });
+      const handler = opened[0].onElicitationRequest.mock.calls[0][1];
+      opened[0].callTool.mockImplementationOnce(async () => {
+        const answer = await handler({
+          method: 'elicitation/create',
+          params: {
+            message: 'Select the project.',
+            requestedSchema: {
+              type: 'object',
+              properties: { project: { type: 'string', enum: ['Pylon'] } },
+            },
+          },
+        });
+        return { content: [{ type: 'text', text: answer.action }] };
+      });
+      const outputs = (
+        tools.ado__get_me as {
+          execute: (i: unknown, o: unknown) => AsyncIterable<any>;
+        }
+      ).execute({}, { toolCallId: 'c7', messages: [] });
+      for await (const output of outputs) {
+        if (output?._elicitation?.status === 'open') {
+          await broker.respond(output._elicitation.id, 'user:default/ana', {
+            action: 'decline',
+          });
+        }
+      }
+      expect(declining.elicitations).toEqual({ c7: 'declined' });
+    });
+
     it('streams the question to the browser, and only the result to the model', async () => {
       const { tools } = await buildMcpTools(adoSelection, logger, 0, {
         ...ana,
