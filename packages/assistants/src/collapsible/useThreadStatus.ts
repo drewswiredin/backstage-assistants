@@ -13,6 +13,10 @@
  *   - `working` (in-flight) shows ALWAYS, even for the focused conversation
  *   - `unread` shows until you FOCUS the conversation (focusing marks it read)
  *   - rollups (assistant, nav, tab): `working` wins over `unread`
+ *
+ * Marking a conversation read also tells the other views in this browser tab
+ * directly (the nav icon keeps its own snapshot), because the server's `read`
+ * signal can be published on a replica this browser isn't connected to.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApiHolder } from '@backstage/core-plugin-api';
@@ -25,6 +29,14 @@ const NOTIFY_CHANNEL = 'assistants:threads';
 const POLL_INTERVAL_MS = 10_000;
 /** Refetch cadence while any conversation is working. */
 const WORKING_POLL_INTERVAL_MS = 5_000;
+
+/** This tab's views, told directly when one of them marks a conversation read. */
+const readListeners = new Set<(threadId: string) => void>();
+
+function markRead(api: AssistantsApi, threadId: string) {
+  readListeners.forEach(listener => listener(threadId));
+  void api.markThreadRead(threadId);
+}
 
 export type ConvStatus = 'read' | 'working' | 'unread';
 
@@ -69,7 +81,7 @@ export function useThreadStatus(
     // server so the rollups / nav / other tabs clear it too.
     const fid = focusedRef.current;
     if (fid && next.find(r => r.threadId === fid)?.unread) {
-      void api.markThreadRead(fid);
+      markRead(api, fid);
     }
   }, [api]);
 
@@ -108,13 +120,21 @@ export function useThreadStatus(
     return () => clearInterval(poll);
   }, [anyWorking, refresh]);
 
+  // A conversation marked read by any view in this tab (this one included).
+  useEffect(() => {
+    const listener = (threadId: string) =>
+      setRows(prev =>
+        prev.map(r => (r.threadId === threadId ? { ...r, unread: false } : r)),
+      );
+    readListeners.add(listener);
+    return () => {
+      readListeners.delete(listener);
+    };
+  }, []);
+
   // Focusing a conversation marks it read (optimistically + on the server).
   useEffect(() => {
-    if (!focusedId) return;
-    setRows(prev =>
-      prev.map(r => (r.threadId === focusedId ? { ...r, unread: false } : r)),
-    );
-    void api.markThreadRead(focusedId);
+    if (focusedId) markRead(api, focusedId);
   }, [focusedId, api]);
 
   const statusOf = useCallback(

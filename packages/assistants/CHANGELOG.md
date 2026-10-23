@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- The nav icon's unread dot clears as soon as you open the conversation, also on a backend with several replicas, where the server's read signal may not reach this browser.
+
 ## 0.22.1 - 2026-10-23
 
 ### Fixed
