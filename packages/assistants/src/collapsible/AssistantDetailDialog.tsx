@@ -230,15 +230,20 @@ export const AssistantDetailDialog: FC<{
   const clientDescriptions = new Map(
     clientTools.map(t => [t.name, t.description]),
   );
+  // Each group says whose identity its tools run under, in the editor's words.
   const groupLabels: Record<string, [string, string]> = {
-    [BACKSTAGE_SOURCE]: ['Backstage actions', 'runs as user'],
-    [CLIENT_SOURCE]: [
-      'Backstage client tools',
-      'runs as user, in your browser',
-    ],
+    [BACKSTAGE_SOURCE]: ['Backstage actions', 'runs as you'],
+    [CLIENT_SOURCE]: ['Browser tools', 'runs in your browser as you'],
   };
+  for (const spec of assistant.userCredentials ?? []) {
+    groupLabels[spec.server] = [
+      spec.server,
+      `MCP · runs as you, with your ${spec.title} sign-in`,
+    ];
+  }
   const groupLabel = (source: string) => groupLabels[source]?.[0] ?? source;
-  const groupTag = (source: string) => groupLabels[source]?.[1] ?? 'MCP';
+  const groupTag = (source: string) =>
+    groupLabels[source]?.[1] ?? 'MCP · shared credential';
 
   return (
     <Dialog

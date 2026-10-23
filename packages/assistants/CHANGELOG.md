@@ -3,6 +3,16 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The editor's tool groups say where tools come from and whose identity they run under: each header names the kind (Backstage, Browser, MCP server) and the source, then "Runs as you" with the specifics (your Backstage permissions, your own sign-ins in the browser, or your sign-in for a per-user MCP server) or "Shared credential" in amber for an MCP server with one configured identity. The detail dialog tags groups the same way.
+
+### Fixed
+
+- Adding a tool, model, or access entry no longer scrolls the picker back to the top or clears the search, so a run of adds keeps its place.
+
 ## 0.21.0 - 2026-10-22
 
 ### Added

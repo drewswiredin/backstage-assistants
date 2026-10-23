@@ -163,11 +163,6 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(1),
     paddingBottom: theme.spacing(0.5),
   },
-  // The Autocomplete's inline "popper": rendered in place under the input.
-  inlinePopper: {
-    position: 'relative',
-    width: '100% !important',
-  },
   // Restyle the Autocomplete paper/listbox to sit flush inside the popover.
   autocompletePaper: {
     margin: theme.spacing(0.5, 0, 0),
@@ -200,6 +195,43 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.8rem',
   },
 }));
+
+const useInlinePopperStyles = makeStyles({
+  // The Autocomplete's inline "popper": rendered in place under the input.
+  root: {
+    position: 'relative',
+    width: '100% !important',
+  },
+});
+
+/**
+ * Renders the listbox inline under the input (the popover is the "popup"); a
+ * nested floating Popper inside a Popover double-floats. Declared once at
+ * module level: an inline component would be a new type on every render, so
+ * React would remount the listbox after each add and MUI would scroll it back
+ * to the top.
+ */
+function InlinePopper({
+  children,
+  ...props
+}: {
+  children?: ReactNode | ((p: { placement: string }) => ReactNode);
+  [key: string]: unknown;
+}) {
+  const classes = useInlinePopperStyles();
+  // Popper props (anchorEl, open, …) aren't DOM attributes; keep only the
+  // ones a div understands.
+  const { role, id } = props as HTMLAttributes<HTMLDivElement>;
+  return (
+    <div role={role} id={id} className={classes.root}>
+      {/* Popper children may be a render-prop; the listbox needs neither
+          transition nor placement, so call it with a static placement. */}
+      {typeof children === 'function'
+        ? children({ placement: 'bottom-start' })
+        : children}
+    </div>
+  );
+}
 
 export function AssignList({
   rows,
@@ -290,7 +322,11 @@ export function AssignList({
     } else {
       onAdd(value.id);
     }
-    setQuery('');
+    // The query stays, so the next match is one click away; only a typed
+    // value is consumed by the add.
+    if (typeof value === 'string' || isTyped(value)) {
+      setQuery('');
+    }
   };
 
   const renderRow = (row: AssignRow) => (
@@ -420,23 +456,7 @@ export function AssignList({
               )}
             </>
           )}
-          // Render the listbox inline under the input (the popover is the
-          // "popup"); a nested floating Popper inside a Popover double-floats.
-          PopperComponent={({ children, ...props }) => (
-            <div
-              {...(props as HTMLAttributes<HTMLDivElement>)}
-              className={classes.inlinePopper}
-              style={{}}
-            >
-              {/* Popper children may be a render-prop; the listbox needs neither
-                  transition nor placement, so call it with a static placement. */}
-              {typeof children === 'function'
-                ? (children as (p: { placement: string }) => ReactNode)({
-                    placement: 'bottom-start',
-                  })
-                : children}
-            </div>
-          )}
+          PopperComponent={InlinePopper as never}
           classes={{
             paper: classes.autocompletePaper,
             listbox: classes.autocompleteListbox,

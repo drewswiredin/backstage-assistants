@@ -1,18 +1,17 @@
 /**
- * The Tools section: the assigned tools grouped by source (Backstage
- * runs-as-you actions first, then the browser's client tools, then one group
- * per MCP server) over an "＋ Add tool" picker drawn from the live
- * `/capabilities` inventory plus the client tools registered in this browser.
- * The picker groups
- * addable tools the same way (✓ reachable / ⚠ unreachable) and only offers live
- * items. Each
- * assigned row leads with a "runs as" icon (👤 the calling user for Backstage
- * actions / 🔑 the server's shared credential for MCP tools), shows a ⚖ when the
- * tool is in the global approval floor, and an ⓘ with the tool description.
- * STALE assignments (in `allowedTools` but not live) render flagged RED (gone) /
- * AMBER (unverifiable) with a remove ✕.
+ * The Tools section: the assigned tools grouped by source (Backstage actions,
+ * then the browser's client tools, then one group per MCP server) over an
+ * "＋ Add tool" picker drawn from the live `/capabilities` inventory plus the
+ * client tools registered in this browser, grouped the same way. Each group
+ * header names the source's kind and name, its reachability (MCP servers),
+ * and in words whose identity its tools run under: the user (Backstage
+ * permissions, the browser's own sign-ins, or a per-user server's sign-in) or
+ * a server's shared credential, flagged amber. Each assigned row leads with
+ * that identity's icon, shows a ⚖ when the tool needs approval, and an ⓘ with
+ * the tool description. STALE assignments (in `allowedTools` but not live)
+ * render flagged RED (gone) / AMBER (unverifiable) with a remove ✕.
  */
-import { ReactNode, useMemo } from 'react';
+import { useMemo } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import Tooltip from '@material-ui/core/Tooltip';
 import IconButton from '@material-ui/core/IconButton';
@@ -44,11 +43,47 @@ import {
 const useStyles = makeStyles(theme => ({
   groupHead: {
     display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  groupTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    minHeight: 24,
+  },
+  kind: {
+    fontSize: '0.68rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    padding: '1px 6px',
+    borderRadius: 4,
+    border: `1px solid ${theme.palette.divider}`,
+    color: theme.palette.text.secondary,
+  },
+  groupName: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: theme.palette.text.primary,
+  },
+  connect: {
+    padding: '0 6px',
+    minWidth: 0,
+    textTransform: 'none',
+  },
+  identity: {
+    display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    fontSize: '0.8rem',
-    fontWeight: 700,
+    fontSize: '0.75rem',
     color: theme.palette.text.secondary,
+  },
+  identityShared: {
+    color: theme.palette.warning?.main ?? '#b06f00',
+  },
+  identityIcon: {
+    fontSize: '0.95rem',
   },
   reachOk: {
     fontSize: '0.9rem',
@@ -87,64 +122,79 @@ function staleSourceLabel(source: string): string {
   return source;
 }
 
-/** Per-source display + reachability metadata for the picker group headers. */
+/** Where a group's tools come from. */
+type SourceKind = 'backstage' | 'client' | 'mcp';
+
+/** Per-source display + reachability metadata for the group headers. */
 interface SourceMeta {
-  heading: string;
+  kind: SourceKind;
+  /** "Backstage actions", "Browser tools", or the MCP server id. */
+  name: string;
   reachable: boolean;
   reachError?: string;
-  isBackstage: boolean;
   /** A per-user server: its sign-in, whose token its tools run with. */
   userCredentials?: UserCredentialSpec;
 }
 
-/**
- * The leading "runs as" indicator for a tool row: Backstage actions run as the
- * calling user; client tools run in the user's browser; MCP tools run as the
- * server's shared configured credential.
- */
-function runAsIcon(
-  source: string,
-  className: string,
-  perUser?: UserCredentialSpec,
-): ReactNode {
-  if (perUser) {
-    return (
-      <Tooltip title={`Runs as you, with your own ${perUser.title} sign-in.`}>
-        <PersonOutlineIcon
-          role="img"
-          aria-label={`Runs as you (${perUser.title} sign-in)`}
-          className={className}
-        />
-      </Tooltip>
-    );
+const KIND_LABEL: Record<SourceKind, string> = {
+  backstage: 'Backstage',
+  client: 'Browser',
+  mcp: 'MCP server',
+};
+
+/** Whose identity a source's tools run under, in words and as an icon. */
+interface Identity {
+  /** Short: "Runs as you" or "Shared credential". */
+  label: string;
+  /** The specifics: which sign-in or permissions apply. */
+  detail: string;
+  /** True when every user acts as one configured identity. */
+  shared: boolean;
+  Icon: typeof PersonOutlineIcon;
+}
+
+function identityOf(meta: SourceMeta): Identity {
+  if (meta.kind === 'backstage') {
+    return {
+      label: 'Runs as you',
+      detail: 'your Backstage permissions apply',
+      shared: false,
+      Icon: PersonOutlineIcon,
+    };
   }
-  if (source === CLIENT_SOURCE) {
-    return (
-      <Tooltip title="Runs in your browser as you (client tool).">
-        <WebOutlinedIcon
-          role="img"
-          aria-label="Runs in your browser as you (client tool)"
-          className={className}
-        />
-      </Tooltip>
-    );
+  if (meta.kind === 'client') {
+    return {
+      label: 'Runs in your browser as you',
+      detail: 'with your own sign-in to each system',
+      shared: false,
+      Icon: WebOutlinedIcon,
+    };
   }
-  if (source === BACKSTAGE_SOURCE) {
-    return (
-      <Tooltip title="Runs as you (Backstage action).">
-        <PersonOutlineIcon
-          role="img"
-          aria-label="Runs as you (Backstage action)"
-          className={className}
-        />
-      </Tooltip>
-    );
+  if (meta.userCredentials) {
+    return {
+      label: 'Runs as you',
+      detail: `with your own ${meta.userCredentials.title} sign-in`,
+      shared: false,
+      Icon: PersonOutlineIcon,
+    };
   }
+  return {
+    label: 'Shared credential',
+    detail: "every user acts as the server's configured identity",
+    shared: true,
+    Icon: VpnKeyOutlinedIcon,
+  };
+}
+
+/** The leading icon of a tool row: its source's identity, explained on hover. */
+function identityIcon(meta: SourceMeta | undefined, className: string) {
+  if (!meta) return undefined;
+  const { label, detail, Icon } = identityOf(meta);
   return (
-    <Tooltip title="Runs as the server's configured credential (shared, not you).">
-      <VpnKeyOutlinedIcon
+    <Tooltip title={`${label}: ${detail}.`}>
+      <Icon
         role="img"
-        aria-label="Runs as the server's configured credential (shared)"
+        aria-label={`${label}: ${detail}`}
         className={className}
       />
     </Tooltip>
@@ -192,9 +242,9 @@ export function ToolsTransfer({
     const opts: AssignOption[] = [];
 
     meta.set(BACKSTAGE_SOURCE, {
-      heading: 'Backstage actions',
+      kind: 'backstage',
+      name: 'Backstage actions',
       reachable: true,
-      isBackstage: true,
     });
     for (const a of capabilities.actions) {
       lookup.set(a.id, {
@@ -219,9 +269,9 @@ export function ToolsTransfer({
     );
     if (contributed.length > 0) {
       meta.set(CLIENT_SOURCE, {
-        heading: 'Backstage client tools',
+        kind: 'client',
+        name: 'Browser tools',
         reachable: true,
-        isBackstage: true,
       });
     }
     for (const t of contributed) {
@@ -245,10 +295,10 @@ export function ToolsTransfer({
     );
     for (const server of servers) {
       meta.set(server.id, {
-        heading: server.id,
+        kind: 'mcp',
+        name: server.id,
         reachable: server.reachable,
         reachError: server.error,
-        isBackstage: false,
         userCredentials: server.userCredentials,
       });
       for (const t of server.tools) {
@@ -291,15 +341,8 @@ export function ToolsTransfer({
         return {
           id,
           label: info?.label ?? bareToolName(id),
-          secondary:
-            source === BACKSTAGE_SOURCE || source === CLIENT_SOURCE
-              ? undefined
-              : source,
-          icon: runAsIcon(
-            source,
-            classes.runAs,
-            sources.get(source)?.userCredentials,
-          ),
+          // The group header names the source and its identity.
+          icon: identityIcon(sources.get(source), classes.runAs),
           group: source,
         };
       });
@@ -382,34 +425,51 @@ export function ToolsTransfer({
     );
   };
 
+  // Two lines per source: what it is and whether it can be reached, then
+  // whose identity its tools run under.
   const renderGroupHeader = (group: string) => {
     const m = sources.get(group);
     if (!m) {
       return group;
     }
+    const identity = identityOf(m);
     return (
-      <span className={classes.groupHead}>
-        {m.heading}
-        {!m.isBackstage &&
-          (m.reachable ? (
-            <Tooltip title="Reachable">
-              <CheckCircleIcon className={classes.reachOk} />
-            </Tooltip>
-          ) : (
-            <Tooltip title={m.reachError ?? 'Server unreachable'}>
-              <WarningIcon className={classes.reachWarn} />
-            </Tooltip>
-          ))}
-        {!m.reachable && m.userCredentials && onConnect && (
-          <Button
-            size="small"
-            color="primary"
-            onClick={() => onConnect(m.userCredentials!)}
-          >
-            Connect {m.userCredentials.title}
-          </Button>
-        )}
-      </span>
+      <div className={classes.groupHead}>
+        <div className={classes.groupTitle}>
+          <span className={classes.kind}>{KIND_LABEL[m.kind]}</span>
+          <span className={classes.groupName}>{m.name}</span>
+          {m.kind === 'mcp' &&
+            (m.reachable ? (
+              <Tooltip title="Reachable">
+                <CheckCircleIcon className={classes.reachOk} />
+              </Tooltip>
+            ) : (
+              <Tooltip title={m.reachError ?? 'Server unreachable'}>
+                <WarningIcon className={classes.reachWarn} />
+              </Tooltip>
+            ))}
+          {!m.reachable && m.userCredentials && onConnect && (
+            <Button
+              size="small"
+              color="primary"
+              className={classes.connect}
+              onClick={() => onConnect(m.userCredentials!)}
+            >
+              Connect {m.userCredentials.title}
+            </Button>
+          )}
+        </div>
+        <div
+          className={`${classes.identity} ${
+            identity.shared ? classes.identityShared : ''
+          }`}
+        >
+          <identity.Icon className={classes.identityIcon} />
+          <span>
+            <strong>{identity.label}</strong> · {identity.detail}
+          </span>
+        </div>
+      </div>
     );
   };
 
