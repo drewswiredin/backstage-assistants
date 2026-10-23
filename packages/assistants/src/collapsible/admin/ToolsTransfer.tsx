@@ -47,6 +47,7 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     textAlign: 'center',
     gap: 2,
+    paddingBottom: theme.spacing(0.75),
   },
   groupTitle: {
     display: 'flex',

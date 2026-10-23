@@ -180,8 +180,14 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(0.5, 1.25),
     minHeight: 0,
   },
+  // Sticks to the top of the list while its group scrolls under it; the next
+  // group's header pushes it off, since each sticks only within its group.
   groupHeader: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
     padding: theme.spacing(0.75, 1.25, 0.5),
+    backgroundColor: theme.palette.background.paper,
   },
   // The same rule between groups in the picker.
   pickerGroup: {
