@@ -19,6 +19,8 @@ import type {
   ToolCallMessagePartProps,
 } from '@assistant-ui/react';
 import { useTurnEndReason } from '../interruptedTurns';
+import { useToolGuards } from '../toolGuards';
+import { WritePreview } from './WritePreview';
 
 const useStyles = makeStyles(theme => ({
   thinkingMessage: {
@@ -290,6 +292,18 @@ export function ToolFallback({
   // with a count; the rest hide and mirror the leader's decision — so a whole
   // batch is resolved with a single click.
   const awaitingApproval = !!approval && approval.approved === undefined;
+  // Gated writes can show a preview instead of JSON, and some tools take no
+  // standing grant (each call is approved on its own).
+  const { approveEachCall, approvalPreviews, assistantForTool } =
+    useToolGuards();
+  const preview = approvalPreviews[toolName];
+  const allowStanding = !approveEachCall.has(toolName);
+  const threadAssistantId = useAuiState(
+    s =>
+      (s.threadListItem?.custom as { assistantId?: string } | undefined)
+        ?.assistantId,
+  ) as string | undefined;
+  const [showRaw, setShowRaw] = useState(false);
 
   // Same-tool sibling approvals in this message, as a value-stable JSON snapshot
   // (a string, so the external-store selector never churns its identity).
@@ -372,16 +386,40 @@ export function ToolFallback({
             </>
           )}
         </Typography>
-        <Typography
-          variant="caption"
-          component="div"
-          className={classes.payloadTitle}
-        >
-          {count > 1 ? `Inputs (${count})` : 'Input'}
-        </Typography>
-        <pre className={classes.payloadBlock}>
-          {formatPayload(count > 1 ? inputs : inputs[0])}
-        </pre>
+        {preview &&
+          inputs.map((input, i) => (
+            <WritePreview
+              key={groupPending[i]?.id ?? i}
+              preview={preview}
+              toolName={toolName}
+              assistantId={threadAssistantId ?? assistantForTool(toolName)}
+              input={(input ?? {}) as Record<string, unknown>}
+            />
+          ))}
+        {preview && (
+          <Button
+            type="button"
+            size="small"
+            variant="text"
+            onClick={() => setShowRaw(v => !v)}
+          >
+            {showRaw ? 'Hide raw input' : 'Show raw input'}
+          </Button>
+        )}
+        {(!preview || showRaw) && (
+          <>
+            <Typography
+              variant="caption"
+              component="div"
+              className={classes.payloadTitle}
+            >
+              {count > 1 ? `Inputs (${count})` : 'Input'}
+            </Typography>
+            <pre className={classes.payloadBlock}>
+              {formatPayload(count > 1 ? inputs : inputs[0])}
+            </pre>
+          </>
+        )}
         <div className={classes.approvalActions}>
           <Button
             type="button"
@@ -392,23 +430,25 @@ export function ToolFallback({
           >
             {count > 1 ? `Allow all (${count})` : 'Allow'}
           </Button>
-          <Button
-            type="button"
-            variant="outlined"
-            color="primary"
-            size="small"
-            // Standing grant: approve these AND skip the prompt for this tool for
-            // the rest of the conversation (backend reads `always:<tool>` from
-            // history — see the approval gate in router.ts).
-            onClick={() =>
-              respondToApproval?.({
-                approved: true,
-                reason: `always:${toolName}`,
-              })
-            }
-          >
-            Always allow
-          </Button>
+          {allowStanding && (
+            <Button
+              type="button"
+              variant="outlined"
+              color="primary"
+              size="small"
+              // Standing grant: approve these AND skip the prompt for this tool for
+              // the rest of the conversation (backend reads `always:<tool>` from
+              // history — see the approval gate in router.ts).
+              onClick={() =>
+                respondToApproval?.({
+                  approved: true,
+                  reason: `always:${toolName}`,
+                })
+              }
+            >
+              Always allow
+            </Button>
+          )}
           <Button
             type="button"
             variant="text"
@@ -418,20 +458,35 @@ export function ToolFallback({
             {count > 1 ? 'Deny all' : 'Deny'}
           </Button>
         </div>
-        <Typography
-          variant="caption"
-          component="div"
-          className={classes.approvalHint}
-        >
-          <strong>Always allow</strong> runs <strong>{toolName}</strong> without
-          asking again for the rest of this conversation
-          {count > 1 ? ' (covers these and any further calls)' : ''}.
-        </Typography>
+        {allowStanding ? (
+          <Typography
+            variant="caption"
+            component="div"
+            className={classes.approvalHint}
+          >
+            <strong>Always allow</strong> runs <strong>{toolName}</strong>{' '}
+            without asking again for the rest of this conversation
+            {count > 1 ? ' (covers these and any further calls)' : ''}.
+          </Typography>
+        ) : (
+          <Typography
+            variant="caption"
+            component="div"
+            className={classes.approvalHint}
+          >
+            <strong>{toolName}</strong> runs as you; every call needs its own
+            approval.
+          </Typography>
+        )}
       </Box>
     );
   }
 
   const denied = !!approval && approval.approved === false;
+  // A server-side argument rule denies with its reason; a user's Deny has none.
+  const deniedReason = denied
+    ? (approval as { reason?: string }).reason
+    : undefined;
   return (
     <div>
       {denied && (
@@ -441,6 +496,7 @@ export function ToolFallback({
           className={classes.approvalDenied}
         >
           <BlockIcon style={{ fontSize: 14 }} /> Denied — not run
+          {deniedReason ? `: ${deniedReason}` : ''}
         </Typography>
       )}
       <button

@@ -3,6 +3,16 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Per-user MCP servers: `mcp.servers.<id>.userCredentials` connects a server with each signed-in user's own token instead of a shared credential, so the remote system limits every call to the user's access and attributes writes to them. The browser sends the token in the `x-assistants-credentials` header on each request; it is never stored, logged, or put in a message. Each user gets their own pooled connection, reused while the token is unchanged, closed after 10 minutes idle, at most 200 per replica. Without a token the server offers no tools and the model is told to ask the user to connect; a rejected token reaches the model with the server's message. The tool list is kept in the new `mcp_tool_cache` table for `/status` and the editor, which lists the server as the admin when they are signed in.
+- `mcp.servers.<id>.argumentRules`: `pattern` or `equals` checks on tool arguments, enforced before the approval prompt (a breaking call is denied at once with the reason) and again before the call. A missing argument fails.
+- `mcp.servers.<id>.approvalPreview` and `POST /preview`: the approval card shows a write as its target, commit message, and a diff against the current content, read with the configured read tool as the same user.
+- An `assistants.tool.audit` log line for every gated MCP call (approved, denied, executed, failed) and every rule rejection, with the call's identifying arguments only.
+- A per-user server's gated tools are approved call by call; `allowStandingApproval: true` offers Always allow.
+
 ## 0.20.2 - 2026-10-22
 
 ### Fixed

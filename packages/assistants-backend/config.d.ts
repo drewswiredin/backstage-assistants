@@ -136,6 +136,88 @@ export interface Config {
            * AI-SDK `toolApproval` gate as the top-level `requireApproval`.
            */
           requireApproval?: string[];
+          /**
+           * Connect per user: each turn calls this server with the signed-in
+           * user's own token, which the browser gets from Backstage's auth
+           * APIs and sends with the turn. Never stored. A user who hasn't
+           * connected gets none of the server's tools. Excludes a static
+           * credential in the same header or environment variable.
+           */
+          userCredentials?: {
+            /**
+             * The Backstage auth provider: `github`, `gitlab`, `microsoft`,
+             * `google`, `atlassian`, `okta`, `onelogin`, `bitbucket`,
+             * `bitbucketServer`, `openshift`, or `vmwareCloud`.
+             */
+            provider: string;
+            /**
+             * SCM host, e.g. `github.com`. When set, the token comes from
+             * Backstage's SCM auth for that host's integration.
+             */
+            host?: string;
+            /** OAuth scopes to request. Defaults to the provider's own. */
+            scopes?: string[];
+            /** Name in "Connect …". Defaults to the provider's name. */
+            title?: string;
+            /** http/sse: header the token is sent in. Defaults to `Authorization`. */
+            header?: string;
+            /** http/sse: prefix before the token. Defaults to `Bearer`; `''` sends it bare. */
+            scheme?: string;
+            /** stdio: environment variable the token is set in (required for stdio). */
+            env?: string;
+          };
+          /**
+           * A per-user server's gated tools take the "Always allow" grant
+           * only when true; otherwise every call is approved on its own.
+           * Defaults to false.
+           */
+          allowStandingApproval?: boolean;
+          /**
+           * Checks on tool arguments, enforced server-side before a call is
+           * offered for approval and again before it runs. Keyed by tool,
+           * then argument. A missing argument fails.
+           */
+          argumentRules?: {
+            [toolName: string]: {
+              [argument: string]: {
+                /** The argument must be a string matching this regular expression. */
+                pattern?: string;
+                /** The argument must equal this value. */
+                equals?: string | number | boolean;
+              };
+            };
+          };
+          /**
+           * How the approval card shows a write: the target and a diff
+           * instead of raw JSON. Keyed by tool.
+           */
+          approvalPreview?: {
+            [toolName: string]: {
+              /** `file`: one file. `files`: a list of `{ path, content }` in one commit. */
+              type: 'file' | 'files';
+              /**
+               * Templates over the call's input: `{owner}/{repo}`
+               * interpolates, a bare name reads that argument.
+               */
+              fields: {
+                repo?: string;
+                branch?: string;
+                path?: string;
+                content?: string;
+                files?: string;
+                message?: string;
+              };
+              /**
+               * The server's read tool for the current content, run as the
+               * same user for the diff. `args` are templates over the call's
+               * input (for `files`, merged with each file entry).
+               */
+              base?: {
+                tool: string;
+                args?: { [argument: string]: string };
+              };
+            };
+          };
         };
       };
     };

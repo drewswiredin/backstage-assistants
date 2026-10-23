@@ -56,6 +56,8 @@ import {
   ClientToolsProvider,
   useClientTools,
 } from '../clientTools/ClientToolsProvider';
+import { ToolGuardsProvider, useToolGuards } from '../collapsible/toolGuards';
+import { ConnectChips } from '../collapsible/surface/ConnectChips';
 import { ClientToolRegistrations } from '../clientTools/ClientToolRegistrations';
 import type { AssistantClientTool } from '../clientTools/types';
 import { ConversationSurface } from '../collapsible/surface';
@@ -334,7 +336,9 @@ function EmbeddedAssistantInner(props: EmbeddedAssistantProps) {
       tools={props.clientTools}
       requireApproval={status.value.requireApproval}
     >
-      <EmbeddedChat {...props} status={status.value} assistant={assistant} />
+      <ToolGuardsProvider status={status.value} api={api}>
+        <EmbeddedChat {...props} status={status.value} assistant={assistant} />
+      </ToolGuardsProvider>
     </ClientToolsProvider>
   );
 }
@@ -484,6 +488,10 @@ function EmbeddedRuntime({
   clientToolAttributesRef.current = Object.fromEntries(
     clientTools.map(t => [t.name, t.attributes]),
   );
+  // Read live by the transport: the credentials header for per-user servers.
+  const toolGuards = useToolGuards();
+  const toolGuardsRef = useRef(toolGuards);
+  toolGuardsRef.current = toolGuards;
   const runtimeHook = useMemo(
     () =>
       makeRuntimeHook({
@@ -493,6 +501,8 @@ function EmbeddedRuntime({
         modelIdRef,
         reasoningLevelRef,
         getClientToolAttributes: () => clientToolAttributesRef.current,
+        getCredentialsHeader: assistantId =>
+          toolGuardsRef.current.credentialsHeader(assistantId),
         getPageContext: () => pageContextRef.current,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -858,15 +868,18 @@ function EmbeddedChrome({
           }
           usedTokens={usageOf(remoteId)}
           composerControls={
-            <ModelControls
-              pool={status.models}
-              allowed={allowedModels}
-              modelId={modelId}
-              defaultModel={defaultModel}
-              onModelChange={handleModelChange}
-              reasoningLevel={reasoningLevel}
-              onReasoningChange={handleReasoningChange}
-            />
+            <>
+              <ConnectChips assistantId={assistant.id} />
+              <ModelControls
+                pool={status.models}
+                allowed={allowedModels}
+                modelId={modelId}
+                defaultModel={defaultModel}
+                onModelChange={handleModelChange}
+                reasoningLevel={reasoningLevel}
+                onReasoningChange={handleReasoningChange}
+              />
+            </>
           }
         />
       </div>

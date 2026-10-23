@@ -4,6 +4,8 @@ import {
   type MCPClientConfig,
 } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
+import { createHash } from 'crypto';
+import type { Knex } from 'knex';
 import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import {
@@ -12,6 +14,7 @@ import {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { McpServerConfig } from './config';
 import { truncateToolResult } from './truncateToolResult';
+import { argumentRuleViolation } from './toolGuards';
 
 /**
  * MCP (Model Context Protocol) integration, on `@ai-sdk/mcp` (the AI SDK's own
@@ -21,10 +24,13 @@ import { truncateToolResult } from './truncateToolResult';
  * around the client are ours; the protocol client and transports are the
  * library's.
  *
- * Auth is a single static credential per server (the configured headers / stdio
- * env) — one shared identity for all users, NOT run-as-user. Access is gated by
+ * Auth is either a single static credential per server (the configured headers
+ * / stdio env: one shared identity for all users), or, for a server with
+ * `userCredentials`, the signed-in user's own token, sent by the browser with
+ * each turn and held only in that user's pooled connection. Access is gated by
  * the assistant's `access` policy and its explicit per-tool `allowedTools`
- * entries (`<serverId>__<tool>`; no wildcard).
+ * entries (`<serverId>__<tool>`; no wildcard); a per-user server additionally
+ * caps every call at what the user's own token may do.
  */
 
 const NAME_SEPARATOR = '__';
@@ -150,26 +156,38 @@ function isToolAllowed(allowlist: string[], name: string): boolean {
   return allowlist.includes(name);
 }
 
-function transportFor(server: McpServerConfig): MCPClientConfig['transport'] {
+/**
+ * The transport for a server; for a per-user server, carrying the user's
+ * `token` in the configured header (http/sse) or environment variable (stdio).
+ */
+function transportFor(
+  server: McpServerConfig,
+  token?: string,
+): MCPClientConfig['transport'] {
+  const uc = token ? server.userCredentials : undefined;
   // Local process transport. The library merges the configured env over its
   // safe inherited defaults (PATH etc.).
   if (server.transport === 'stdio') {
+    const env = uc?.env ? { ...server.env, [uc.env]: token! } : server.env;
     return new Experimental_StdioMCPTransport({
       command: server.command as string,
       args: server.args,
-      env: server.env,
+      env,
       cwd: server.cwd,
     });
   }
 
   // Remote transports (Streamable HTTP / legacy SSE) are plain config.
+  const headers = uc
+    ? {
+        ...server.headers,
+        [uc.header]: uc.scheme ? `${uc.scheme} ${token}` : token!,
+      }
+    : server.headers;
   return {
     type: server.transport === 'sse' ? 'sse' : 'http',
     url: server.url as string,
-    headers:
-      server.headers && Object.keys(server.headers).length > 0
-        ? server.headers
-        : undefined,
+    headers: headers && Object.keys(headers).length > 0 ? headers : undefined,
   };
 }
 
@@ -300,6 +318,7 @@ async function refreshServer(
     entry.reachable = true;
     entry.error = undefined;
     entry.fetchedAt = Date.now();
+    warnUnknownToolNames(server, entry.tools, logger);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`MCP server '${server.id}' tool listing failed: ${message}`);
@@ -335,7 +354,38 @@ export interface ServerToolProbe {
 export async function probeServerTools(
   server: McpServerConfig,
   logger: LoggerService,
+  caller?: { userEntityRef: string; token?: string },
 ): Promise<ServerToolProbe> {
+  // A per-user server is listed as the caller when they sent a token, and
+  // otherwise from its shared inventory: the last listing any user got.
+  if (server.userCredentials) {
+    if (caller?.token) {
+      try {
+        const conn = await userConnection(
+          server,
+          caller.userEntityRef,
+          caller.token,
+          logger,
+        );
+        return { reachable: true, tools: conn.tools };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          reachable: false,
+          error: message,
+          tools: cachedServerToolsRaw(server.id),
+        };
+      }
+    }
+    const tools = cachedServerToolsRaw(server.id);
+    return tools.length > 0
+      ? { reachable: true, tools }
+      : {
+          reachable: false,
+          error: `Connect ${server.userCredentials.title} to discover this server's tools`,
+          tools,
+        };
+  }
   const cached = pool.get(server.id);
   if (
     cached &&
@@ -360,6 +410,259 @@ export async function probeServerTools(
  */
 export function cachedServerToolsRaw(serverId: string): RawMcpTool[] {
   return pool.get(serverId)?.tools ?? [];
+}
+
+// --- Per-user connections ----------------------------------------------------
+// A server with `userCredentials` has no shared connection. Each user gets a
+// client of their own, opened on their first turn with their token and reused
+// while the token stays the same; a refreshed token reconnects. Connections
+// idle for 10 minutes are closed, and at most 200 are kept (least recently
+// used closed first). Tokens are never stored: only their hash, to tell a
+// refreshed token from the one the connection was opened with.
+//
+// The tool schemas are the same for every user, so the first listing is also
+// kept as the server's shared inventory (in the pool entry, and through the
+// tool cache store, in the database) for `/status` and the editor.
+
+/** A user's connection to a per-user server, with the tools it lists for them. */
+interface UserConnection {
+  client: MCPClient;
+  tokenHash: string;
+  tools: RawMcpTool[];
+  lastUsed: number;
+}
+const userPool = new Map<string, UserConnection>();
+const userConnecting = new Map<string, Promise<UserConnection>>();
+
+const USER_IDLE_MS = 10 * 60 * 1000;
+const USER_POOL_MAX = 200;
+
+function userKey(serverId: string, userEntityRef: string): string {
+  return `${serverId}|${userEntityRef}`;
+}
+
+function tokenHashOf(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/** Persists the shared tool inventory of per-user servers across restarts. */
+export interface McpToolCacheStore {
+  load(): Promise<Map<string, RawMcpTool[]>>;
+  save(serverId: string, tools: RawMcpTool[]): Promise<void>;
+}
+let toolCacheStore: McpToolCacheStore | undefined;
+
+/** {@link McpToolCacheStore} on the plugin database's `mcp_tool_cache` table. */
+export function databaseToolCacheStore(db: Knex): McpToolCacheStore {
+  return {
+    async load() {
+      const rows = (await db('mcp_tool_cache').select(
+        'server_id',
+        'tools_json',
+      )) as Array<{ server_id: string; tools_json: string }>;
+      return new Map(
+        rows.map(row => [row.server_id, JSON.parse(row.tools_json)]),
+      );
+    },
+    async save(serverId, tools) {
+      await db('mcp_tool_cache')
+        .insert({
+          server_id: serverId,
+          tools_json: JSON.stringify(tools),
+          updated_at: new Date(),
+        })
+        .onConflict('server_id')
+        .merge();
+    },
+  };
+}
+
+/**
+ * Seed the per-user servers' tool inventories from `store` and keep saving
+ * new listings to it. Called once at startup.
+ */
+export async function initMcpToolCache(
+  store: McpToolCacheStore,
+  servers: McpServerConfig[],
+  logger: LoggerService,
+): Promise<void> {
+  toolCacheStore = store;
+  try {
+    const cached = await store.load();
+    for (const server of servers) {
+      const tools = server.userCredentials && cached.get(server.id);
+      if (tools) {
+        const entry = poolEntry(server.id);
+        entry.tools = tools;
+        entry.reachable = true;
+        entry.fetchedAt = Date.now();
+      }
+    }
+  } catch (error) {
+    logger.warn(
+      `MCP tool cache could not be read: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+/** Keep a per-user server's latest listing as its shared inventory. */
+function recordSharedTools(
+  server: McpServerConfig,
+  tools: RawMcpTool[],
+  logger: LoggerService,
+): void {
+  const entry = poolEntry(server.id);
+  const changed = JSON.stringify(entry.tools) !== JSON.stringify(tools);
+  entry.tools = tools;
+  entry.reachable = true;
+  entry.error = undefined;
+  entry.fetchedAt = Date.now();
+  warnUnknownToolNames(server, tools, logger);
+  if (changed && toolCacheStore) {
+    toolCacheStore
+      .save(server.id, tools)
+      .catch(error =>
+        logger.warn(
+          `MCP tool cache for '${server.id}' could not be saved: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ),
+      );
+  }
+}
+
+const warnedServers = new Set<string>();
+
+/**
+ * Warn once per server about guard config naming tools the server doesn't
+ * list: a typo there would silently leave a write unguarded.
+ */
+function warnUnknownToolNames(
+  server: McpServerConfig,
+  tools: RawMcpTool[],
+  logger: LoggerService,
+): void {
+  if (warnedServers.has(server.id) || tools.length === 0) return;
+  warnedServers.add(server.id);
+  const listed = new Set(tools.map(t => t.name));
+  const named = new Set([
+    ...(server.requireApproval ?? []),
+    ...Object.keys(server.argumentRules ?? {}),
+    ...Object.entries(server.approvalPreview ?? {}).flatMap(([name, p]) =>
+      p.base ? [name, p.base.tool] : [name],
+    ),
+  ]);
+  const unknown = [...named].filter(name => !listed.has(name));
+  if (unknown.length > 0) {
+    logger.warn(
+      `MCP server '${
+        server.id
+      }' does not list tool(s) named in its config: ${unknown.join(', ')}`,
+    );
+  }
+}
+
+/** Close idle per-user connections and the least recently used beyond the cap. */
+function sweepUserPool(now = Date.now()): void {
+  for (const [key, conn] of userPool) {
+    if (now - conn.lastUsed > USER_IDLE_MS || userPool.size > USER_POOL_MAX) {
+      userPool.delete(key);
+      void conn.client.close().catch(() => {});
+    }
+  }
+}
+
+/**
+ * The user's connection to a per-user server, opened with `token` when there
+ * is none or the token changed. Concurrent calls for the same user and token
+ * share one connect. Throws when the server can't be reached or rejects the
+ * token, with the server's message.
+ */
+async function userConnection(
+  server: McpServerConfig,
+  userEntityRef: string,
+  token: string,
+  logger: LoggerService,
+): Promise<UserConnection> {
+  const key = userKey(server.id, userEntityRef);
+  const tokenHash = tokenHashOf(token);
+  const existing = userPool.get(key);
+  if (existing && existing.tokenHash === tokenHash) {
+    // Re-insert so Map order stays least recently used first.
+    userPool.delete(key);
+    existing.lastUsed = Date.now();
+    userPool.set(key, existing);
+    return existing;
+  }
+  const pendingKey = `${key}|${tokenHash}`;
+  const pending = userConnecting.get(pendingKey);
+  if (pending) return pending;
+
+  const connect = (async () => {
+    if (existing) {
+      userPool.delete(key);
+      await existing.client.close().catch(() => {});
+    }
+    const timeoutMs = probeTimeoutMs(server);
+    const connectPromise = createMCPClient({
+      transport: transportFor(server, token),
+      clientName: 'backstage-plugin-assistants',
+      onUncaughtError: e =>
+        logger.warn(
+          `MCP server '${server.id}' transport error: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        ),
+    });
+    let client: MCPClient | undefined;
+    try {
+      client = await withTimeout(
+        connectPromise,
+        timeoutMs,
+        `MCP '${server.id}' connect`,
+      );
+      const { tools } = await client.listTools({
+        options: { signal: AbortSignal.timeout(timeoutMs) },
+      });
+      const raw = tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      }));
+      const conn: UserConnection = {
+        client,
+        tokenHash,
+        tools: raw,
+        lastUsed: Date.now(),
+      };
+      userPool.set(key, conn);
+      sweepUserPool();
+      recordSharedTools(server, raw, logger);
+      return conn;
+    } catch (error) {
+      if (client) {
+        await client.close().catch(() => {});
+      } else {
+        void connectPromise
+          .then(c => c.close().catch(() => {}))
+          .catch(() => {});
+      }
+      throw error;
+    }
+  })();
+  userConnecting.set(pendingKey, connect);
+  try {
+    return await connect;
+  } finally {
+    userConnecting.delete(pendingKey);
+  }
+}
+
+/** How many per-user connections are open. */
+export function userConnectionCount(): number {
+  return userPool.size;
 }
 
 /**
@@ -392,7 +695,10 @@ export async function maintainMcpConnections(
   servers: McpServerConfig[],
   logger: LoggerService,
 ): Promise<void> {
-  const queue = [...servers];
+  // Per-user servers have no shared connection to keep: there is no token to
+  // probe them with. Their idle user connections are closed instead.
+  sweepUserPool();
+  const queue = servers.filter(server => !server.userCredentials);
   const worker = async (): Promise<void> => {
     for (let next = queue.shift(); next; next = queue.shift()) {
       await refreshServer(next, logger);
@@ -400,7 +706,7 @@ export async function maintainMcpConnections(
   };
   await Promise.all(
     Array.from(
-      { length: Math.min(MAINTAIN_CONCURRENCY, servers.length) },
+      { length: Math.min(MAINTAIN_CONCURRENCY, queue.length) },
       worker,
     ),
   );
@@ -411,10 +717,13 @@ export async function maintainMcpConnections(
  * stdio servers this also terminates the spawned child process.
  */
 export async function closeMcpPool(): Promise<void> {
-  await Promise.all(
-    [...pool.values()].map(e => e.client?.close().catch(() => {})),
-  );
+  await Promise.all([
+    ...[...pool.values()].map(e => e.client?.close().catch(() => {})),
+    ...[...userPool.values()].map(c => c.client.close().catch(() => {})),
+  ]);
   pool.clear();
+  userPool.clear();
+  warnedServers.clear();
 }
 
 /**
@@ -437,42 +746,217 @@ export function summarizeMcpTools(
 
 // --- /chat: tools from the pooled connections -------------------------------
 
+/** What happened to a guarded MCP tool call, for the audit record. */
+export interface McpToolCallEvent {
+  server: string;
+  /** The un-namespaced tool name. */
+  tool: string;
+  /** The namespaced name the model sees. */
+  name: string;
+  outcome: 'executed' | 'failed' | 'rejected-by-rule';
+  input: unknown;
+}
+
+/** The signed-in user and the tokens their browser sent for per-user servers. */
+export interface McpCaller {
+  userEntityRef: string;
+  /** Token per per-user server id. */
+  credentials: Record<string, string>;
+}
+
+/** A selected per-user server that offers no tools this turn, and why. */
+export interface UnavailableMcpServer {
+  server: McpServerConfig;
+  /** Set when connecting failed; absent when the user sent no token. */
+  error?: string;
+}
+
 /**
- * Build the AI-SDK tool set for a turn from the POOLED connections — no per-turn
- * connect or listTools. Tool definitions come from the maintained cache (incl.
- * input schemas); each tool's `execute` calls through the persistent pooled
- * client, re-read at call time so a reconnect by the scheduler is picked up. A
- * server with no live connection yields a graceful "not connected" tool error
- * and is healed by the next maintenance cycle. Connections are NEVER opened or
- * closed here.
+ * A client for a server: the pooled shared client, or the caller's own
+ * connection for a per-user server (reconnecting if it was closed meanwhile).
  */
-export function buildMcpTools(
+async function clientFor(
+  server: McpServerConfig,
+  caller: McpCaller | undefined,
+  logger: LoggerService,
+): Promise<MCPClient | undefined> {
+  if (!server.userCredentials) return pool.get(server.id)?.client;
+  const token = caller?.credentials[server.id];
+  if (!caller || !token) return undefined;
+  return (await userConnection(server, caller.userEntityRef, token, logger))
+    .client;
+}
+
+/**
+ * Run one MCP tool call, bounded by the turn's abort and the call ceiling.
+ * Returns the result's content, or `{ _error, message }` for an error result
+ * or a throw, with the server's message so the model can explain it (a 401 or
+ * 403 from a per-user server says the user lacks access).
+ */
+async function callMcpTool(
+  client: MCPClient,
+  server: McpServerConfig,
+  name: string,
+  input: unknown,
+  logger: LoggerService,
+  toolResultMaxChars: number,
+  abortSignal?: AbortSignal,
+): Promise<{ ok: boolean; value: unknown }> {
+  try {
+    // Bounded: the turn's abort (Stop) cancels an in-flight call, and a hung
+    // server can't hold the turn past the call ceiling.
+    const signal = abortSignal
+      ? AbortSignal.any([
+          abortSignal,
+          AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS),
+        ])
+      : AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS);
+    const result = await client.callTool({
+      name,
+      arguments: (input ?? {}) as Record<string, unknown>,
+      options: { signal },
+    });
+    if (result.isError) {
+      const detail =
+        typeof result.content === 'string'
+          ? result.content
+          : JSON.stringify(result.content);
+      logger.warn(`MCP tool '${server.id}/${name}' returned error: ${detail}`);
+      return {
+        ok: false,
+        value: {
+          _error: true,
+          message: truncateToolResult(detail, toolResultMaxChars),
+        },
+      };
+    }
+    return {
+      ok: true,
+      value: truncateToolResult(
+        result.structuredContent ?? result.content,
+        toolResultMaxChars,
+      ),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`MCP tool '${server.id}/${name}' threw: ${message}`);
+    // Cap the message too — a tool error can embed an upstream body large
+    // enough to overflow the context window.
+    return {
+      ok: false,
+      value: {
+        _error: true,
+        message: truncateToolResult(message, toolResultMaxChars),
+      },
+    };
+  }
+}
+
+/**
+ * Build the AI-SDK tool set for a turn. Shared servers' tools come from the
+ * pooled, scheduler-maintained connections — no per-turn connect or
+ * listTools; each `execute` re-reads the pooled client at call time so a
+ * scheduler reconnect is picked up, and a server with no live connection
+ * yields a graceful "not connected" error until the next maintenance cycle.
+ *
+ * A per-user server's tools come from the caller's own connection, opened
+ * with the token their browser sent (reused while the token is unchanged).
+ * Without a token, or when connecting fails, the server offers no tools and
+ * is returned in `unavailable`, so the turn can tell the model why.
+ *
+ * Every call is checked against the server's argument rules before it runs;
+ * a broken rule returns the reason to the model instead of calling the tool.
+ * `onCall` hears each executed, failed, or rule-rejected call.
+ */
+export async function buildMcpTools(
   selections: ResolvedMcpSelection[],
   logger: LoggerService,
   toolResultMaxChars: number,
-): Record<string, Tool> {
+  options: {
+    caller?: McpCaller;
+    onCall?: (event: McpToolCallEvent) => void;
+  } = {},
+): Promise<{
+  tools: Record<string, Tool>;
+  unavailable: UnavailableMcpServer[];
+}> {
+  const { caller, onCall } = options;
   const tools: Record<string, Tool> = {};
+  const unavailable: UnavailableMcpServer[] = [];
+
   for (const { server, tools: allowlist } of selections) {
-    const entry = pool.get(server.id);
-    if (!entry) {
-      // Not connected yet — its tools fill in on the next maintenance cycle.
-      continue;
+    let listed: RawMcpTool[];
+    if (server.userCredentials) {
+      const token = caller?.credentials[server.id];
+      if (!caller || !token) {
+        unavailable.push({ server });
+        continue;
+      }
+      try {
+        listed = (
+          await userConnection(server, caller.userEntityRef, token, logger)
+        ).tools;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `MCP server '${server.id}' connect failed for ${caller.userEntityRef}: ${message}`,
+        );
+        unavailable.push({ server, error: message });
+        continue;
+      }
+    } else {
+      const entry = pool.get(server.id);
+      if (!entry) {
+        // Not connected yet — its tools fill in on the next maintenance cycle.
+        continue;
+      }
+      listed = entry.tools;
     }
-    for (const t of entry.tools) {
+
+    for (const t of listed) {
       if (!isToolAllowed(allowlist, t.name)) {
         continue;
       }
-      tools[mcpToolName(server.id, t.name)] = tool({
+      const name = mcpToolName(server.id, t.name);
+      const rules = server.argumentRules?.[t.name];
+      tools[name] = tool({
         description: t.description,
         inputSchema: jsonSchema(
           (t.inputSchema ?? {}) as Parameters<typeof jsonSchema>[0],
         ),
-        execute: async (input, options) => {
-          const abortSignal = options?.abortSignal;
-          // Re-read the pooled client at call time so a scheduler reconnect is
-          // picked up. No per-chat connect — a down server fails gracefully and
-          // is healed by the next maintenance cycle.
-          const client = pool.get(server.id)?.client;
+        execute: async (input, executeOptions) => {
+          const violation = argumentRuleViolation(t.name, rules, input);
+          if (violation) {
+            onCall?.({
+              server: server.id,
+              tool: t.name,
+              name,
+              outcome: 'rejected-by-rule',
+              input,
+            });
+            return { _error: true, message: violation };
+          }
+          let client: MCPClient | undefined;
+          try {
+            client = await clientFor(server, caller, logger);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            onCall?.({
+              server: server.id,
+              tool: t.name,
+              name,
+              outcome: 'failed',
+              input,
+            });
+            return {
+              _error: true,
+              message: truncateToolResult(
+                `MCP server '${server.id}' could not be reached: ${message}`,
+                toolResultMaxChars,
+              ),
+            };
+          }
           if (!client) {
             logger.warn(
               `MCP server '${server.id}' not connected; '${t.name}' skipped this turn`,
@@ -485,51 +969,54 @@ export function buildMcpTools(
               ),
             };
           }
-          try {
-            // Bounded: the turn's abort (Stop) cancels an in-flight call, and
-            // a hung server can't hold the turn past the call ceiling.
-            const signal = abortSignal
-              ? AbortSignal.any([
-                  abortSignal,
-                  AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS),
-                ])
-              : AbortSignal.timeout(TOOL_CALL_TIMEOUT_MS);
-            const result = await client.callTool({
-              name: t.name,
-              arguments: (input ?? {}) as Record<string, unknown>,
-              options: { signal },
-            });
-            if (result.isError) {
-              const detail =
-                typeof result.content === 'string'
-                  ? result.content
-                  : JSON.stringify(result.content);
-              logger.warn(
-                `MCP tool '${server.id}/${t.name}' returned error: ${detail}`,
-              );
-              return {
-                _error: true,
-                message: truncateToolResult(detail, toolResultMaxChars),
-              };
-            }
-            return truncateToolResult(
-              result.structuredContent ?? result.content,
-              toolResultMaxChars,
-            );
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            logger.error(`MCP tool '${server.id}/${t.name}' threw: ${message}`);
-            // Cap the message too — a tool error can embed an upstream body
-            // large enough to overflow the context window.
-            return {
-              _error: true,
-              message: truncateToolResult(message, toolResultMaxChars),
-            };
-          }
+          const { ok, value } = await callMcpTool(
+            client,
+            server,
+            t.name,
+            input,
+            logger,
+            toolResultMaxChars,
+            executeOptions?.abortSignal,
+          );
+          onCall?.({
+            server: server.id,
+            tool: t.name,
+            name,
+            outcome: ok ? 'executed' : 'failed',
+            input,
+          });
+          return value;
         },
       });
     }
   }
-  return tools;
+  return { tools, unavailable };
+}
+
+/**
+ * Call one of a server's tools outside a turn, as `caller` for a per-user
+ * server: the approval preview's read of the current content. Returns the
+ * raw MCP result, or throws when there is no client.
+ */
+export async function callServerTool(
+  server: McpServerConfig,
+  toolName: string,
+  args: Record<string, unknown>,
+  caller: McpCaller | undefined,
+  logger: LoggerService,
+): Promise<{ isError: boolean; content: unknown }> {
+  const client = await clientFor(server, caller, logger);
+  if (!client) {
+    throw new Error(
+      server.userCredentials
+        ? `Connect ${server.userCredentials.title} to read from '${server.id}'`
+        : `MCP server '${server.id}' is not currently connected`,
+    );
+  }
+  const result = await client.callTool({
+    name: toolName,
+    arguments: args,
+    options: { signal: AbortSignal.timeout(probeTimeoutMs(server)) },
+  });
+  return { isError: !!result.isError, content: result.content };
 }

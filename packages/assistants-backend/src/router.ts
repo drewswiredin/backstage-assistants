@@ -31,12 +31,18 @@ import type {
 import {
   assistantUsePermission,
   PLATFORM_INSTRUCTIONS,
+  USER_CREDENTIALS_HEADER,
+  type ApprovalPreview,
+  type ApprovalPreviewRequest,
+  type ApprovalPreviewResponse,
+  type UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import {
   AssistantsConfig,
   effectiveApprovalSet,
   isPolicyAccessible,
+  type McpServerConfig,
 } from './config';
 import { actionsToTools, selectAssistantActions } from './actions';
 import {
@@ -47,9 +53,21 @@ import {
 import {
   buildMcpTools,
   cachedServerToolsRaw,
+  callServerTool,
+  mcpToolName,
   splitAllowedTools,
   summarizeMcpTools,
+  type McpCaller,
+  type UnavailableMcpServer,
 } from './mcp';
+import { readUserCredentials, userCredentialSpec } from './userCredentials';
+import {
+  argumentRuleViolation,
+  auditTarget,
+  isNotFoundError,
+  previewBaseCalls,
+  toolResultText,
+} from './toolGuards';
 import type { AssistantStore } from './assistants';
 import { createOpenApiRouter } from './schema/openapi';
 import { createManageRouter } from './manage';
@@ -111,6 +129,99 @@ export function pageContextInstructions(page: PageContext): string {
     ? ` The page is the catalog entity ${page.entityRef}.`
     : '';
   return `## The user's page\nThe user is viewing ${where}.${entity} Call \`read_current_page\` to see what the page shows.`;
+}
+
+/**
+ * The instruction line for a per-user server that offers no tools this turn,
+ * so the model explains instead of guessing.
+ */
+export function unavailableServerInstructions(
+  unavailable: UnavailableMcpServer[],
+): string | undefined {
+  if (unavailable.length === 0) return undefined;
+  const lines = unavailable.map(({ server, error }) => {
+    const title = server.userCredentials?.title ?? server.id;
+    return error
+      ? `- ${title} tools (server '${
+          server.id
+        }') are unavailable this turn: connecting with the user's ${title} sign-in failed (${error.slice(
+          0,
+          300,
+        )}). Tell the user; they may need to reconnect ${title} or lack access.`
+      : `- ${title} tools (server '${server.id}') are unavailable because the user hasn't connected ${title}. Ask them to click "Connect ${title}" above the message box.`;
+  });
+  return `## Unavailable tools\n${lines.join('\n')}`;
+}
+
+/** A gated call the user just approved or denied, found in the request's messages. */
+export interface ApprovalDecision {
+  toolName: string;
+  approved: boolean;
+  input: unknown;
+}
+
+/**
+ * The approval answers this request carries: tool calls in the last
+ * assistant message the user has answered but that haven't run yet. Each
+ * answer is in exactly one request, the one that resumes the turn.
+ */
+export function approvalDecisions(messages: unknown[]): ApprovalDecision[] {
+  const last = [...messages]
+    .reverse()
+    .find(m => (m as { role?: unknown })?.role === 'assistant') as
+    | { parts?: unknown[] }
+    | undefined;
+  if (!Array.isArray(last?.parts)) return [];
+  const decisions: ApprovalDecision[] = [];
+  for (const part of last.parts) {
+    const p = part as {
+      type?: string;
+      toolName?: string;
+      state?: string;
+      input?: unknown;
+      approval?: { approved?: boolean };
+    };
+    if (p?.state !== 'approval-responded' || !p.approval) continue;
+    const toolName =
+      p.type === 'dynamic-tool' ? p.toolName : p.type?.replace(/^tool-/, '');
+    if (!toolName || typeof p.approval.approved !== 'boolean') continue;
+    decisions.push({
+      toolName,
+      approved: p.approval.approved,
+      input: p.input,
+    });
+  }
+  return decisions;
+}
+
+/** The browser-side approval previews for every MCP server, keyed by namespaced tool. */
+function approvalPreviewsFor(
+  servers: Map<string, McpServerConfig>,
+): Record<string, ApprovalPreview> {
+  const previews: Record<string, ApprovalPreview> = {};
+  for (const server of servers.values()) {
+    for (const [toolName, preview] of Object.entries(
+      server.approvalPreview ?? {},
+    )) {
+      previews[mcpToolName(server.id, toolName)] = {
+        type: preview.type,
+        fields: preview.fields,
+        diff: !!preview.base,
+      };
+    }
+  }
+  return previews;
+}
+
+/** The `userCredentials` of an assistant summary: its per-user servers' sign-ins. */
+function userCredentialsOf(servers: McpServerConfig[]): {
+  userCredentials?: UserCredentialSpec[];
+} {
+  const specs = servers.flatMap(server => {
+    const spec = userCredentialSpec(server);
+    return spec ? [spec] : [];
+  });
+  return specs.length > 0 ? { userCredentials: specs } : {};
 }
 
 /**
@@ -428,6 +539,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     middleware: [express.json({ limit: assistants.requestBodyLimit })],
   });
 
+  // Approval previews come from config alone, so they are built once.
+  const approvalPreviews = approvalPreviewsFor(assistants.mcpServers);
+
   // Express 4 does not forward rejections from async handlers to the error
   // middleware, so we forward them to `next` explicitly.
   router.get('/status', (req, res, next) => {
@@ -502,6 +616,93 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         turnAborts.get(threadId)?.abort();
       }
       res.status(204).end();
+    })().catch(next);
+  });
+
+  // The current content behind a gated write, for the approval card's diff.
+  // The browser names the pending call; the backend runs only the read tool
+  // configured for that tool (`approvalPreview.<tool>.base`), as the same
+  // user on a per-user server, and only for an assistant the caller may use
+  // that allows the tool.
+  streamRouter.post('/preview', (req, res, next) => {
+    (async () => {
+      const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      await requireUse(credentials);
+      const user = await userInfo.getUserInfo(credentials);
+      const body = (req.body ?? {}) as Partial<ApprovalPreviewRequest>;
+      if (
+        typeof body.assistantId !== 'string' ||
+        typeof body.tool !== 'string' ||
+        !body.input ||
+        typeof body.input !== 'object'
+      ) {
+        throw new InputError('assistantId, tool, and input are required');
+      }
+      const assistant = await assistantStore.getById(body.assistantId);
+      if (!assistant || !isAssistantAccessible(assistant, user)) {
+        throw new NotFoundError(`Unknown assistantId '${body.assistantId}'`);
+      }
+      const selection = splitAllowedTools(
+        assistant.allowedTools,
+        assistants.mcpServers,
+      ).mcpSelections.find(sel =>
+        sel.tools.some(t => mcpToolName(sel.server.id, t) === body.tool),
+      );
+      const toolName = selection?.tools.find(
+        t => mcpToolName(selection.server.id, t) === body.tool,
+      );
+      const preview =
+        selection && toolName
+          ? selection.server.approvalPreview?.[toolName]
+          : undefined;
+      const calls = preview && previewBaseCalls(preview, body.input);
+      if (!selection || !preview?.base || !calls) {
+        throw new InputError(`'${body.tool}' has no preview to read`);
+      }
+      const { server } = selection;
+      const caller: McpCaller = {
+        userEntityRef: user.userEntityRef,
+        credentials: readUserCredentials(
+          req.headers[USER_CREDENTIALS_HEADER],
+          assistants.mcpServers,
+        ),
+      };
+      const files = await Promise.all(
+        calls.map(
+          async ({
+            path,
+            args,
+          }): Promise<ApprovalPreviewResponse['files'][number]> => {
+            try {
+              const result = await callServerTool(
+                server,
+                preview.base!.tool,
+                args,
+                caller,
+                logger,
+              );
+              const text = toolResultText(result.content);
+              if (result.isError) {
+                const message = text ?? 'the read tool returned an error';
+                return isNotFoundError(message)
+                  ? { path, exists: false }
+                  : { path, exists: true, error: message.slice(0, 500) };
+              }
+              return text === undefined
+                ? { path, exists: true, error: 'The file is not text' }
+                : { path, exists: true, content: text };
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              return isNotFoundError(message)
+                ? { path, exists: false }
+                : { path, exists: true, error: message.slice(0, 500) };
+            }
+          },
+        ),
+      );
+      const response: ApprovalPreviewResponse = { files };
+      res.json(response);
     })().catch(next);
   });
 
@@ -589,10 +790,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           // backend knows only the allowlisted names.
           ...split.clientToolNames.map(name => ({ name, source: 'client' })),
         ],
+        ...userCredentialsOf(split.mcpSelections.map(sel => sel.server)),
       })),
       models: assistants.models,
       defaultModel: assistants.defaultModel,
       requireApproval: [...assistants.requireApproval],
+      ...(assistants.approveEachCall.size > 0
+        ? { approveEachCall: [...assistants.approveEachCall] }
+        : {}),
+      ...(Object.keys(approvalPreviews).length > 0 ? { approvalPreviews } : {}),
     };
     if (
       defaultAssistant &&
@@ -704,16 +910,54 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const { actions: available } = await actions.list({ credentials });
     const selected = selectAssistantActions(available, actionIds, logger);
 
-    // 6b. Tools from the assistant's allowlisted external MCP servers
-    //     (static/shared credential — not run-as-user). Built from the pooled,
-    //     scheduler-maintained connections — no per-turn connect/list, and the
-    //     connections are NOT closed when the turn ends. A server with no live
-    //     pooled connection is skipped (its tools fill in on the next cycle).
-    const mcpTools = buildMcpTools(
-      mcpSelections,
-      logger,
-      assistants.toolResultMaxChars,
-    );
+    // 6b. Tools from the assistant's allowlisted external MCP servers. Shared
+    //     servers come from the pooled, scheduler-maintained connections — no
+    //     per-turn connect/list, and the connections are NOT closed when the
+    //     turn ends; one with no live pooled connection is skipped (its tools
+    //     fill in on the next cycle). Per-user servers connect with the token
+    //     the browser sent in the credentials header, as this user; without
+    //     one they offer no tools and the model is told why (step 9).
+    //     Every gated call, and every call an argument rule rejects, is
+    //     written to the audit log.
+    const caller: McpCaller = {
+      userEntityRef: user.userEntityRef,
+      credentials: readUserCredentials(
+        req.headers[USER_CREDENTIALS_HEADER],
+        assistants.mcpServers,
+      ),
+    };
+    const audit = (
+      server: string,
+      tool: string,
+      decision: string,
+      input: unknown,
+    ) =>
+      logger.info('assistants.tool.audit', {
+        user: user.userEntityRef,
+        assistantId,
+        ...(threadId ? { threadId } : {}),
+        server,
+        tool,
+        decision,
+        target: auditTarget(input),
+      });
+    const { tools: mcpTools, unavailable: unavailableServers } =
+      await buildMcpTools(
+        mcpSelections,
+        logger,
+        assistants.toolResultMaxChars,
+        {
+          caller,
+          onCall: event => {
+            if (
+              event.outcome === 'rejected-by-rule' ||
+              assistants.requireApproval.has(event.name)
+            ) {
+              audit(event.server, event.tool, event.outcome, event.input);
+            }
+          },
+        },
+      );
     const serverTools: Record<string, Tool> = {
       ...actionsToTools(
         selected,
@@ -781,8 +1025,42 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       (
         input: unknown,
         opts: { messages: ReadonlyArray<{ content?: unknown }> },
-      ) => 'user-approval' | 'not-applicable'
+      ) =>
+        | 'user-approval'
+        | 'not-applicable'
+        | { type: 'denied'; reason: string }
     > = {};
+    // The namespaced name's server and tool, and its argument-rule check.
+    const selectionByName = new Map<string, [McpServerConfig, string]>();
+    for (const { server, tools: names } of mcpSelections) {
+      for (const tool of names) {
+        selectionByName.set(mcpToolName(server.id, tool), [server, tool]);
+      }
+    }
+    const splitToolName = (name: string): [string, string] => {
+      const found = selectionByName.get(name);
+      return found ? [found[0].id, found[1]] : ['backstage', name];
+    };
+    const ruleCheckFor = (name: string) => {
+      const found = selectionByName.get(name);
+      const rules = found && found[0].argumentRules?.[found[1]];
+      return rules
+        ? (input: unknown) => argumentRuleViolation(found[1], rules, input)
+        : undefined;
+    };
+    // The user's answers to gated calls arrive on the request that resumes
+    // the turn; each is audited once, here.
+    for (const decision of approvalDecisions(messages)) {
+      if (assistants.requireApproval.has(decision.toolName)) {
+        const [server, tool] = splitToolName(decision.toolName);
+        audit(
+          server,
+          tool,
+          decision.approved ? 'approved' : 'denied',
+          decision.input,
+        );
+      }
+    }
     if (approvalSet.length > 0) {
       const hasStandingGrant = (
         history: ReadonlyArray<{ content?: unknown }>,
@@ -809,12 +1087,24 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const gated: string[] = [];
       for (const name of approvalSet) {
         if (name in serverTools) {
-          // A function, not a static status: skip the prompt once a standing
-          // grant exists.
-          toolApproval[name] = (_input, opts) =>
-            hasStandingGrant(opts.messages, name)
+          // A function, not a static status: a call that breaks an argument
+          // rule is denied with the reason before the user is asked (they
+          // never approve a call that would be refused), and the prompt is
+          // skipped once a standing grant exists, unless the tool is
+          // approved call by call.
+          const rule = ruleCheckFor(name);
+          const eachCall = assistants.approveEachCall.has(name);
+          toolApproval[name] = (input, opts) => {
+            const violation = rule?.(input);
+            if (violation) {
+              const [server, tool] = splitToolName(name);
+              audit(server, tool, 'rejected-by-rule', input);
+              return { type: 'denied', reason: violation };
+            }
+            return !eachCall && hasStandingGrant(opts.messages, name)
               ? 'not-applicable'
               : 'user-approval';
+          };
           gated.push(name);
         }
       }
@@ -858,12 +1148,17 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const turnAbort = new AbortController();
     if (threadId) turnAborts.set(threadId, turnAbort);
 
+    // Per-user servers that offer no tools this turn get one line each, so
+    // the model explains (connect, or no access) instead of guessing.
+    const unavailableNote = unavailableServerInstructions(unavailableServers);
+
     const result = streamText({
       model,
       // The page note comes last: it describes this turn only.
       instructions: [
         PLATFORM_INSTRUCTIONS,
         assistant.prompt,
+        ...(unavailableNote ? [unavailableNote] : []),
         ...(page ? [pageContextInstructions(page)] : []),
       ].join('\n\n'),
       messages: modelMessages,

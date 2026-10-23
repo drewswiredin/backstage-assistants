@@ -1,6 +1,6 @@
 # backstage-assistants
 
-A Backstage plugin that adds an in-portal AI chat experience. It stitches assistant-ui (chat UI) and the Vercel AI SDK (model + tool loop) into Backstage, exposing Backstage actions (run with the calling user's own credentials) and configured MCP server tools (run under each server's credential) as the model's tools.
+A Backstage plugin that adds an in-portal AI chat experience. It stitches assistant-ui (chat UI) and the Vercel AI SDK (model + tool loop) into Backstage, exposing Backstage actions (run with the calling user's own credentials) and configured MCP server tools (run under each server's credential, or as the user with their own token) as the model's tools.
 
 ## Language
 
@@ -31,14 +31,23 @@ _Avoid_: frontend tool (assistant-ui's word for the same thing), browser action
 The Assistant's unified `allowedTools: string[]` — the set of tools it is permitted to offer. Each entry is a bare Backstage action id, a namespaced `<serverId>__<tool>` MCP tool, or a `<namespace>__<tool>` Client tool; explicit only, no wildcard. **Empty = no Backstage, MCP, or contributed client tools** (careful-by-default; never an implicit "all"); the built-in client tools `render_form`, `download_file`, `read_current_page`, and `describe_portal` are always present. One of the two independent gates.
 
 **Effective tools**:
-What the model actually receives for a request, resolved per turn from the Assistant's `allowedTools`. Backstage action entries are intersected with the actions the caller can see (the two gates); MCP-tool entries are added directly — they run as a configured shared credential (not the calling user), so there is no per-user gate on that path; Client tool entries are added when the browser declares them this request, and run as the user in the user's browser.
+What the model actually receives for a request, resolved per turn from the Assistant's `allowedTools`. Backstage action entries are intersected with the actions the caller can see (the two gates); MCP-tool entries are added directly — they run as a configured shared credential (not the calling user), so there is no per-user gate on that path, unless the server is a **Per-user MCP server**; Client tool entries are added when the browser declares them this request, and run as the user in the user's browser.
 
 **Two gates**:
-The two independent authorization checks (Backstage action tools). (1) The Assistant **Allowlist** — the `allowedTools` entries that name Backstage actions. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every Backstage action runs as the user. MCP tools in `allowedTools` bypass this user gate — they run as the configured shared server credential, not the caller.
+The two independent authorization checks (Backstage action tools). (1) The Assistant **Allowlist** — the `allowedTools` entries that name Backstage actions. (2) **User authorization** — what this user may do, enforced by Backstage: coarse (per-action `visibilityPermission`) for free at `actions.list({ credentials })`, fine-grained (per-resource/ownership) for free at `actions.invoke` because every Backstage action runs as the user. MCP tools in `allowedTools` bypass this user gate — they run as the configured shared server credential, not the caller; a **Per-user MCP server**'s tools are capped by the remote system instead, since they carry the user's own token.
 
 **Approval gate**:
 A GLOBAL config floor of tool ids that must be confirmed — Allow, Always allow, or Deny in chat — before they run: the top-level `assistants.requireApproval` (action ids, MCP and client tool names) ∪ each per-server `mcp.servers.*.requireApproval` (tool names). The per-turn approval set = this floor ∩ the Assistant's `allowedTools`. For server tools it feeds the AI SDK's `toolApproval` map so execution is paused **deterministically in the loop**; for Client tools the browser runtime pauses before `execute` with assistant-ui's `human` interrupt, and a Client tool that is not read-only or is destructive is gated whether or not it is in the floor. A human checkpoint enforced in code, not a model prompt. Not per-Assistant; config-only, so runtime assistant-editing can never weaken it. "Approval floor" names the same config list. Always allow grants a server tool for the rest of the conversation; the grant lives in the persisted message history. Client tools have no Always allow: every gated call asks. Orthogonal to the two gates and to authorization: it withholds execution pending consent; it never grants access. Backstage's per-user permissions still apply when an approved tool invokes.
 _Avoid_: treating it as authorization (it is a checkpoint, not a permission), or as a per-Assistant setting
+
+**Per-user MCP server**:
+An MCP server configured with `userCredentials`: no shared credential; every call carries the signed-in user's own token for that provider, which the browser gets from Backstage's auth APIs and sends in the `x-assistants-credentials` header on each request. Never stored. Without a token its tools are not offered and the model is told to ask the user to **Connect** (the chip beside the model picker). Its gated tools are approved call by call (no Always allow) unless the server sets `allowStandingApproval`.
+
+**Argument rule**:
+A server-side check on one MCP tool argument (`argumentRules`: `pattern` or `equals`), enforced before the approval prompt (a breaking call is denied at once with the reason) and again before the call. Keeps writes inside bounds such as an assistant-only branch prefix or draft-only pull requests, whatever the model was told.
+
+**Write preview**:
+The approval card's rendering of a gated write (`approvalPreview`): target, commit message, and a diff against the current content, which `POST /preview` reads with the server's configured read tool as the same user.
 
 **Interactive form** (`render_form`):
 A built-in Client tool the model calls to render an RJSF form inline in chat for human-in-the-loop input, instead of asking several questions in prose. No `execute`: the model composes the form (JSON Schema + uiSchema), the card renders it through scaffolder's RJSF `<Form>` plus the host app's field-extension registry — so owner/entity/repo pickers and any custom scaffolder field render by name — and the user's submit becomes the tool result. Always available; not config-gated. One of the two in-plugin generative-UI tools, with `download_file`.

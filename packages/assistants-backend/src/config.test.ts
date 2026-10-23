@@ -182,3 +182,133 @@ describe('effectiveApprovalSet', () => {
     expect(effectiveApprovalSet(['delete-entity'], new Set())).toEqual([]);
   });
 });
+
+describe('per-user MCP servers and guards', () => {
+  const withServer = (server: JsonObject) =>
+    read({
+      providers,
+      defaultModel: 'openai:gpt-4o',
+      mcp: { servers: { github: server } },
+    });
+
+  it('reads userCredentials with the header defaults and the provider title', () => {
+    const cfg = withServer({
+      url: 'https://mcp.example.com/',
+      headers: { 'X-MCP-Toolsets': 'repos' },
+      userCredentials: { provider: 'github', host: 'github.com' },
+    });
+    expect(cfg.mcpServers.get('github')?.userCredentials).toEqual({
+      provider: 'github',
+      host: 'github.com',
+      title: 'GitHub',
+      header: 'Authorization',
+      scheme: 'Bearer',
+    });
+  });
+
+  it('rejects a static credential in the per-user header, ignoring case', () => {
+    expect(() =>
+      withServer({
+        url: 'https://mcp.example.com/',
+        headers: { authorization: 'Bearer shared' },
+        userCredentials: { provider: 'github' },
+      }),
+    ).toThrow(/headers\.Authorization is the per-user token/);
+  });
+
+  it('requires env for a per-user stdio server and rejects a static value there', () => {
+    expect(() =>
+      withServer({
+        transport: 'stdio',
+        command: 'github-mcp-server',
+        userCredentials: { provider: 'github' },
+      }),
+    ).toThrow(/set 'env'/);
+    expect(() =>
+      withServer({
+        transport: 'stdio',
+        command: 'github-mcp-server',
+        env: { GITHUB_TOKEN: 'shared' },
+        userCredentials: { provider: 'github', env: 'GITHUB_TOKEN' },
+      }),
+    ).toThrow(/env\.GITHUB_TOKEN is the per-user token/);
+  });
+
+  it("approves a per-user server's gated tools call by call unless it opts in", () => {
+    const perCall = withServer({
+      url: 'https://mcp.example.com/',
+      userCredentials: { provider: 'github' },
+      requireApproval: ['create_branch'],
+    });
+    expect([...perCall.requireApproval]).toEqual(['github__create_branch']);
+    expect([...perCall.approveEachCall]).toEqual(['github__create_branch']);
+
+    const standing = withServer({
+      url: 'https://mcp.example.com/',
+      userCredentials: { provider: 'github' },
+      allowStandingApproval: true,
+      requireApproval: ['create_branch'],
+    });
+    expect(standing.approveEachCall.size).toBe(0);
+
+    const shared = withServer({
+      url: 'https://mcp.example.com/',
+      requireApproval: ['create_branch'],
+    });
+    expect(shared.approveEachCall.size).toBe(0);
+  });
+
+  it('compiles argument rules once and rejects bad ones', () => {
+    const cfg = withServer({
+      url: 'https://mcp.example.com/',
+      argumentRules: {
+        create_pull_request: {
+          head: { pattern: '^backstage-assistant/' },
+          draft: { equals: true },
+        },
+      },
+    });
+    const rules = cfg.mcpServers.get('github')?.argumentRules;
+    expect(rules?.create_pull_request.head.pattern).toBeInstanceOf(RegExp);
+    expect(rules?.create_pull_request.draft.equals).toBe(true);
+
+    expect(() =>
+      withServer({
+        url: 'https://mcp.example.com/',
+        argumentRules: { create_branch: { branch: { pattern: '(' } } },
+      }),
+    ).toThrow(/argumentRules\.create_branch\.branch\.pattern is not a valid/);
+    expect(() =>
+      withServer({
+        url: 'https://mcp.example.com/',
+        argumentRules: { create_branch: { branch: {} } },
+      }),
+    ).toThrow(/needs 'pattern' or 'equals'/);
+  });
+
+  it('reads approval previews and requires their fields', () => {
+    const cfg = withServer({
+      url: 'https://mcp.example.com/',
+      approvalPreview: {
+        create_or_update_file: {
+          type: 'file',
+          fields: { repo: '{owner}/{repo}', path: 'path', content: 'content' },
+          base: { tool: 'get_file_contents', args: { path: 'path' } },
+        },
+      },
+    });
+    expect(
+      cfg.mcpServers.get('github')?.approvalPreview?.create_or_update_file,
+    ).toEqual({
+      type: 'file',
+      fields: { repo: '{owner}/{repo}', path: 'path', content: 'content' },
+      base: { tool: 'get_file_contents', args: { path: 'path' } },
+    });
+    expect(() =>
+      withServer({
+        url: 'https://mcp.example.com/',
+        approvalPreview: { push_files: { type: 'files', fields: {} } },
+      }),
+    ).toThrow(/fields\.files is required/);
+  });
+});

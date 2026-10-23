@@ -18,6 +18,8 @@ import {
   maintainMcpConnections,
   maintenanceTimeoutMs,
   closeMcpPool,
+  databaseToolCacheStore,
+  initMcpToolCache,
 } from './mcp';
 
 /**
@@ -144,6 +146,20 @@ export const assistantsPlugin = createBackendPlugin({
         // plugin shutdown.
         if (assistants.mcpServers.size > 0) {
           const mcpServers = [...assistants.mcpServers.values()];
+          // Per-user servers have no shared connection; their tools are
+          // learned from the first user who connects and kept in the database.
+          await initMcpToolCache(
+            databaseToolCacheStore(db),
+            mcpServers,
+            logger,
+          );
+          for (const server of mcpServers) {
+            if (server.userCredentials && server.transport === 'stdio') {
+              logger.warn(
+                `MCP server '${server.id}' is per-user over stdio: each connected user runs their own process. Prefer an http server that takes the token in a header.`,
+              );
+            }
+          }
           await scheduler.scheduleTask({
             id: 'assistants-mcp-maintain',
             // The connection pool is per-process, so every replica maintains its own.

@@ -17,6 +17,7 @@ Pairs with the frontend plugin
 - [Configure a provider](#configure-a-provider)
 - [Give an assistant Backstage actions](#give-an-assistant-backstage-actions)
 - [Add an MCP server](#add-an-mcp-server)
+- [Connect an MCP server per user](#connect-an-mcp-server-per-user)
 - [Require approval before a tool runs](#require-approval-before-a-tool-runs)
 - [Built-in client tools](#built-in-client-tools)
 - [Client tools: run in the browser as the user](#client-tools-run-in-the-browser-as-the-user)
@@ -320,9 +321,11 @@ server allowlist in config. When the editor opens it shows each server's reachab
 its last `error`, from a listing no older than 5 minutes. An MCP tool call is
 capped at 60 seconds and stops with the turn.
 
-Auth is a single static credential (the configured `headers`): one shared
-identity for all users, not run-as-user. Gate access with the assistant's
-`access` policy. To confirm individual tools before they run, list them in
+With `headers` or `env`, a server runs on one static credential: one shared
+identity for every user. Gate access with the assistant's `access` policy, or
+connect the server per user so each user's calls carry their own token; see
+[Connect an MCP server per user](#connect-an-mcp-server-per-user). To confirm
+individual tools before they run, list them in
 `mcp.servers.<id>.requireApproval`; see
 [Require approval before a tool runs](#require-approval-before-a-tool-runs).
 
@@ -335,6 +338,129 @@ is not connected when a turn calls it yields a "not connected" tool result for
 that turn; a failed refresh keeps the last-known tool list and shows in the
 editor as `reachable: false`. See the
 [architecture doc](../../docs/architecture.md#runtime-services) for the pool.
+
+## Connect an MCP server per user
+
+A server with `userCredentials` has no shared credential. Each turn calls it
+with the signed-in user's own token, which the browser gets from Backstage's
+auth APIs and sends in a request header, so the remote system limits every
+call to what that user may do and attributes writes to them. The token is
+never stored, logged, or put in a message.
+
+```yaml
+assistants:
+  mcp:
+    servers:
+      github:
+        transport: http
+        url: https://api.githubcopilot.com/mcp/
+        headers:
+          X-MCP-Toolsets: repos,pull_requests
+        userCredentials:
+          provider: github # a Backstage auth provider
+          host: github.com # use SCM auth for this integration's host
+          # scopes: [repo]          # OAuth scopes; the provider's defaults otherwise
+          # header: Authorization   # http/sse header (default)
+          # scheme: Bearer          # prefix before the token (default; '' sends it bare)
+        requireApproval:
+          [
+            create_branch,
+            create_or_update_file,
+            push_files,
+            create_pull_request,
+          ]
+        argumentRules:
+          create_branch: { branch: { pattern: '^backstage-assistant/' } }
+          create_or_update_file:
+            { branch: { pattern: '^backstage-assistant/' } }
+          push_files: { branch: { pattern: '^backstage-assistant/' } }
+          create_pull_request:
+            head: { pattern: '^backstage-assistant/' }
+            draft: { equals: true }
+        approvalPreview:
+          create_or_update_file:
+            type: file
+            fields:
+              repo: '{owner}/{repo}'
+              branch: branch
+              path: path
+              content: content
+              message: message
+            base:
+              tool: get_file_contents
+              args: { owner: owner, repo: repo, path: path, ref: branch }
+          push_files:
+            type: files
+            fields:
+              {
+                repo: '{owner}/{repo}',
+                branch: branch,
+                files: files,
+                message: message,
+              }
+            base:
+              tool: get_file_contents
+              args: { owner: owner, repo: repo, path: path, ref: branch }
+```
+
+The app needs the matching sign-in: the `github` auth provider in
+`auth.providers` and, with `host`, a `github.com` entry in `integrations`, so
+SCM auth knows which provider serves that host (GitHub Enterprise and
+self-hosted GitLab work the same way). Without `host`, the token comes from
+the provider's own auth API: `github`, `gitlab`, `microsoft`, `google`,
+`atlassian`, `okta`, `onelogin`, `bitbucket`, `bitbucketServer`, `openshift`, or
+`vmwareCloud`. The server must accept that token: a GitHub App's user tokens
+or an OAuth app's tokens, as the server documents.
+
+What users see: a **Connect GitHub** chip next to the model picker until they
+have signed in; it opens the provider's sign-in. Until then the server's tools
+are not offered, and the model is told to ask the user to connect. A token
+the server rejects (an expired sign-in, no access) reaches the model with the
+server's message, so it can say why. Tokens are asked for silently on every
+request, so the auth API's refresh keeps a long conversation working.
+
+Each user has their own connection to the server, reused while their token is
+the same, closed after 10 minutes idle, with at most 200 per backend replica.
+The tools are the same for everyone, so the first listing is kept in the
+database for the editor; before any user has connected after a change, the
+editor asks the admin to **Connect GitHub** to discover them. A per-user
+`stdio` server takes the token in the variable named by
+`userCredentials.env` and runs one process per connected user; prefer an
+`http` server that takes the token in a header.
+
+`userCredentials` excludes a static credential in the same place: a `headers`
+entry for the token's header, or an `env` entry for its variable, fails at
+startup.
+
+**Approval, call by call.** A per-user server's gated tools have no **Always
+allow**: every call is approved on its own. Set `allowStandingApproval: true`
+on the server to offer it.
+
+**Argument rules.** `argumentRules` checks a tool's arguments on the server
+before the call is offered for approval and again before it runs: `pattern`
+(the argument must be a string matching the regular expression) or `equals`.
+A missing argument fails. A call that breaks a rule is denied at once with the
+reason, which the model and the card both see, so the user never approves a
+call that would be refused. Rules work on any server, shared or per user.
+
+**Write previews.** `approvalPreview` makes the approval card show a write as
+its target (`owner/repo · branch · path`), the commit message, and a diff
+instead of JSON. Field values are templates over the call's input:
+`{owner}/{repo}` interpolates, a bare name reads that argument. `type: file`
+needs `path` and `content`; `type: files` needs `files`, an argument holding
+`[{ path, content }]`, and shows one collapsible diff per file. With `base`,
+the card fetches the current content through `POST /api/assistants/preview`,
+which runs only the read tool configured here, as the same user; for `files`
+its arguments are resolved per file, so `path` is that file's. A file the read
+tool reports as not found is shown as new. "Show raw input" still shows the
+JSON.
+
+**Audit.** Every call to a gated tool, and every rule rejection, writes an
+`assistants.tool.audit` log line: the user, assistant, conversation, server,
+tool, the decision (`approved`, `denied`, `executed`, `failed`, or
+`rejected-by-rule`), and the call's identifying arguments (`owner`, `repo`,
+`branch`, `path`, issue and pull request numbers and similar). Never content,
+messages, or tokens.
 
 ## Require approval before a tool runs
 
@@ -361,8 +487,10 @@ connected) is logged.
 
 What the user sees: the reply stops at the tool call and shows an approval
 card. Allow runs the tool as it would run ungated: a Backstage action with the
-user's credentials, an MCP tool with its server's configured credential. Always
-allow also skips the prompt for that tool for the rest of the conversation; Deny
+user's credentials, an MCP tool with its server's configured credential or the
+user's own token. Always allow also skips the prompt for that tool for the rest
+of the conversation (not offered for a per-user server's tools unless it sets
+`allowStandingApproval`); Deny
 returns an `execution-denied` result to the model. Several gated calls of the
 same tool in one step collapse into one card. The pause is enforced in code,
 not requested of the model. A turn waiting on the user survives navigation and
@@ -631,6 +759,15 @@ designated: the oldest assistant open to every signed-in user`, or the
   or over a size limit), and `auto-title failed` (the conversation keeps its
   current title).
 - At info, per turn with a gate: `Approval gate active for assistant '<id>'`.
+- At info, per gated MCP call and per argument-rule rejection:
+  `assistants.tool.audit` with `user`, `assistantId`, `threadId`, `server`,
+  `tool`, `decision`, and `target`.
+- Per-user servers: `MCP server '<id>' connect failed for <user>: ...` (the
+  user's token was rejected or the server is down; the model is told),
+  `MCP server '<id>' does not list tool(s) named in its config: ...` (a
+  `requireApproval`, `argumentRules`, or `approvalPreview` key that matches no
+  tool: a typo there leaves a write unguarded), and at startup
+  `MCP server '<id>' is per-user over stdio`.
 - A provider failure reaches the conversation as `The assistant couldn't finish
 this turn: <reason>` and logs `chat stream error surfaced to client`.
 
@@ -645,6 +782,7 @@ this turn: <reason>` and logs `chat stream error surfaced to client`.
 | An MCP server is never reachable; the log shows `MCP server '<id>' tool listing failed: ... timed out after <n>ms` | The server takes longer than `connectTimeoutMs` to start                                     | Raise `connectTimeoutMs` (uvx/npx servers often need 15000 to 20000)                                           |
 | "You are not permitted to use assistants"                                                                          | The permission policy denies `assistant.use`                                                 | Grant `assistant.use`; see [Grant assistant.use and assistant.manage](#grant-assistantuse-and-assistantmanage) |
 | The gear is missing from the sidebar                                                                               | The permission policy denies `assistant.manage`                                              | Grant `assistant.manage`                                                                                       |
+| "Connect GitHub" stays after signing in, or the sign-in popup fails                                                | The app has no `github` auth provider, or no `integrations` entry for the server's `host`    | Configure the auth provider and the integration; the provider id in `userCredentials` must match               |
 
 ## Security
 
@@ -663,12 +801,16 @@ tools called in that turn: catalog entities, TechDocs pages, MCP results.
 Auto-title makes one extra model call on a conversation's first turn. The
 caller's identity (user entity ref, groups, credentials) is not sent to the
 provider. MCP servers receive only the tool arguments the model produces,
-under the server's configured static credential.
+under the server's configured static credential or, for a per-user server, the
+user's own token.
 
-What is stored: five tables in the plugin database: `assistants`
+What is stored: six tables in the plugin database: `assistants`
 (`definition_json`, including the prompt and access policy), `assistants_meta`
-(the seed-once marker), `threads`, `messages`, and `stream_chunks`, which
-holds a running reply's stream for 60 seconds after the turn completes. Every message (user text,
+(the seed-once marker), `threads`, `messages`, `stream_chunks`, which
+holds a running reply's stream for 60 seconds after the turn completes, and
+`mcp_tool_cache`, each per-user MCP server's tool list. A per-user MCP token
+is never stored: it travels in the `x-assistants-credentials` request header
+and lives only in that user's open connection. Every message (user text,
 attachments, assistant output, and tool results truncated at
 `toolResultMaxChars`, default 30000) persists in `messages.content_json` until
 the user deletes the conversation, which is a hard delete; nothing is retained
@@ -685,7 +827,9 @@ list every write-capable action (`register-entity`, `unregister-entity`,
 `execute-template`, and any MCP tool that mutates) there. Backstage permissions
 still apply to each approved Backstage action, since it runs as the calling
 user. An approved MCP tool runs with its server's configured credential, so
-Backstage permissions do not limit it. A client tool runs in the user's browser
+Backstage permissions do not limit it; on a per-user server it runs with the
+user's own token, so the remote system limits it to what the user may do, and
+`argumentRules` hold whatever the model was told. A client tool runs in the user's browser
 with the user's own credential for that system, so it can do only what the
 user can; one that writes always asks first.
 
@@ -728,6 +872,10 @@ All keys sit under `assistants`. `assistants.semanticSearch` belongs to the
 | `mcp.servers.<id>.cwd`                    |            | Working directory for the child process (`stdio`).                                                                                                                       |
 | `mcp.servers.<id>.connectTimeoutMs`       | the global | Per-server connect/list-tools ceiling; must be > 0.                                                                                                                      |
 | `mcp.servers.<id>.requireApproval`        | `[]`       | Tool names of this server gated by Allow / Deny.                                                                                                                         |
+| `mcp.servers.<id>.userCredentials`        |            | Connect per user: `{ provider, host?, scopes?, title?, header?, scheme?, env? }` (see Connect an MCP server per user).                                                   |
+| `mcp.servers.<id>.allowStandingApproval`  | `false`    | Offer Always allow for a per-user server's gated tools.                                                                                                                  |
+| `mcp.servers.<id>.argumentRules`          |            | `<tool>.<argument>: { pattern?, equals? }`, enforced before approval and before the call.                                                                                |
+| `mcp.servers.<id>.approvalPreview`        |            | `<tool>: { type: file \| files, fields, base? }`: the approval card's write preview and diff.                                                                            |
 
 ### Startup errors
 
@@ -749,6 +897,13 @@ Backstage's own missing-config error naming the key.
 - `assistants.mcp.connectTimeoutMs must be a positive number of milliseconds`
   (or the per-server `assistants.mcp.servers.<id>.connectTimeoutMs`).
 - `assistants model '<id>': maxOutputTokens must be a positive number of tokens`.
+- `assistants.mcp.servers.<id>: headers.<name> is the per-user token; remove the static value`
+  (or `env.<name>` for stdio): a static credential where `userCredentials` puts the token.
+- `assistants.mcp.servers.<id>.userCredentials: a stdio server takes the token in an environment variable; set 'env'`.
+- `assistants.mcp.servers.<id>.argumentRules.<tool>.<argument>.pattern is not a valid regular expression: ...`,
+  or `... needs 'pattern' or 'equals'`.
+- `assistants.mcp.servers.<id>.approvalPreview.<tool>.type must be 'file' or 'files'`, or
+  `....fields.<field> is required for type '<type>'`.
 
 ### HTTP routes
 
@@ -770,6 +925,7 @@ every conversation route is scoped to the owning user.
 | `DELETE /threads/:id`                | `assistant.use`    | Delete a conversation and its messages.                                                                     |
 | `POST /threads/:id/read`             | `assistant.use`    | Mark a conversation read.                                                                                   |
 | `GET /threads/:id/messages`          | `assistant.use`    | A conversation's messages.                                                                                  |
+| `POST /preview`                      | `assistant.use`    | The current content behind a pending write, for the approval card's diff.                                   |
 | `GET /capabilities`                  | `assistant.manage` | Assignable inventory for the editor.                                                                        |
 | `GET /manage/assistants`             | `assistant.manage` | All assistant definitions.                                                                                  |
 | `POST /manage/assistants`            | `assistant.manage` | Create an assistant.                                                                                        |

@@ -22,6 +22,9 @@
 export * from './clientTools';
 export * from './permissions';
 export * from './platformInstructions';
+export * from './userCredentials';
+
+import type { ApprovalPreview, UserCredentialSpec } from './userCredentials';
 
 /** Identifier for a configured assistant. @public */
 export type AssistantId = string;
@@ -118,6 +121,12 @@ export interface AssistantSummary {
   /** The assistant's UI options. */
   ui?: UiOptions;
   /**
+   * The per-user MCP servers this assistant's tools come from, each with the
+   * sign-in that supplies the user's token. The browser sends those tokens
+   * with every turn; a server without one offers no tools that turn.
+   */
+  userCredentials?: UserCredentialSpec[];
+  /**
    * True for the default assistant: the one every signed-in user gets, which
    * the panel opens until the user picks another. `/status` lists it first.
    */
@@ -203,6 +212,17 @@ export interface StatusResponse {
    * loop.
    */
   requireApproval: string[];
+  /**
+   * Approval-floor tools that take no standing "Always allow" grant: every
+   * call is approved on its own. Gated tools of per-user MCP servers, unless
+   * the server allows standing approval.
+   */
+  approveEachCall?: string[];
+  /**
+   * How the approval card previews a gated write, keyed by namespaced tool
+   * name. Tools without one show their raw input.
+   */
+  approvalPreviews?: Record<string, ApprovalPreview>;
 }
 
 /**
@@ -340,6 +360,12 @@ export interface McpServerCapability {
   reachable: boolean;
   /** The failure message when `reachable` is false. */
   error?: string;
+  /**
+   * Set for a per-user server: the sign-in its tools are listed with. Its
+   * tools are discovered through the first user who connects, then cached;
+   * until then `error` asks the admin to connect.
+   */
+  userCredentials?: UserCredentialSpec;
   /** The server's advertised tools (empty when unreachable). */
   tools: Array<{
     /** The bare tool name (namespaced to `<serverId>__<name>` in `allowedTools`). */

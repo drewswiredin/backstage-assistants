@@ -11,6 +11,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
 import { mcpToolName } from './mcp';
 import {
+  type ApprovalPreview,
   ModelOption,
   ModelId,
   type ReasoningLevel,
@@ -102,9 +103,56 @@ export function effectiveApprovalSet(
 export type McpTransport = 'http' | 'sse' | 'stdio';
 
 /**
+ * How a per-user MCP server receives the signed-in user's token. The browser
+ * gets the token from Backstage's auth APIs (`provider`, `host`, `scopes`) and
+ * sends it with each turn; the backend passes it to the server in `header`
+ * (http/sse) or the `env` variable (stdio).
+ */
+export interface McpUserCredentials {
+  /** The Backstage auth provider id, e.g. `github`. */
+  provider: string;
+  /** SCM host whose integration supplies the token, e.g. `github.com`. */
+  host?: string;
+  /** OAuth scopes to request; empty means the provider's defaults. */
+  scopes?: string[];
+  /** Display name for the sign-in, e.g. `GitHub`. */
+  title: string;
+  /** http/sse: the header the token is sent in. */
+  header: string;
+  /** http/sse: the prefix before the token, e.g. `Bearer`; empty sends the bare token. */
+  scheme: string;
+  /** stdio: the environment variable the token is set in. */
+  env?: string;
+}
+
+/**
+ * A server-side check on one tool argument, enforced before the call is
+ * offered for approval and again before it runs. A missing argument fails.
+ */
+export interface ArgumentRule {
+  /** The argument must be a string matching this expression. */
+  pattern?: RegExp;
+  /** The argument must equal this value. */
+  equals?: string | number | boolean;
+}
+
+/** An approval preview as configured: the browser-side shape plus the read tool for a diff. */
+export interface McpApprovalPreview {
+  type: 'file' | 'files';
+  fields: ApprovalPreview['fields'];
+  /**
+   * The server's read tool for the current content, with its arguments as
+   * templates over the call's input (for `files`, over the input merged with
+   * each file entry, so `path` is the file's path).
+   */
+  base?: { tool: string; args: Record<string, string> };
+}
+
+/**
  * A configured external MCP server. Remote transports (`http`/`sse`) use `url`
  * + `headers`; `stdio` spawns a local `command`.
- * Connected with a static credential: one shared identity for every user.
+ * Connected with a static credential (one shared identity for every user), or
+ * per user with each user's own token when `userCredentials` is set.
  */
 export interface McpServerConfig {
   id: string;
@@ -127,6 +175,19 @@ export interface McpServerConfig {
    * absent = the built-in 8s default.
    */
   connectTimeoutMs?: number;
+  /** Set for a per-user server: each user's calls carry their own token. */
+  userCredentials?: McpUserCredentials;
+  /** Checks on tool arguments, keyed by un-namespaced tool name, then argument. */
+  argumentRules?: Record<string, Record<string, ArgumentRule>>;
+  /** Approval-card previews, keyed by un-namespaced tool name. */
+  approvalPreview?: Record<string, McpApprovalPreview>;
+  /** The server's approval floor, un-namespaced (also folded into the global set). */
+  requireApproval?: string[];
+  /**
+   * A per-user server's gated tools take a standing "Always allow" grant only
+   * when this is true; otherwise every call is approved on its own.
+   */
+  allowStandingApproval?: boolean;
 }
 
 /**
@@ -167,6 +228,11 @@ export interface AssistantsConfig {
    * approval set is this intersected with the assistant's `allowedTools`.
    */
   requireApproval: Set<string>;
+  /**
+   * The approval-floor tools that take no standing "Always allow" grant: the
+   * gated tools of per-user servers without `allowStandingApproval`.
+   */
+  approveEachCall: Set<string>;
   /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
   resolveModel: (modelId: string) => LanguageModel;
   /**
@@ -291,6 +357,147 @@ function buildReasoningOptions(
   };
 }
 
+/** Display names for the auth providers Backstage ships, for "Connect GitHub". */
+const PROVIDER_TITLES: Record<string, string> = {
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  microsoft: 'Microsoft',
+  google: 'Google',
+  atlassian: 'Atlassian',
+  okta: 'Okta',
+  onelogin: 'OneLogin',
+  bitbucket: 'Bitbucket',
+  bitbucketServer: 'Bitbucket Server',
+  openshift: 'OpenShift',
+  vmwareCloud: 'VMware Cloud',
+};
+
+/** A server's `userCredentials` block, or undefined for a shared-credential server. */
+function readUserCredentials(
+  sc: Config,
+  path: string,
+  transport: string,
+): McpUserCredentials | undefined {
+  const uc = sc.getOptionalConfig('userCredentials');
+  if (!uc) return undefined;
+  const provider = uc.getString('provider');
+  const env = uc.getOptionalString('env');
+  if (transport === 'stdio' && !env) {
+    throw new InputError(
+      `${path}.userCredentials: a stdio server takes the token in an environment variable; set 'env'`,
+    );
+  }
+  const scopes = uc.getOptionalStringArray('scopes');
+  return {
+    provider,
+    ...(uc.getOptionalString('host') ? { host: uc.getString('host') } : {}),
+    ...(scopes && scopes.length > 0 ? { scopes } : {}),
+    title:
+      uc.getOptionalString('title') ?? PROVIDER_TITLES[provider] ?? provider,
+    header: uc.getOptionalString('header') ?? 'Authorization',
+    scheme: uc.getOptionalString('scheme') ?? 'Bearer',
+    ...(env ? { env } : {}),
+  };
+}
+
+/** A server's `argumentRules`, with each pattern compiled once. */
+function readArgumentRules(
+  sc: Config,
+  path: string,
+): Record<string, Record<string, ArgumentRule>> | undefined {
+  const rulesConfig = sc.getOptionalConfig('argumentRules');
+  if (!rulesConfig) return undefined;
+  const out: Record<string, Record<string, ArgumentRule>> = {};
+  for (const toolName of rulesConfig.keys()) {
+    const toolRules = rulesConfig.getConfig(toolName);
+    out[toolName] = {};
+    for (const arg of toolRules.keys()) {
+      const rulePath = `${path}.argumentRules.${toolName}.${arg}`;
+      const ruleConfig = toolRules.getConfig(arg);
+      const rule: ArgumentRule = {};
+      const pattern = ruleConfig.getOptionalString('pattern');
+      if (pattern !== undefined) {
+        try {
+          rule.pattern = new RegExp(pattern);
+        } catch (error) {
+          throw new InputError(
+            `${rulePath}.pattern is not a valid regular expression: ${
+              (error as Error).message
+            }`,
+          );
+        }
+      }
+      const equals = ruleConfig.getOptional('equals');
+      if (equals !== undefined) {
+        if (!['string', 'number', 'boolean'].includes(typeof equals)) {
+          throw new InputError(
+            `${rulePath}.equals must be a string, number, or boolean`,
+          );
+        }
+        rule.equals = equals as string | number | boolean;
+      }
+      if (!rule.pattern && rule.equals === undefined) {
+        throw new InputError(`${rulePath} needs 'pattern' or 'equals'`);
+      }
+      out[toolName][arg] = rule;
+    }
+  }
+  return out;
+}
+
+const PREVIEW_FIELDS = [
+  'repo',
+  'branch',
+  'path',
+  'content',
+  'files',
+  'message',
+] as const;
+
+/** A server's `approvalPreview` renderers. */
+function readApprovalPreviews(
+  sc: Config,
+  path: string,
+): Record<string, McpApprovalPreview> | undefined {
+  const previewsConfig = sc.getOptionalConfig('approvalPreview');
+  if (!previewsConfig) return undefined;
+  const out: Record<string, McpApprovalPreview> = {};
+  for (const toolName of previewsConfig.keys()) {
+    const previewPath = `${path}.approvalPreview.${toolName}`;
+    const pc = previewsConfig.getConfig(toolName);
+    const type = pc.getString('type');
+    if (type !== 'file' && type !== 'files') {
+      throw new InputError(`${previewPath}.type must be 'file' or 'files'`);
+    }
+    const fieldsConfig = pc.getConfig('fields');
+    const fields: ApprovalPreview['fields'] = {};
+    for (const key of PREVIEW_FIELDS) {
+      const value = fieldsConfig.getOptionalString(key);
+      if (value !== undefined) fields[key] = value;
+    }
+    const required = type === 'file' ? ['path', 'content'] : ['files'];
+    for (const key of required) {
+      if (!fields[key as keyof typeof fields]) {
+        throw new InputError(
+          `${previewPath}.fields.${key} is required for type '${type}'`,
+        );
+      }
+    }
+    const baseConfig = pc.getOptionalConfig('base');
+    let base: McpApprovalPreview['base'];
+    if (baseConfig) {
+      const args: Record<string, string> = {};
+      const argsConfig = baseConfig.getOptionalConfig('args');
+      for (const name of argsConfig?.keys() ?? []) {
+        args[name] = argsConfig!.getString(name);
+      }
+      base = { tool: baseConfig.getString('tool'), args };
+    }
+    out[toolName] = { type, fields, ...(base ? { base } : {}) };
+  }
+  return out;
+}
+
 /**
  * Reads and validates the `assistants` config block (the platform/safety
  * surface only — assistant definitions are DB rows, read via the store), builds
@@ -391,6 +598,7 @@ export function readConfig(config: Config): AssistantsConfig {
   // names) is folded into the global approval set as `<serverId>__<tool>`.
   const mcpServers = new Map<string, McpServerConfig>();
   const requireApproval = new Set<string>();
+  const approveEachCall = new Set<string>();
   const mcpConfig = root.getOptionalConfig('mcp');
   // A non-positive ceiling would fail every connect instantly — reject it here
   // rather than let a typo look like an unreachable server.
@@ -433,14 +641,31 @@ export function readConfig(config: Config): AssistantsConfig {
         return out;
       };
 
+      const path = `assistants.mcp.servers.${serverId}`;
+      const userCredentials = readUserCredentials(sc, path, transport);
+      const serverRequireApproval =
+        sc.getOptionalStringArray('requireApproval') ?? [];
+      const allowStandingApproval =
+        sc.getOptionalBoolean('allowStandingApproval') ?? false;
+      const guards = {
+        ...(userCredentials ? { userCredentials } : {}),
+        argumentRules: readArgumentRules(sc, path),
+        approvalPreview: readApprovalPreviews(sc, path),
+        requireApproval: serverRequireApproval,
+        allowStandingApproval,
+      };
+
       if (transport === 'stdio') {
         const command = sc.getOptionalString('command');
         if (!command) {
-          throw new InputError(
-            `assistants.mcp.servers.${serverId}: stdio transport requires 'command'`,
-          );
+          throw new InputError(`${path}: stdio transport requires 'command'`);
         }
         const env = readStringMap('env');
+        if (userCredentials?.env && userCredentials.env in env) {
+          throw new InputError(
+            `${path}: env.${userCredentials.env} is the per-user token; remove the static value`,
+          );
+        }
         mcpServers.set(serverId, {
           id: serverId,
           transport: 'stdio',
@@ -449,26 +674,43 @@ export function readConfig(config: Config): AssistantsConfig {
           env: Object.keys(env).length > 0 ? env : undefined,
           cwd: sc.getOptionalString('cwd'),
           connectTimeoutMs,
+          ...guards,
         });
       } else {
         const url = sc.getOptionalString('url');
         if (!url) {
           throw new InputError(
-            `assistants.mcp.servers.${serverId}: '${transport}' transport requires 'url'`,
+            `${path}: '${transport}' transport requires 'url'`,
+          );
+        }
+        const headers = readStringMap('headers');
+        if (
+          userCredentials &&
+          Object.keys(headers).some(
+            name => name.toLowerCase() === userCredentials.header.toLowerCase(),
+          )
+        ) {
+          throw new InputError(
+            `${path}: headers.${userCredentials.header} is the per-user token; remove the static value`,
           );
         }
         mcpServers.set(serverId, {
           id: serverId,
           transport: transport as McpTransport,
           url,
-          headers: readStringMap('headers'),
+          headers,
           connectTimeoutMs,
+          ...guards,
         });
       }
 
-      // Per-server approval floor, namespaced into the global set.
-      for (const tool of sc.getOptionalStringArray('requireApproval') ?? []) {
+      // Per-server approval floor, namespaced into the global set. A per-user
+      // server's gated tools are approved call by call unless it opts in.
+      for (const tool of serverRequireApproval) {
         requireApproval.add(mcpToolName(serverId, tool));
+        if (userCredentials && !allowStandingApproval) {
+          approveEachCall.add(mcpToolName(serverId, tool));
+        }
       }
     }
   }
@@ -494,6 +736,7 @@ export function readConfig(config: Config): AssistantsConfig {
     toolResultMaxChars,
     requestBodyLimit,
     requireApproval,
+    approveEachCall,
     resolveModel: (modelId: string) =>
       registry.languageModel(modelId as `${string}:${string}`),
     resolveProviderType: (modelId: string) =>

@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `USER_CREDENTIALS_HEADER`, `UserCredentialSpec`, `ApprovalPreview`, `ApprovalPreviewRequest`, `ApprovalPreviewResponse`, and `resolvePreviewField` for per-user MCP servers and write previews.
+- `AssistantSummary.userCredentials`, `StatusResponse.approveEachCall` and `approvalPreviews`, and `McpServerCapability.userCredentials`.
+
 ## 0.15.1 - 2026-10-22
 
 ### Added

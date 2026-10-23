@@ -3,6 +3,18 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- "Connect GitHub" chips beside the model picker for each per-user MCP server the user hasn't signed in to; the chat sends the user's tokens (from Backstage's SCM auth or the provider's auth API) in the credentials header with every request.
+- The approval card shows a configured write as its repository, branch, path, commit message, and a diff against the current content (`react-diff-viewer-continued`, loaded on first use), one collapsible diff per file for a multi-file commit, with "Show raw input" for the JSON. A call denied by an argument rule shows the reason.
+- The editor lists a per-user server's tools as the admin and offers Connect when it has none cached; its tools show a "runs as you" icon.
+
+### Changed
+
+- Gated tools of a per-user server have no Always allow unless the server allows it.
+
 ## 0.20.2 - 2026-10-22
 
 ### Changed

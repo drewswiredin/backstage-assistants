@@ -16,6 +16,7 @@ import { ReactNode, useMemo } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import Tooltip from '@material-ui/core/Tooltip';
 import IconButton from '@material-ui/core/IconButton';
+import Button from '@material-ui/core/Button';
 import WarningIcon from '@material-ui/icons/Warning';
 import ErrorIcon from '@material-ui/icons/Error';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
@@ -27,6 +28,7 @@ import GavelOutlinedIcon from '@material-ui/icons/GavelOutlined';
 import {
   CapabilitiesResponse,
   CLIENT_TOOL_NAME_PATTERN,
+  type UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssignList, AssignOption, AssignRow } from './AssignList';
 import type { AssistantClientTool } from '../../clientTools/types';
@@ -91,6 +93,8 @@ interface SourceMeta {
   reachable: boolean;
   reachError?: string;
   isBackstage: boolean;
+  /** A per-user server: its sign-in, whose token its tools run with. */
+  userCredentials?: UserCredentialSpec;
 }
 
 /**
@@ -98,7 +102,22 @@ interface SourceMeta {
  * calling user; client tools run in the user's browser; MCP tools run as the
  * server's shared configured credential.
  */
-function runAsIcon(source: string, className: string): ReactNode {
+function runAsIcon(
+  source: string,
+  className: string,
+  perUser?: UserCredentialSpec,
+): ReactNode {
+  if (perUser) {
+    return (
+      <Tooltip title={`Runs as you, with your own ${perUser.title} sign-in.`}>
+        <PersonOutlineIcon
+          role="img"
+          aria-label={`Runs as you (${perUser.title} sign-in)`}
+          className={className}
+        />
+      </Tooltip>
+    );
+  }
   if (source === CLIENT_SOURCE) {
     return (
       <Tooltip title="Runs in your browser as you (client tool).">
@@ -137,8 +156,11 @@ export function ToolsTransfer({
   clientTools = [],
   allowedTools,
   onChange,
+  onConnect,
 }: {
   capabilities: CapabilitiesResponse;
+  /** Sign in to a per-user server's provider and list its tools as the admin. */
+  onConnect?: (spec: UserCredentialSpec) => void;
   /** The client tools registered in this browser. */
   clientTools?: ReadonlyArray<AssistantClientTool<any, any>>;
   allowedTools: string[];
@@ -227,6 +249,7 @@ export function ToolsTransfer({
         reachable: server.reachable,
         reachError: server.error,
         isBackstage: false,
+        userCredentials: server.userCredentials,
       });
       for (const t of server.tools) {
         const id = mcpToolId(server.id, t.name);
@@ -272,7 +295,11 @@ export function ToolsTransfer({
             source === BACKSTAGE_SOURCE || source === CLIENT_SOURCE
               ? undefined
               : source,
-          icon: runAsIcon(source, classes.runAs),
+          icon: runAsIcon(
+            source,
+            classes.runAs,
+            sources.get(source)?.userCredentials,
+          ),
           group: source,
         };
       });
@@ -307,7 +334,15 @@ export function ToolsTransfer({
     return [...liveRows, ...staleRows].sort(
       (a, b) => rankOf(a.group) - rankOf(b.group),
     );
-  }, [allowedTools, live, stale, byId, classes, capabilities.mcpServers]);
+  }, [
+    allowedTools,
+    live,
+    stale,
+    byId,
+    sources,
+    classes,
+    capabilities.mcpServers,
+  ]);
 
   const add = (id: string) => {
     if (!selected.has(id)) {
@@ -365,6 +400,15 @@ export function ToolsTransfer({
               <WarningIcon className={classes.reachWarn} />
             </Tooltip>
           ))}
+        {!m.reachable && m.userCredentials && onConnect && (
+          <Button
+            size="small"
+            color="primary"
+            onClick={() => onConnect(m.userCredentials!)}
+          >
+            Connect {m.userCredentials.title}
+          </Button>
+        )}
       </span>
     );
   };

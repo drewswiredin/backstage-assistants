@@ -14,10 +14,19 @@ import type {
   AssistantDefinition,
   CapabilitiesResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
-import { assistantManagePermission } from '@drewswiredin/backstage-plugin-assistants-common';
+import {
+  assistantManagePermission,
+  USER_CREDENTIALS_HEADER,
+} from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsConfig, McpServerConfig } from './config';
 import type { AssistantStore } from './assistants';
-import { mcpToolName, probeServerTools, splitAllowedTools } from './mcp';
+import {
+  mcpToolName,
+  probeServerTools,
+  splitAllowedTools,
+  type McpCaller,
+} from './mcp';
+import { readUserCredentials, userCredentialSpec } from './userCredentials';
 
 /**
  * The admin management surface for assistant DEFINITIONS — the `/manage/*` CRUD
@@ -51,6 +60,7 @@ export interface ManageRouterOptions {
 async function buildCapabilities(
   options: ManageRouterOptions,
   credentials: BackstageCredentials,
+  caller: McpCaller,
 ): Promise<CapabilitiesResponse> {
   const { actions, assistants, logger } = options;
 
@@ -62,9 +72,16 @@ async function buildCapabilities(
   // false + error), not swallowed, so the editor can show why it's unavailable.
   const mcpServers = await Promise.all(
     [...assistants.mcpServers.values()].map(async server => {
-      const probe = await probeServerTools(server, logger);
+      // A per-user server is listed as the admin when their browser sent a
+      // token for it, otherwise from its cached inventory.
+      const probe = await probeServerTools(server, logger, {
+        userEntityRef: caller.userEntityRef,
+        token: caller.credentials[server.id],
+      });
+      const userCredentials = userCredentialSpec(server);
       return {
         id: server.id,
+        ...(userCredentials ? { userCredentials } : {}),
         reachable: probe.reachable,
         ...(probe.error ? { error: probe.error } : {}),
         tools: probe.tools.map(t => ({
@@ -309,9 +326,11 @@ export function createManageRouter(
 
   // Resolve the caller and enforce the admin gate. Returns the credentials +
   // user for the handler; throws NotAllowedError (403) for non-admins.
-  async function requireAdmin(
-    req: express.Request,
-  ): Promise<{ credentials: BackstageCredentials; user: BackstageUserInfo }> {
+  async function requireAdmin(req: express.Request): Promise<{
+    credentials: BackstageCredentials;
+    user: BackstageUserInfo;
+    caller: McpCaller;
+  }> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     const [decision] = await options.permissions.authorize(
       [{ permission: assistantManagePermission }],
@@ -321,14 +340,25 @@ export function createManageRouter(
       throw new NotAllowedError('You are not permitted to manage assistants');
     }
     const user = await userInfo.getUserInfo(credentials);
-    return { credentials, user };
+    const caller: McpCaller = {
+      userEntityRef: user.userEntityRef,
+      credentials: readUserCredentials(
+        req.headers[USER_CREDENTIALS_HEADER],
+        options.assistants.mcpServers,
+      ),
+    };
+    return { credentials, user, caller };
   }
 
   // GET /capabilities — the live, assignable inventory for the editor pickers.
   router.get('/capabilities', (req, res, next) => {
     (async () => {
-      const { credentials } = await requireAdmin(req);
-      const capabilities = await buildCapabilities(options, credentials);
+      const { credentials, caller } = await requireAdmin(req);
+      const capabilities = await buildCapabilities(
+        options,
+        credentials,
+        caller,
+      );
       res.json(capabilities);
     })().catch(next);
   });
@@ -369,9 +399,13 @@ export function createManageRouter(
   // assistants open to any signed-in user. Create => every tool/model must be live.
   router.post('/manage/assistants', (req, res, next) => {
     (async () => {
-      const { credentials, user } = await requireAdmin(req);
+      const { credentials, user, caller } = await requireAdmin(req);
       const def = parseDefinitionBody(req.body);
-      const capabilities = await buildCapabilities(options, credentials);
+      const capabilities = await buildCapabilities(
+        options,
+        credentials,
+        caller,
+      );
       validateDelta(
         def,
         undefined,
@@ -391,7 +425,7 @@ export function createManageRouter(
   // row: new tool/model additions must be live; pre-existing grandfathered.
   router.put('/manage/assistants/:id', (req, res, next) => {
     (async () => {
-      const { credentials, user } = await requireAdmin(req);
+      const { credentials, user, caller } = await requireAdmin(req);
       const id = req.params.id;
       const previous = await assistantStore.getById(id);
       if (!previous) {
@@ -399,7 +433,11 @@ export function createManageRouter(
       }
       const def = parseDefinitionBody(req.body);
       assertDefaultStaysOpen(previous, def);
-      const capabilities = await buildCapabilities(options, credentials);
+      const capabilities = await buildCapabilities(
+        options,
+        credentials,
+        caller,
+      );
       validateDelta(def, previous, capabilities, options.assistants.mcpServers);
       // Carry the immutable id; the store preserves creation audit + stamps the
       // editor/timestamp.

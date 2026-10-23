@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { makeStyles, fade } from '@material-ui/core/styles';
-import { alertApiRef, useApi } from '@backstage/core-plugin-api';
+import { alertApiRef, useApi, useApiHolder } from '@backstage/core-plugin-api';
 import Dialog from '@material-ui/core/Dialog';
 import Button from '@material-ui/core/Button';
 import ButtonBase from '@material-ui/core/ButtonBase';
@@ -45,6 +45,7 @@ import {
   CapabilitiesResponse,
   ModelOption,
   StatusResponse,
+  type UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../../api';
 import {
@@ -55,6 +56,11 @@ import { AccessList } from './AccessList';
 import { ModelsTransfer } from './ModelsTransfer';
 import { ToolsTransfer } from './ToolsTransfer';
 import { useClientTools } from '../../clientTools/ClientToolsProvider';
+import {
+  credentialsHeader,
+  getUserToken,
+  getUserTokens,
+} from '../../api/userCredentials';
 import { SuggestionsEditor } from './SuggestionsEditor';
 import { PlatformInstructions } from './PlatformInstructions';
 import {
@@ -536,6 +542,31 @@ export function AssistantAdminDialog({
     [],
   );
 
+  // Capabilities, with per-user MCP servers listed as the admin when they
+  // are signed in to the server's provider (silently; Connect opens the
+  // sign-in). Without a token those servers show their cached tools.
+  const apis = useApiHolder();
+  const loadCapabilities = useCallback(
+    async (connect?: UserCredentialSpec) => {
+      if (connect) await getUserToken(apis, connect, false);
+      const caps = await api.getCapabilities();
+      const specs = caps.mcpServers.flatMap(s =>
+        s.userCredentials ? [s.userCredentials] : [],
+      );
+      if (specs.length === 0) return caps;
+      const tokens = await getUserTokens(apis, specs);
+      return Object.keys(tokens).length > 0
+        ? api.getCapabilities(credentialsHeader(tokens))
+        : caps;
+    },
+    [api, apis],
+  );
+  const handleConnect = (spec: UserCredentialSpec) => {
+    loadCapabilities(spec)
+      .then(setCapabilities)
+      .catch(() => {});
+  };
+
   // Initial load (on open): manage list + capabilities in parallel.
   useEffect(() => {
     if (!open) {
@@ -544,7 +575,7 @@ export function AssistantAdminDialog({
     let active = true;
     setLoading(true);
     setLoadError(undefined);
-    Promise.all([api.listManagedAssistants(), api.getCapabilities()])
+    Promise.all([api.listManagedAssistants(), loadCapabilities()])
       .then(([defs, caps]) => {
         if (!active) {
           return;
@@ -571,7 +602,7 @@ export function AssistantAdminDialog({
     return () => {
       active = false;
     };
-  }, [open, api, selectInto]);
+  }, [open, api, selectInto, loadCapabilities]);
 
   // Patch the draft immutably.
   const patch = (p: Partial<AssistantDefinition>) =>
@@ -898,6 +929,7 @@ export function AssistantAdminDialog({
               clientTools={clientTools}
               allowedTools={draft.allowedTools}
               onChange={allowedTools => patch({ allowedTools })}
+              onConnect={handleConnect}
             />
           </div>
 

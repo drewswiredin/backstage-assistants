@@ -74,6 +74,14 @@ interface RuntimeHookOptions {
    * beside the page (the panel); the page itself sends none.
    */
   getPageContext?: () => PageContext | undefined;
+  /**
+   * The credentials header for an assistant's per-user MCP servers, read on
+   * every request (approval answers included) so the turn runs with fresh
+   * tokens. Sent as a header, never in the body, so tokens are never stored.
+   */
+  getCredentialsHeader?: (
+    assistantId: AssistantId,
+  ) => Promise<Record<string, string>>;
 }
 
 /**
@@ -93,60 +101,70 @@ function createInjectingFetch(
   reasoningLevelRef: RefObject<ReasoningLevel | undefined>,
   getClientToolAttributes: () => Record<string, ClientToolAttributes>,
   getPageContext?: () => PageContext | undefined,
+  getCredentialsHeader?: RuntimeHookOptions['getCredentialsHeader'],
 ): typeof fetch {
   return async (input, init) => {
     let nextInit = init;
     if (init && typeof init.body === 'string') {
+      let body: Record<string, unknown>;
       try {
-        const body = JSON.parse(init.body) as Record<string, unknown>;
-        body.assistantId = getAssistantId();
-        body.modelId = modelIdRef.current;
-        // Omitted entirely for a model with no reasoning control, so the
-        // provider's own default stands.
-        if (reasoningLevelRef.current) {
-          body.reasoningLevel = reasoningLevelRef.current;
-        }
-        if (typeof body.id === 'string' && body.threadId === undefined) {
-          body.threadId = body.id;
-        }
-        const page = getPageContext?.();
-        if (page) body.page = page;
-        const tools = body.tools;
-        if (tools && typeof tools === 'object') {
-          const attributes = getClientToolAttributes();
-          for (const [name, declaration] of Object.entries(
-            tools as Record<string, unknown>,
-          )) {
-            if (
-              declaration &&
-              typeof declaration === 'object' &&
-              attributes[name]
-            ) {
-              (declaration as Record<string, unknown>).attributes =
-                attributes[name];
-            }
-          }
-        }
-        // The composer Stop aborts THIS request's signal (only on stop — not on
-        // navigate-away/reload/unmount). Tell the backend to abort the
-        // server-side turn, so Stop actually cancels generation instead of just
-        // disconnecting (which would otherwise keep running + persist the full turn).
-        const threadId = body.threadId;
-        if (typeof threadId === 'string' && init.signal) {
-          init.signal.addEventListener(
-            'abort',
-            () => {
-              void baseFetch(`${baseUrl}/chat/cancel/${threadId}`, {
-                method: 'POST',
-              }).catch(() => {});
-            },
-            { once: true },
-          );
-        }
-        nextInit = { ...init, body: JSON.stringify(body) };
+        body = JSON.parse(init.body) as Record<string, unknown>;
       } catch {
         // Non-JSON body — leave it untouched.
+        return baseFetch(input, init);
       }
+      body.assistantId = getAssistantId();
+      body.modelId = modelIdRef.current;
+      // Omitted entirely for a model with no reasoning control, so the
+      // provider's own default stands.
+      if (reasoningLevelRef.current) {
+        body.reasoningLevel = reasoningLevelRef.current;
+      }
+      if (typeof body.id === 'string' && body.threadId === undefined) {
+        body.threadId = body.id;
+      }
+      const page = getPageContext?.();
+      if (page) body.page = page;
+      const tools = body.tools;
+      if (tools && typeof tools === 'object') {
+        const attributes = getClientToolAttributes();
+        for (const [name, declaration] of Object.entries(
+          tools as Record<string, unknown>,
+        )) {
+          if (
+            declaration &&
+            typeof declaration === 'object' &&
+            attributes[name]
+          ) {
+            (declaration as Record<string, unknown>).attributes =
+              attributes[name];
+          }
+        }
+      }
+      // The composer Stop aborts THIS request's signal (only on stop — not on
+      // navigate-away/reload/unmount). Tell the backend to abort the
+      // server-side turn, so Stop actually cancels generation instead of just
+      // disconnecting (which would otherwise keep running + persist the full turn).
+      const threadId = body.threadId;
+      if (typeof threadId === 'string' && init.signal) {
+        init.signal.addEventListener(
+          'abort',
+          () => {
+            void baseFetch(`${baseUrl}/chat/cancel/${threadId}`, {
+              method: 'POST',
+            }).catch(() => {});
+          },
+          { once: true },
+        );
+      }
+      const headers = new Headers(init.headers);
+      const credentials = getCredentialsHeader
+        ? await getCredentialsHeader(body.assistantId as AssistantId)
+        : {};
+      for (const [name, value] of Object.entries(credentials)) {
+        headers.set(name, value);
+      }
+      nextInit = { ...init, headers, body: JSON.stringify(body) };
     }
     return baseFetch(input, nextInit);
   };
@@ -167,6 +185,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     reasoningLevelRef,
     getClientToolAttributes,
     getPageContext,
+    getCredentialsHeader,
   } = options;
   const isClientTool = (name: string) => name in getClientToolAttributes();
 
@@ -206,6 +225,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
             reasoningLevelRef,
             getClientToolAttributes,
             getPageContext,
+            getCredentialsHeader,
           ),
           resumable: {
             // Reconnect by the THREAD id — the backend buffers the in-flight SSE

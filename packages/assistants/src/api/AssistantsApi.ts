@@ -7,6 +7,8 @@ import { ResponseError } from '@backstage/errors';
 import {
   AssistantDefinition,
   AssistantId,
+  ApprovalPreviewRequest,
+  ApprovalPreviewResponse,
   CapabilitiesResponse,
   ReasoningLevel,
   StatusResponse,
@@ -95,8 +97,22 @@ export interface AssistantsApi {
    * pickers (Backstage actions, the model pool, and MCP servers with their
    * reachability + tools). Admin-gated server-side — rejects (403) for
    * non-admins; only call when the caller has the `assistant.manage` permission.
+   * `headers` carries the admin's credentials header, so per-user MCP servers
+   * are listed as the admin.
    */
-  getCapabilities(): Promise<CapabilitiesResponse>;
+  getCapabilities(
+    headers?: Record<string, string>,
+  ): Promise<CapabilitiesResponse>;
+
+  /**
+   * The current content behind a pending gated write, for the approval
+   * card's diff. `headers` carries the user's credentials header, so a
+   * per-user server reads as the user.
+   */
+  previewApproval(
+    request: ApprovalPreviewRequest,
+    headers?: Record<string, string>,
+  ): Promise<ApprovalPreviewResponse>;
 
   /**
    * List the full assistant definitions for the editor
@@ -221,8 +237,23 @@ export class AssistantsClient implements AssistantsApi {
     });
   }
 
-  async getCapabilities(): Promise<CapabilitiesResponse> {
-    return this.requestJson<CapabilitiesResponse>('/capabilities');
+  async getCapabilities(
+    headers?: Record<string, string>,
+  ): Promise<CapabilitiesResponse> {
+    return this.requestJson<CapabilitiesResponse>('/capabilities', {
+      headers,
+    });
+  }
+
+  async previewApproval(
+    request: ApprovalPreviewRequest,
+    headers?: Record<string, string>,
+  ): Promise<ApprovalPreviewResponse> {
+    return this.requestJson<ApprovalPreviewResponse>('/preview', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      headers,
+    });
   }
 
   async listManagedAssistants(): Promise<AssistantDefinition[]> {
