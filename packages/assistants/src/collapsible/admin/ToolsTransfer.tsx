@@ -40,14 +40,18 @@ import {
 } from './adminModel';
 
 const useStyles = makeStyles(theme => ({
+  // The header is centred over its group: name, kind, then identity.
   groupHead: {
     display: 'flex',
     flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
     gap: 2,
   },
   groupTitle: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: theme.spacing(0.75),
     minHeight: 24,
   },
@@ -71,6 +75,7 @@ const useStyles = makeStyles(theme => ({
   identity: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: theme.spacing(0.5),
     fontSize: '0.75rem',
     color: theme.palette.text.secondary,
