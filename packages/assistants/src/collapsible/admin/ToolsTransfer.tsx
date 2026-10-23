@@ -2,12 +2,12 @@
  * The Tools section: the assigned tools grouped by source (Backstage actions,
  * then the browser's client tools, then one group per MCP server) over an
  * "＋ Add tool" picker drawn from the live `/capabilities` inventory plus the
- * client tools registered in this browser, grouped the same way. Each group
- * header names the source's kind and name, its reachability (MCP servers),
- * and in words whose identity its tools run under: the user (Backstage
- * permissions, the browser's own sign-ins, or a per-user server's sign-in) or
- * a server's shared credential, flagged amber. Each assigned row leads with
- * that identity's icon, shows a ⚖ when the tool needs approval, and an ⓘ with
+ * client tools registered in this browser, grouped the same way, with a rule
+ * between groups. Each group header gives the source's name (with an MCP
+ * server's reachability), its kind, and in words whose identity its tools run
+ * under: the user (Backstage permissions, the browser's own sign-ins, or a
+ * per-user server's sign-in; a person icon) or a server's shared credential (a
+ * key, in amber). Each assigned row leads with that identity's icon, shows a ⚖ when the tool needs approval, and an ⓘ with
  * the tool description. STALE assignments (in `allowedTools` but not live)
  * render flagged RED (gone) / AMBER (unverifiable) with a remove ✕.
  */
@@ -21,7 +21,6 @@ import ErrorIcon from '@material-ui/icons/Error';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import PersonOutlineIcon from '@material-ui/icons/PersonOutline';
-import WebOutlinedIcon from '@material-ui/icons/WebOutlined';
 import VpnKeyOutlinedIcon from '@material-ui/icons/VpnKeyOutlined';
 import GavelOutlinedIcon from '@material-ui/icons/GavelOutlined';
 import {
@@ -57,13 +56,10 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    padding: '1px 6px',
-    borderRadius: 4,
-    border: `1px solid ${theme.palette.divider}`,
     color: theme.palette.text.secondary,
   },
   groupName: {
-    fontSize: '0.85rem',
+    fontSize: '0.9rem',
     fontWeight: 700,
     color: theme.palette.text.primary,
   },
@@ -164,10 +160,10 @@ function identityOf(meta: SourceMeta): Identity {
   }
   if (meta.kind === 'client') {
     return {
-      label: 'Runs in your browser as you',
-      detail: 'with your own sign-in to each system',
+      label: 'Runs as you',
+      detail: 'in your browser, with your own sign-in to each system',
       shared: false,
-      Icon: WebOutlinedIcon,
+      Icon: PersonOutlineIcon,
     };
   }
   if (meta.userCredentials) {
@@ -425,8 +421,8 @@ export function ToolsTransfer({
     );
   };
 
-  // Two lines per source: what it is and whether it can be reached, then
-  // whose identity its tools run under.
+  // Three lines per source: its name (and an MCP server's reachability), its
+  // kind, then whose identity its tools run under.
   const renderGroupHeader = (group: string) => {
     const m = sources.get(group);
     if (!m) {
@@ -436,7 +432,6 @@ export function ToolsTransfer({
     return (
       <div className={classes.groupHead}>
         <div className={classes.groupTitle}>
-          <span className={classes.kind}>{KIND_LABEL[m.kind]}</span>
           <span className={classes.groupName}>{m.name}</span>
           {m.kind === 'mcp' &&
             (m.reachable ? (
@@ -459,6 +454,7 @@ export function ToolsTransfer({
             </Button>
           )}
         </div>
+        <div className={classes.kind}>{KIND_LABEL[m.kind]}</div>
         <div
           className={`${classes.identity} ${
             identity.shared ? classes.identityShared : ''

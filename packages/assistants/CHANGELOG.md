@@ -7,7 +7,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- The editor's tool groups say where tools come from and whose identity they run under: each header names the kind (Backstage, Browser, MCP server) and the source, then "Runs as you" with the specifics (your Backstage permissions, your own sign-ins in the browser, or your sign-in for a per-user MCP server) or "Shared credential" in amber for an MCP server with one configured identity. The detail dialog tags groups the same way.
+- The editor's tool groups say where tools come from and whose identity they run under. Each header gives the source's name, then its kind (Backstage, Browser, MCP server), then "Runs as you" with the specifics (your Backstage permissions, your own sign-ins in the browser, or your sign-in for a per-user MCP server) under a person icon, or "Shared credential" under a key, in amber, for an MCP server with one configured identity. A rule separates the groups in the list and the picker. The detail dialog tags groups the same way.
 
 ### Fixed
 

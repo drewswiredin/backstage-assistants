@@ -88,9 +88,11 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
   },
-  // Spacing above each assigned group after the first (grouped rows only).
+  // A rule with space on both sides between assigned groups (grouped rows only).
   rowGroup: {
-    marginTop: theme.spacing(1),
+    marginTop: theme.spacing(1.5),
+    paddingTop: theme.spacing(1),
+    borderTop: `1px solid ${theme.palette.divider}`,
   },
   rowGroupHeader: {
     padding: theme.spacing(0.5, 0.5, 0.25),
@@ -179,7 +181,15 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
   },
   groupHeader: {
-    padding: theme.spacing(0.75, 1.25, 0.25),
+    padding: theme.spacing(0.75, 1.25, 0.5),
+  },
+  // The same rule between groups in the picker.
+  pickerGroup: {
+    '& + &': {
+      marginTop: theme.spacing(1),
+      paddingTop: theme.spacing(0.5),
+      borderTop: `1px solid ${theme.palette.divider}`,
+    },
   },
   optionLabel: {
     fontSize: '0.92rem',
@@ -437,7 +447,7 @@ export function AssignList({
           getOptionLabel={o => (typeof o === 'string' ? o : o.label)}
           groupBy={grouped ? o => o.group ?? '' : undefined}
           renderGroup={params => (
-            <div key={params.key}>
+            <div key={params.key} className={classes.pickerGroup}>
               <div className={classes.groupHeader}>
                 {renderGroupHeader
                   ? renderGroupHeader(params.group)
