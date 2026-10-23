@@ -66,8 +66,9 @@ describe('ElicitationCard', () => {
     ).toBeTruthy();
   });
 
-  it('declines and cancels without content', async () => {
+  it('declines without content, and offers no Cancel', async () => {
     render(<ElicitationCard prompt={prompt()} />);
+    expect(screen.queryByText('Cancel')).toBeNull();
     fireEvent.click(screen.getByText('Decline'));
     await waitFor(() =>
       expect(respondElicitation).toHaveBeenCalledWith('q1', {

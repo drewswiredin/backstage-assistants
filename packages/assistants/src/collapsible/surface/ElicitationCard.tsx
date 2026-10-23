@@ -160,7 +160,8 @@ function settledState(
  * An MCP server's question in the middle of a tool call (elicitation),
  * shown on the call as a form. The answer goes to that server only; the
  * model sees just the tool's result. Nothing is sent until the user chooses
- * Submit (enabled once the answer fits the form), Decline, or Cancel. A
+ * Submit (enabled once the answer fits the form) or Decline; a question the
+ * user walks away from (Stop, timeout, leaving) is cancelled for them. A
  * field that looks like a secret gets a warning, and Decline becomes the
  * main button.
  */
@@ -432,15 +433,6 @@ export function ElicitationCard({
           onClick={() => send({ action: 'decline' })}
         >
           Decline
-        </Button>
-        <Button
-          type="button"
-          size="small"
-          variant="text"
-          disabled={sending}
-          onClick={() => send({ action: 'cancel' })}
-        >
-          Cancel
         </Button>
       </div>
       {errors.length > 0 && (

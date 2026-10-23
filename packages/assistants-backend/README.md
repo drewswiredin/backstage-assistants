@@ -543,8 +543,8 @@ Tokens are used only during the user's own turns, never in the background.
 
 Some MCP servers stop mid-call to ask the user something (MCP elicitation),
 such as which project to use when the call left it out. The question appears
-on the tool call as a form, under the server's name; the user submits,
-declines, or cancels, and the answer goes back to that server only. The model
+on the tool call as a form, under the server's name; the user submits or
+declines, and the answer goes back to that server only. The model
 never sees the question or the answer, only the tool's result.
 
 ```yaml

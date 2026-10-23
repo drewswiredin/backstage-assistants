@@ -8,7 +8,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Connecting to an MCP server that runs its own OAuth (backend `provider: oauth`): the Connect chip opens the server's sign-in in a popup through the backend, which keeps the tokens; once connected the chip reads "✓ <name>" and its × disconnects. An expired sign-in shows "Reconnect <name>". The editor's Connect does the same. New `AssistantsApi` methods: `getMcpOAuthStatus`, `startMcpOAuth`, `disconnectMcpOAuth`.
-- MCP elicitation: a server's question mid-call appears on the tool call as a form (text, number, yes/no, single and multiple choice) with Submit, Decline, and Cancel, and a warning when a field looks like a secret; Submit is enabled once the answer fits. After an answer the card shows the outcome, and a call whose question was declined, cancelled, or expired is marked on its row, also after a reload. Chat requests say the browser renders these (`elicitation: true`). New `AssistantsApi.respondElicitation`.
+- MCP elicitation: a server's question mid-call appears on the tool call as a form (text, number, yes/no, single and multiple choice) with Submit and Decline, and a warning when a field looks like a secret; Submit is enabled once the answer fits. After an answer the card shows the outcome, and a call whose question was declined, cancelled, or expired is marked on its row, also after a reload. Chat requests say the browser renders these (`elicitation: true`). New `AssistantsApi.respondElicitation`.
 
 ### Fixed
 
