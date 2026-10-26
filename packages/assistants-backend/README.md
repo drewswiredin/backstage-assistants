@@ -753,6 +753,11 @@ each plugin's README:
 - `software-catalog-mcp-extras`, `scaffolder-mcp-extras`, and
   `kubernetes-mcp-extras`: more catalog, scaffolder, and Kubernetes actions.
 
+These packages are not published to the public npm registry: their READMEs
+show `yarn add @red-hat-developer-hub/backstage-plugin-<name>`, which fails
+against npmjs.com. They ship with Red Hat Developer Hub; outside it, build
+them from the repository.
+
 ## Run a scaffolder template from the conversation
 
 Give an assistant `get-catalog-entity` and `execute-template` (with `catalog`
