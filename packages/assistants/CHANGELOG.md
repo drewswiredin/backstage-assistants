@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- A reply read in the open panel no longer shows the unread dot on the button after you close the panel. Every view in a tab (the page, the panel, its button, the nav item) now shares one copy of conversation status, so a late status response can no longer bring back a dot you already cleared, and the tab makes one status request where it made one per view.
+
 ## 0.23.0 - 2026-10-26
 
 ### Added

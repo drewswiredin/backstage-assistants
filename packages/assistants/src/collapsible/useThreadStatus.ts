@@ -3,22 +3,23 @@
  * state machine.
  *
  * The single source of truth is `GET /threads/status`: per conversation
- * `{ working, unread }` (+ `assistantId`). We refetch it on any Signals message
- * (delivered even while the tab is backgrounded) and when the tab becomes
- * visible — never on window focus. Signals is optional: a host app without
+ * `{ working, unread }` (+ `assistantId`). One store per browser tab holds it,
+ * shared by every view (the page, the panel, its button, the nav icon), so
+ * they never disagree. It refetches on any Signals message (delivered even
+ * while the tab is backgrounded) and when the tab becomes visible — never on
+ * window focus. Signals is optional: a host app without
  * `@backstage/plugin-signals` polls the endpoint instead. While any turn runs it
  * also polls, because a turn on another backend replica may finish without its
- * signal reaching this browser. Every indicator is a
- * pure derivation:
+ * signal reaching this browser. Every indicator is a pure derivation:
  *   - `working` (in-flight) shows ALWAYS, even for the focused conversation
- *   - `unread` shows until you FOCUS the conversation (focusing marks it read)
+ *   - `unread` shows until a view FOCUSES the conversation (focusing marks it read)
  *   - rollups (assistant, nav, tab): `working` wins over `unread`
  *
- * Marking a conversation read also tells the other views in this browser tab
- * directly (the nav icon keeps its own snapshot), because the server's `read`
- * signal can be published on a replica this browser isn't connected to.
+ * A response requested before a conversation was marked read (or before the
+ * server confirmed it) can't bring its unread back: the read may have reached
+ * a different replica, or the response may simply land late.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useApiHolder } from '@backstage/core-plugin-api';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { AssistantsApi } from '../api';
@@ -30,12 +31,144 @@ const POLL_INTERVAL_MS = 10_000;
 /** Refetch cadence while any conversation is working. */
 const WORKING_POLL_INTERVAL_MS = 5_000;
 
-/** This tab's views, told directly when one of them marks a conversation read. */
-const readListeners = new Set<(threadId: string) => void>();
+type SignalApi = {
+  subscribe(channel: string, onMessage: () => void): { unsubscribe(): void };
+};
 
-function markRead(api: AssistantsApi, threadId: string) {
-  readListeners.forEach(listener => listener(threadId));
-  void api.markThreadRead(threadId);
+interface Snapshot {
+  rows: ConversationStatusRow[];
+  /** Bumps on each applied refresh. */
+  tick: number;
+}
+
+interface StatusStore {
+  snapshot: Snapshot;
+  listeners: Set<() => void>;
+  /** Conversations a mounted view has focused, with how many views do. */
+  focused: Map<string, number>;
+  /**
+   * Per conversation marked read: responses requested before this point can't
+   * report it unread (`Infinity` until the server confirms the read).
+   */
+  readFloor: Map<string, number>;
+  /** Orders requests and read confirmations. */
+  clock: number;
+  /** When the newest applied response was requested; older ones are dropped. */
+  applied: number;
+  views: number;
+  stop?: () => void;
+  workingPoll?: ReturnType<typeof setInterval>;
+}
+
+const stores = new WeakMap<AssistantsApi, StatusStore>();
+
+function storeFor(api: AssistantsApi): StatusStore {
+  let store = stores.get(api);
+  if (!store) {
+    store = {
+      snapshot: { rows: [], tick: 0 },
+      listeners: new Set(),
+      focused: new Map(),
+      readFloor: new Map(),
+      clock: 0,
+      applied: 0,
+      views: 0,
+    };
+    stores.set(api, store);
+  }
+  return store;
+}
+
+function publish(store: StatusStore, snapshot: Snapshot) {
+  store.snapshot = snapshot;
+  store.listeners.forEach(listener => listener());
+}
+
+function markRead(api: AssistantsApi, store: StatusStore, threadId: string) {
+  store.readFloor.set(threadId, Infinity);
+  const settle = () => store.readFloor.set(threadId, ++store.clock);
+  void api.markThreadRead(threadId).then(settle, settle);
+  const { rows, tick } = store.snapshot;
+  if (rows.some(r => r.threadId === threadId && r.unread)) {
+    publish(store, {
+      rows: rows.map(r =>
+        r.threadId === threadId ? { ...r, unread: false } : r,
+      ),
+      tick,
+    });
+  }
+}
+
+async function refresh(api: AssistantsApi, store: StatusStore) {
+  const requested = ++store.clock;
+  let next: ConversationStatusRow[];
+  try {
+    next = await api.getThreadsStatus();
+  } catch {
+    return; // best-effort — the next signal or poll retries
+  }
+  if (requested < store.applied) return;
+  store.applied = requested;
+  const toMark: string[] = [];
+  const rows = next.map(r => {
+    if (!r.unread) return r;
+    if (requested < (store.readFloor.get(r.threadId) ?? 0)) {
+      return { ...r, unread: false };
+    }
+    // Focus is the only "read" action: converge a focused conversation on the
+    // server so other tabs clear it too.
+    if (store.focused.has(r.threadId)) toMark.push(r.threadId);
+    return r;
+  });
+  publish(store, { rows, tick: store.snapshot.tick + 1 });
+  toMark.forEach(threadId => markRead(api, store, threadId));
+
+  // While a turn runs, poll as well: its finish may come from a replica whose
+  // signal never reaches this browser.
+  const anyWorking = rows.some(r => r.working);
+  if (anyWorking && !store.workingPoll && store.views > 0) {
+    store.workingPoll = setInterval(
+      () => void refresh(api, store),
+      WORKING_POLL_INTERVAL_MS,
+    );
+  } else if (!anyWorking && store.workingPoll) {
+    clearInterval(store.workingPoll);
+    store.workingPoll = undefined;
+  }
+}
+
+/**
+ * Signal-driven (delivered even while backgrounded), debounced, plus a refetch
+ * when the tab becomes visible. No window-focus reconcile. Without Signals the
+ * same refresh runs on a fixed interval instead.
+ */
+function start(
+  api: AssistantsApi,
+  store: StatusStore,
+  signals: SignalApi | undefined,
+) {
+  void refresh(api, store);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => void refresh(api, store), 120);
+  };
+  const sub = signals?.subscribe(NOTIFY_CHANNEL, () => schedule());
+  const poll = signals
+    ? undefined
+    : setInterval(() => void refresh(api, store), POLL_INTERVAL_MS);
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') void refresh(api, store);
+  };
+  document.addEventListener('visibilitychange', onVisible);
+  store.stop = () => {
+    if (timer) clearTimeout(timer);
+    if (poll) clearInterval(poll);
+    if (store.workingPoll) clearInterval(store.workingPoll);
+    store.workingPoll = undefined;
+    sub?.unsubscribe();
+    document.removeEventListener('visibilitychange', onVisible);
+  };
 }
 
 export type ConvStatus = 'read' | 'working' | 'unread';
@@ -68,74 +201,42 @@ export function useThreadStatus(
 ): ThreadStatusStore {
   // Optional: `undefined` when the host app does not install Signals.
   const signals = useApiHolder().get(signalApiRef);
-  const [rows, setRows] = useState<ConversationStatusRow[]>([]);
-  const [tick, setTick] = useState(0);
-  const focusedRef = useRef(focusedId);
-  focusedRef.current = focusedId;
+  const store = storeFor(api);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      store.listeners.add(listener);
+      return () => {
+        store.listeners.delete(listener);
+      };
+    },
+    [store],
+  );
+  const { rows, tick } = useSyncExternalStore(subscribe, () => store.snapshot);
 
-  const refresh = useCallback(async () => {
-    const next = await api.getThreadsStatus();
-    setRows(next);
-    setTick(t => t + 1);
-    // Focus is the only "read" action: converge the focused conversation on the
-    // server so the rollups / nav / other tabs clear it too.
-    const fid = focusedRef.current;
-    if (fid && next.find(r => r.threadId === fid)?.unread) {
-      markRead(api, fid);
-    }
-  }, [api]);
-
-  // Signal-driven (delivered even while backgrounded), debounced, plus a refetch
-  // when the tab becomes visible. No window-focus reconcile. Without Signals the
-  // same refresh runs on a fixed interval instead.
+  // The first mounted view starts the shared refresh; the last one stops it.
   useEffect(() => {
-    void refresh();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void refresh(), 120);
-    };
-    const sub = signals?.subscribe(NOTIFY_CHANNEL, () => schedule());
-    const poll = signals
-      ? undefined
-      : setInterval(() => void refresh(), POLL_INTERVAL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void refresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    store.views += 1;
+    if (store.views === 1) start(api, store, signals);
     return () => {
-      if (timer) clearTimeout(timer);
-      if (poll) clearInterval(poll);
-      sub?.unsubscribe();
-      document.removeEventListener('visibilitychange', onVisible);
+      store.views -= 1;
+      if (store.views === 0) {
+        store.stop?.();
+        store.stop = undefined;
+      }
     };
-  }, [signals, refresh]);
-
-  // While a turn runs, poll as well: its finish may come from a replica whose
-  // signal never reaches this browser.
-  const anyWorking = rows.some(r => r.working);
-  useEffect(() => {
-    if (!anyWorking) return undefined;
-    const poll = setInterval(() => void refresh(), WORKING_POLL_INTERVAL_MS);
-    return () => clearInterval(poll);
-  }, [anyWorking, refresh]);
-
-  // A conversation marked read by any view in this tab (this one included).
-  useEffect(() => {
-    const listener = (threadId: string) =>
-      setRows(prev =>
-        prev.map(r => (r.threadId === threadId ? { ...r, unread: false } : r)),
-      );
-    readListeners.add(listener);
-    return () => {
-      readListeners.delete(listener);
-    };
-  }, []);
+  }, [api, store, signals]);
 
   // Focusing a conversation marks it read (optimistically + on the server).
   useEffect(() => {
-    if (focusedId) markRead(api, focusedId);
-  }, [focusedId, api]);
+    if (!focusedId) return undefined;
+    store.focused.set(focusedId, (store.focused.get(focusedId) ?? 0) + 1);
+    markRead(api, store, focusedId);
+    return () => {
+      const count = (store.focused.get(focusedId) ?? 1) - 1;
+      if (count > 0) store.focused.set(focusedId, count);
+      else store.focused.delete(focusedId);
+    };
+  }, [focusedId, api, store]);
 
   const statusOf = useCallback(
     (remoteId: string | undefined): ConvStatus => {
