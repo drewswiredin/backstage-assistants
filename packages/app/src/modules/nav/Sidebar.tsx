@@ -35,6 +35,8 @@ export const SidebarContent = NavContentBlueprint.make({
 
       // Skipped items
       nav.take('page:search'); // Using search modal instead
+      nav.take('page:notifications'); // NotificationsSidebarItem below
+      nav.take('page:catalog-import'); // Reached from Create
       // The plugin's entry (its icon carries the working/unread dot),
       // placed below behind the permission check.
       const assistants = nav.take('page:assistants');
@@ -47,10 +49,15 @@ export const SidebarContent = NavContentBlueprint.make({
           </SidebarGroup>
           <SidebarDivider />
           <SidebarGroup label="Menu" icon={<MenuIcon />}>
-            {nav.take('page:catalog')}
-            {nav.take('page:scaffolder')}
+            {nav.take('page:home')}
             <IfAssistantsAllowed>{assistants}</IfAssistantsAllowed>
             <SidebarDivider />
+            {nav.take('page:catalog')}
+            {nav.take('page:api-docs')}
+            {nav.take('page:techdocs')}
+            {nav.take('page:catalog-graph')}
+            <SidebarDivider />
+            {nav.take('page:scaffolder')}
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}
             </SidebarScrollWrapper>
