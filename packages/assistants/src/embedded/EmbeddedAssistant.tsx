@@ -135,6 +135,13 @@ export interface EmbeddedAssistantProps {
 /** The assistant picker's fixed width; its menu is the same width. */
 const PICKER_WIDTH = 240;
 
+/**
+ * A thread setting (model, effort) is saved in the background; the choice
+ * still applies to the next send, so a failed save (the thread was deleted)
+ * must not surface as an unhandled error.
+ */
+const ignoreSaveError = () => {};
+
 const useStyles = makeStyles(theme => ({
   root: {
     display: 'flex',
@@ -601,19 +608,23 @@ function EmbeddedChrome({
     setReasoningLevel(level);
     reasoningLevelRef.current = level;
     if (remoteIdRef.current) {
-      void api.patchThread(remoteIdRef.current, {
-        model: next,
-        reasoningLevel: level ?? null,
-      });
+      void api
+        .patchThread(remoteIdRef.current, {
+          model: next,
+          reasoningLevel: level ?? null,
+        })
+        .catch(ignoreSaveError);
     }
   };
   const handleReasoningChange = (level: ReasoningLevel | undefined) => {
     setReasoningLevel(level);
     reasoningLevelRef.current = level;
     if (remoteIdRef.current) {
-      void api.patchThread(remoteIdRef.current, {
-        reasoningLevel: level ?? null,
-      });
+      void api
+        .patchThread(remoteIdRef.current, {
+          reasoningLevel: level ?? null,
+        })
+        .catch(ignoreSaveError);
     }
   };
   const didSelect = useRef(false);
@@ -647,6 +658,12 @@ function EmbeddedChrome({
         if (existing && state.mainThreadId === state.newThreadId) {
           void runtime.threads.switchToThread(existing);
           return;
+        }
+        // The remembered thread is gone (deleted elsewhere): start blank,
+        // without its id, so nothing is saved to it.
+        if (!existing && remoteIdRef.current) {
+          remoteIdRef.current = undefined;
+          setRemoteId(undefined);
         }
       }
       const item = state.threadItems[state.mainThreadId];

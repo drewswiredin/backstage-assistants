@@ -75,6 +75,13 @@ import {
   type ConvStatus,
 } from './useThreadStatus';
 
+/**
+ * A thread setting (model, effort) is saved in the background; the choice
+ * still applies to the next send, so a failed save (the thread was deleted)
+ * must not surface as an unhandled error.
+ */
+const ignoreSaveError = () => {};
+
 const SIDEPANE_COLLAPSED_KEY = 'ai-chat-sidepane-collapsed';
 
 function loadSidePaneCollapsed() {
@@ -860,10 +867,12 @@ function ChatChrome({
       setReasoningLevel(level);
       reasoningLevelRef.current = level;
       if (activeRemoteId) {
-        void api.patchThread(activeRemoteId, {
-          model: next,
-          reasoningLevel: level,
-        });
+        void api
+          .patchThread(activeRemoteId, {
+            model: next,
+            reasoningLevel: level,
+          })
+          .catch(ignoreSaveError);
       }
     },
     [api, activeRemoteId, modelIdRef, reasoningLevelRef, resolveReasoning],
@@ -874,7 +883,9 @@ function ChatChrome({
       setReasoningLevel(next);
       reasoningLevelRef.current = next;
       if (activeRemoteId) {
-        void api.patchThread(activeRemoteId, { reasoningLevel: next });
+        void api
+          .patchThread(activeRemoteId, { reasoningLevel: next })
+          .catch(ignoreSaveError);
       }
     },
     [api, activeRemoteId, reasoningLevelRef],
@@ -885,7 +896,9 @@ function ChatChrome({
     setReasoningLevel(undefined);
     reasoningLevelRef.current = undefined;
     if (activeRemoteId) {
-      void api.patchThread(activeRemoteId, { reasoningLevel: null });
+      void api
+        .patchThread(activeRemoteId, { reasoningLevel: null })
+        .catch(ignoreSaveError);
     }
   }, [api, activeRemoteId, reasoningLevelRef]);
 
