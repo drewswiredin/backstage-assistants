@@ -1,32 +1,27 @@
-# Images
+# Images and videos
 
-Assets referenced by absolute raw URL on the `main` ref, so they render on GitHub and npm alike:
+Assets referenced by absolute URL on the `main` ref, so they render on GitHub
+and npm alike. Images load from
+`https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/<file>`;
+each still links to its video at
+`https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/<file>`,
+because npm doesn't play video.
 
-`https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/<file>`
+| File                                                   | Used by                                                                                                                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `icon.svg`                                             | the source of `icon.png`: Remix Icon `robot-2-line` (Apache-2.0) in Backstage teal                                                                           |
+| `icon.png`                                             | 256x256 render of `icon.svg`; the backstage.io directory entry's icon, copied to `microsite/static/img/assistants-logo.png` per `docs/marketplace/README.md` |
+| `explain-system.png`                                   | project and frontend READMEs: still of `explain-system.mp4`, the panel's answer with an architecture diagram                                                 |
+| `create-project.png`                                   | project and frontend READMEs: still of `create-project.mp4`, a scaffolder form with the owner picker open                                                    |
+| `ui-tour.png`                                          | project README: still of `ui-tour.mp4`, the homepage composers beside the open panel                                                                         |
+| `home-composer.png`                                    | frontend README: the homepage composer's four looks, from `ui-tour.mp4`                                                                                      |
+| `chat.png`, `editor.png`, `home-composer-variants.png` | the frontend README published with 0.23.0, which links to them                                                                                               |
 
-| File                  | Used by                                                                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `icon.svg`            | the source of `icon.png`: Remix Icon `robot-2-line` (Apache-2.0) in Backstage teal                                                                           |
-| `icon.png`            | 256x256 render of `icon.svg`; the backstage.io directory entry's icon, copied to `microsite/static/img/assistants-logo.png` per `docs/marketplace/README.md` |
-| `chat.png`            | project and frontend READMEs: a grounded answer with a Mermaid diagram and a Markdown table                                                                  |
-| `scaffolder-form.png` | project README: a scaffolder template's form rendered in the conversation                                                                                    |
-| `tool-approval.png`   | project README: the approval card (Allow, Always allow, Deny) for a gated `execute-template` call                                                            |
-| `editor.png`          | project and frontend READMEs: the assistant editor (prompt, suggestions, models, access)                                                                     |
-| `editor-tools.png`    | project README: tool assignment in the editor, Backstage actions and MCP tools                                                                               |
-
-`chat.png` and `editor.png` keep their names because published package READMEs
-link to them.
-
-Shots to take at the next deployment. The READMEs mark where each goes with a `<!-- screenshot: … -->` comment; replace the comment with the image once it exists:
-
-| File                         | Shows                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `panel.png`                  | the panel open beside an entity page, mid-answer, with the page content narrowed, not covered                                         |
-| `panel-picker.png`           | the panel header menu listing the accessible assistants with the Default marker                                                       |
-| `panel-page-context.png`     | the panel answering a question about the page beside it, with the `read_current_page` chip                                            |
-| `editor-default.png`         | the editor with the Default chip, the Make default button, and the locked access row                                                  |
-| `editor-tools.png`           | retake: tool assignment now has the Backstage client tools group                                                                      |
-| `home-composer-variants.png` | the homepage composer's four looks on the dev app's home page: `bar` across the top, `padded` and `full` side by side, `titled` below |
+| Video (`docs/media/`) | Shows                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `explain-system.mp4`  | asking the panel to explain a system: searches, docs reads, and an answer with tables and a Mermaid diagram (42 s) |
+| `create-project.mp4`  | the DevOps assistant rendering a template's form with owner and system pickers, then asking for approval (60 s)    |
+| `ui-tour.mp4`         | the homepage composers, the hand-off to the panel, the chat page, and the assistant editor (70 s)                  |
 
 Regenerate the PNG icon after editing the SVG:
 
@@ -34,4 +29,14 @@ Regenerate the PNG icon after editing the SVG:
 inkscape docs/images/icon.svg --export-type=png --export-filename=docs/images/icon.png -w 256 -h 256
 ```
 
-Screenshots come from a live portal with organisation-specific names replaced by neutral ones (Acme, Atlas). Chat shots are 2000 px wide; editor shots are the editor dialog at 1281 px.
+Recordings come from the local environment (`yarn start:env`) with the demo
+catalog. Crop the browser's tab, address, and bookmarks bars, drop the audio,
+and encode for the web:
+
+```sh
+ffmpeg -i in.mp4 -an -vf "crop=2560:1288:0:152,scale=1920:-2" \
+  -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -movflags +faststart out.mp4
+```
+
+The crop assumes a 2560x1440 recording with the browser's bars in the top 152
+px; drop it for a fullscreen recording.

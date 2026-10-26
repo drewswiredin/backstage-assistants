@@ -22,9 +22,9 @@ ask for input, the question appears on the tool call as a form. It pairs with:
 - [`@drewswiredin/backstage-plugin-assistants-common`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-common),
   shared types and permissions (installed transitively)
 
-![The AI Assistants chat page](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
+[![Explaining a system in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/explain-system.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/explain-system.mp4)
 
-![Assistant admin editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
+[![A scaffolder form with an owner picker in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/create-project.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/create-project.mp4)
 
 ## Requirements
 
@@ -198,7 +198,7 @@ export default createApp({
 The module adds one widget, `AssistantComposer`. Its look is set with
 `variant`:
 
-![The homepage composer's four looks: bar across the top, padded and full side by side, titled below](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer-variants.png)
+![The homepage composer's four looks: bar across the top, padded and full side by side, titled below](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer.png)
 
 | `variant`          | Looks like                                                                                                                                                         | Grid rows |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |

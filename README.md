@@ -21,45 +21,23 @@ models, tools, and audience, and connect any model provider in app-config.
 > later. It does not mount in a legacy `packages/app` built on
 > `@backstage/app-defaults`.
 
-**A grounded answer.** The assistant answers from the catalog and TechDocs, with
-a Mermaid diagram and a Markdown table.
+**Ask about a system.** The panel opens beside the catalog, and the assistant
+searches the catalog and TechDocs, reads the pages it found, and answers with
+tables, a Mermaid architecture diagram, and the gaps it noticed.
 
-![A grounded answer with a Mermaid diagram and a table](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/chat.png)
+[![Explaining the podcast system in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/explain-system.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/explain-system.mp4)
 
-**A scaffolder form in the conversation.** The template's own parameters, with
-its pickers, rendered inline.
+**Create a project from a template.** The assistant finds the scaffolder
+template and renders its own form in the conversation, with the catalog's owner
+and system pickers, then waits for approval before it runs.
 
-![A scaffolder template form in the conversation](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/scaffolder-form.png)
+[![A scaffolder form with an owner picker in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/create-project.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/create-project.mp4)
 
-**Tool approval.** `execute-template` waits for Allow, Always allow, or Deny
-before it runs.
+**A tour.** The homepage composer in its four looks, the hand-off to the panel,
+the full chat page, and creating an assistant: prompt, starter suggestions,
+models, access, and tools.
 
-![An approval card for execute-template](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/tool-approval.png)
-
-**Creating an assistant.** Prompt, starter suggestions, models, and who can use
-it.
-
-![The assistant editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor.png)
-
-**Assigning tools.** Backstage actions run as the user; MCP tools run under
-their server's configured credential.
-
-![Tool assignment in the assistant editor](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/editor-tools.png)
-
-**An assistant beside any page.** The panel opens next to the page you are on,
-which makes room for it, and continues in the full chat page in one click.
-
-<!-- screenshot: panel.png — the panel open beside an entity page, mid-answer -->
-
-**About what is on screen.** Ask "what does this mean" or "which button do I
-press" and the assistant reads the page you are looking at.
-
-<!-- screenshot: panel-page-context.png — the panel answering a question about the page beside it, with the read_current_page chip -->
-
-**On the home page.** One composer in four looks, from a search-bar style line
-to a titled card; sending opens the panel on the answer.
-
-![The homepage composer's four looks](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/home-composer-variants.png)
+[![The homepage composers and the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/ui-tour.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/ui-tour.mp4)
 
 ## What users get
 
