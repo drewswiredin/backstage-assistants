@@ -15,6 +15,8 @@ spec:
     - title: Fill in some steps
       required:
         - name
+        - owner
+        - system
       properties:
         name:
           title: Name
@@ -23,6 +25,23 @@ spec:
           ui:autofocus: true
           ui:options:
             rows: 5
+        owner:
+          title: Owner
+          type: string
+          description: The group that owns the component
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        system:
+          title: System
+          type: string
+          description: The system the component belongs to
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind: System
+            defaultKind: System
     - title: Choose a location
       required:
         - repoUrl
@@ -46,6 +65,8 @@ spec:
         url: ./content
         values:
           name: ${{ parameters.name }}
+          owner: ${{ parameters.owner }}
+          system: ${{ parameters.system }}
 
     # This step publishes the contents of the working directory to GitHub.
     # If you or your organization prefer another default branch name over 'main'
