@@ -1170,10 +1170,11 @@ This package ships system prompts you can copy and tailor; after install they
 are at
 `node_modules/@drewswiredin/backstage-plugin-assistants-backend/examples/prompts/`:
 
-- `general-assistant.md`: read-only catalog/TechDocs helper (scope,
-  guardrails, search strategy).
-- `devops-assistant.md`: adds write/scaffolding tools with a
-  confirm-before-acting policy.
+- `general-assistant.md`: a read-only technical and architectural
+  assistant over the catalog and TechDocs (asking before a vague search, a
+  search strategy, citations, and diagram guidance).
+- `devops-assistant.md`: adds catalog-change and scaffolder tools with a
+  confirm-before-acting policy, for terse operator use.
 
 Open one and paste it into an assistant's prompt field in the editor; prompts
 live in the database definition, not `app-config.yaml`.

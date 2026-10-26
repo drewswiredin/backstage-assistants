@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The example general prompt (`examples/prompts/general-assistant.md`) is rewritten as a technical and architectural assistant: it asks focused questions before a vague search, searches by meaning then by keyword, reads the best hits in full, cites every claim with its confidence, flags contradictions and gaps, and follows diagram guidance.
 - The example DevOps prompt (`examples/prompts/devops-assistant.md`) is rewritten for operators: terse answers, a when-to-use table for each catalog, search, and scaffolder tool, loading the templates on the first request, catalog filter notes, naming, and diagram guidance.
 - The README has a recommended starter setup: the backend plugins and action sources that give assistants their tools, a tool list for a general and a DevOps assistant, and optional Red Hat Developer Hub tool plugins.
 

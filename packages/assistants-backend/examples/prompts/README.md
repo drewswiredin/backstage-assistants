@@ -2,10 +2,11 @@
 
 System prompts to copy into an assistant and tailor.
 
-- `general-assistant.md`: read-only catalog/TechDocs helper (scope, guardrails,
-  search strategy).
-- `devops-assistant.md`: adds write/scaffolding tools with a
-  confirm-before-acting policy.
+- `general-assistant.md`: a read-only technical and architectural
+  assistant over the catalog and TechDocs (asking before a vague search, a
+  search strategy, citations, and diagram guidance).
+- `devops-assistant.md`: adds catalog-change and scaffolder tools with a
+  confirm-before-acting policy, for terse operator use.
 
 ## Use them
 
