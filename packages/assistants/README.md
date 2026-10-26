@@ -528,6 +528,16 @@ Keep results small and explicit: return the fields the model needs, never a
 raw object dump, and never a secret. Everything a tool returns is untrusted
 input to the model.
 
+With a model whose provider runs its own tool loop (an agent SDK or CLI a
+backend module adds; see the
+[backend README](../assistants-backend#add-a-provider-type-from-a-backend-module)),
+the turn can't pause for the browser, so it holds the call open instead: a
+tool's `execute` runs at once and its result returns to the same turn, and a
+card tool such as `render_form` returns its `addResult`. A tool that would
+ask first (one that writes, or one that needs Connect) is declined on such a
+model, and the model is told why. Approval cards for the backend's gated tools
+work as usual.
+
 ### Dependency versions
 
 The `@assistant-ui/*` set, `assistant-cloud`, and the AI SDK (`ai`,

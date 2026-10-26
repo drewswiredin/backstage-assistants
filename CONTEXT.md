@@ -93,8 +93,16 @@ The optional `-backend-module-semantic-search` module's store: a copy of everyth
 _Avoid_: RAG (as a user-facing name), vector store
 
 **Provider**:
-A configured connection to an LLM backend (`assistants.providers.{id}`). Carries a `type` discriminator selecting the AI-SDK factory (`openai` | `anthropic` | `azure` | `openai-compatible`), `apiKey` (secret), an optional `baseUrl`, a passthrough `options` bag spread verbatim into that factory, and `models[]`. The `id` is a free label that namespaces model ids. We wire the factory; we never implement a provider.
+A configured connection to an LLM backend (`assistants.providers.{id}`). Carries a `type` discriminator selecting the AI-SDK factory (`openai` | `anthropic` | `azure` | `openai-compatible`, or a **Contributed provider**'s type), `apiKey` (secret, for the built-in types), an optional `baseUrl`, a passthrough `options` bag spread verbatim into that factory, and `models[]`. The `id` is a free label that namespaces model ids. We wire the factory; we never implement a provider.
 _Avoid_: Adapter (we don't write one — the `@ai-sdk/*` package is the provider)
+
+**Contributed provider**:
+A **Provider** whose `type` a backend module adds through `assistantsModelProvidersExtensionPoint` rather than one of the four built in. One that runs its own tool loop (an agent SDK or CLI) receives the turn's tools and executes them itself, and the plugin holds any call that needs the user (see **Held call**).
+_Avoid_: custom model, plugin provider
+
+**Held call**:
+A tool call inside a **Contributed provider**'s own tool loop that waits for the user instead of ending the turn: an **Approval gate** decision, or a **Client tool** the browser runs. The browser answers it through `POST /held-calls/:id`.
+_Avoid_: paused turn, suspended tool
 
 **Model id**:
 A `<providerId>:<model>` string (e.g. `myAzure:gpt-4o`, `openrouter:anthropic/claude-sonnet-4`) used everywhere a model is named — `defaultModel`, per-Assistant allowlist, the picker — and resolved through the AI-SDK provider registry. Note the model segment may itself contain slashes.

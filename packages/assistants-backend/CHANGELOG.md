@@ -3,6 +3,14 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `assistantsModelProvidersExtensionPoint`: a backend module adds provider types beyond the four built in (a cloud SDK, a company AI gateway). A provider block with that `type` goes to the module's factory; `apiKey` is now required only by the built-in types.
+
+- Providers that run their own tool loop (`runsOwnToolLoop`, for an agent SDK or CLI) receive the turn's tools and execute them themselves. A call that needs the user is held open inside the provider's loop rather than ending the turn: a gated call shows the approval card, a client tool runs in the browser, and the answer arrives through the new `POST /held-calls/:id`, on any replica (the `held_calls` table).
+
 ## 0.22.4 - 2026-10-26
 
 ### Fixed

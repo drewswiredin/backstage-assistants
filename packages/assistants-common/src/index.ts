@@ -24,6 +24,7 @@ export * from './elicitation';
 export * from './permissions';
 export * from './platformInstructions';
 export * from './userCredentials';
+export * from './heldCalls';
 
 import type { ApprovalPreview, UserCredentialSpec } from './userCredentials';
 

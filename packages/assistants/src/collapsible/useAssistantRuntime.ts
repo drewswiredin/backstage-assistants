@@ -30,6 +30,12 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsApi } from '../api';
 import { shouldSendAutomatically } from './autoSend';
+import {
+  useHeldClientTools,
+  withHeldCalls,
+  type HeldChatHelpers,
+  type HeldClientToolRunner,
+} from './heldCalls';
 import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
 import { createHistoryAdapter } from './threadListAdapter';
@@ -83,6 +89,11 @@ interface RuntimeHookOptions {
   getCredentialsHeader?: (
     assistantId: AssistantId,
   ) => Promise<Record<string, string>>;
+  /**
+   * Runs a client tool's call that a provider executing its own tool loop
+   * holds for the browser (see heldCalls.ts).
+   */
+  heldClientToolRunner?: HeldClientToolRunner;
 }
 
 /**
@@ -205,6 +216,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     getClientToolAttributes,
     getPageContext,
     getCredentialsHeader,
+    heldClientToolRunner,
   } = options;
   const isClientTool = (name: string) => name in getClientToolAttributes();
 
@@ -334,7 +346,17 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       () => (history ? { attachments, history } : { attachments }),
       [attachments, history],
     );
-    const runtime = useAISDKRuntime(chat, { adapters });
+    // Answers to calls a provider holds inside its own tool loop go to the
+    // backend as well as into the local message.
+    const runtimeChat = withHeldCalls(
+      chat as unknown as HeldChatHelpers,
+      (id, answer) => api.answerHeldCall(id, answer),
+    ) as unknown as typeof chat;
+    useHeldClientTools(
+      runtimeChat as unknown as HeldChatHelpers & { status?: string },
+      heldClientToolRunner,
+    );
+    const runtime = useAISDKRuntime(runtimeChat, { adapters });
 
     // Wire the transport to the runtime + this thread's list item so it can
     // initialize() the server thread and tag requests with its remoteId.

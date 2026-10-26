@@ -448,3 +448,83 @@ describe('elicitation', () => {
     );
   });
 });
+
+describe('readConfig with contributed provider types', () => {
+  const model = { specificationVersion: 'v4' } as never;
+  const turns: unknown[] = [];
+  const factory = jest.fn((_options: { providerId: string; config: any }) => {
+    return {
+      runsOwnToolLoop: true,
+      languageModel: (name: string, turn: unknown) => {
+        turns.push([name, turn]);
+        return model;
+      },
+      reasoningOptions: (name: string, level: string) => ({
+        claude: { effort: `${name}:${level}` },
+      }),
+    };
+  });
+  const assistants = {
+    providers: {
+      claude: {
+        type: 'claude-subscription',
+        models: [{ name: 'opus', reasoning: true }, { name: 'haiku' }],
+      },
+    },
+    defaultModel: 'claude:opus',
+  };
+
+  beforeEach(() => {
+    factory.mockClear();
+    turns.length = 0;
+  });
+
+  it('builds the provider with its config block and resolves its models', () => {
+    const cfg = readConfig(new ConfigReader({ assistants }), {
+      providerTypes: new Map([['claude-subscription', factory]]),
+    });
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(factory.mock.calls[0][0].providerId).toBe('claude');
+    expect(factory.mock.calls[0][0].config.getString('type')).toBe(
+      'claude-subscription',
+    );
+    expect(cfg.models.map(m => m.id)).toEqual(['claude:opus', 'claude:haiku']);
+    expect(cfg.resolveProviderType('claude:opus')).toBe('claude-subscription');
+    expect(cfg.runsOwnToolLoop('claude:opus')).toBe(true);
+
+    const turn = { tools: {}, abortSignal: new AbortController().signal };
+    expect(cfg.resolveModel('claude:haiku', turn)).toBe(model);
+    expect(turns).toEqual([['haiku', turn]]);
+  });
+
+  it('asks the provider for reasoning options only for reasoning models', () => {
+    const cfg = readConfig(new ConfigReader({ assistants }), {
+      providerTypes: new Map([['claude-subscription', factory]]),
+    });
+    expect(cfg.resolveReasoning('claude:opus', 'high')).toEqual({
+      claude: { effort: 'opus:high' },
+    });
+    expect(cfg.resolveReasoning('claude:haiku', 'high')).toBeUndefined();
+  });
+
+  it('names contributed types when a type is unknown', () => {
+    expect(() =>
+      readConfig(
+        new ConfigReader({
+          assistants: {
+            ...assistants,
+            providers: {
+              claude: { ...assistants.providers.claude, type: 'nope' },
+            },
+          },
+        }),
+        { providerTypes: new Map([['claude-subscription', factory]]) },
+      ),
+    ).toThrow(/Supported types: .*claude-subscription/);
+  });
+
+  it('runs no tool loop for built-in providers', () => {
+    const cfg = read({ providers, defaultModel: 'openai:gpt-4o' });
+    expect(cfg.runsOwnToolLoop('openai:gpt-4o')).toBe(false);
+  });
+});

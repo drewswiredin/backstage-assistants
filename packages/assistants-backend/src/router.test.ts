@@ -5,7 +5,10 @@ import type { LoggerService } from '@backstage/backend-plugin-api';
 import { ConfigReader } from '@backstage/config';
 import { MockLanguageModelV4 } from 'ai/test';
 import type { AssistantDefinition } from '@drewswiredin/backstage-plugin-assistants-common';
+import knexFactory, { type Knex } from 'knex';
 import { readConfig } from './config';
+import { HeldCallBroker } from './heldCalls';
+import { ThreadService } from './threads';
 import { closeMcpPool } from './mcp';
 import {
   approvalDecisions,
@@ -127,7 +130,10 @@ const assistant: AssistantDefinition = {
   access: { allowAuthenticated: true, users: [], groups: [] },
 } as unknown as AssistantDefinition;
 
-async function startApp(model = makeModel()) {
+async function startApp(
+  model: ReturnType<typeof makeModel> = makeModel(),
+  extra: { assistants?: Record<string, unknown>; heldCalls?: unknown } = {},
+) {
   const config = readConfig(
     new ConfigReader({
       assistants: {
@@ -166,7 +172,11 @@ async function startApp(model = makeModel()) {
       },
     }),
   );
-  const assistants = { ...config, resolveModel: () => model };
+  const assistants = {
+    ...config,
+    resolveModel: () => model,
+    ...extra.assistants,
+  };
   const logger = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -211,6 +221,7 @@ async function startApp(model = makeModel()) {
       follow: jest.fn(async () => false),
     },
     signals: { publish: jest.fn(async () => {}) },
+    ...(extra.heldCalls ? { heldCalls: extra.heldCalls } : {}),
   } as never);
   // The backend's error middleware maps Backstage errors to statuses.
   const app = express()
@@ -449,5 +460,145 @@ describe('unavailableServerInstructions', () => {
     expect(
       unavailableServerInstructions([{ server: github, error: 'HTTP 401' }]),
     ).toContain('failed (HTTP 401)');
+  });
+});
+
+describe('/chat with a provider that runs its own tool loop', () => {
+  let db: Knex;
+
+  beforeEach(async () => {
+    db = knexFactory({
+      client: 'better-sqlite3',
+      connection: { filename: ':memory:' },
+      useNullAsDefault: true,
+    });
+    await new ThreadService(db).runMigrations();
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  /**
+   * A model that, like an agent SDK, reports a provider-executed call, runs
+   * the plugin's tool itself, reports the result, and answers.
+   */
+  function loopModel(turn: {
+    tools: Record<string, { execute(input: unknown): Promise<unknown> }>;
+  }) {
+    const input = {
+      owner: 'acme',
+      repo: 'pylon',
+      branch: 'backstage-assistant/scale',
+      path: 'deploy.yaml',
+      content: 'replicas: 2\n',
+    };
+    return new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: new ReadableStream({
+          async start(controller) {
+            controller.enqueue({ type: 'stream-start', warnings: [] });
+            controller.enqueue({
+              type: 'tool-call',
+              toolCallId: 'toolu_1',
+              toolName: 'github__create_or_update_file',
+              input: JSON.stringify(input),
+              providerExecuted: true,
+              dynamic: true,
+            });
+            let result: unknown;
+            let isError = false;
+            try {
+              result = await turn.tools.github__create_or_update_file.execute(
+                input,
+              );
+            } catch (e) {
+              result = String(e);
+              isError = true;
+            }
+            controller.enqueue({
+              type: 'tool-result',
+              toolCallId: 'toolu_1',
+              toolName: 'github__create_or_update_file',
+              result: result ?? null,
+              isError,
+              dynamic: true,
+            });
+            controller.enqueue({ type: 'text-start', id: 't1' });
+            controller.enqueue({ type: 'text-delta', id: 't1', delta: 'done' });
+            controller.enqueue({ type: 'text-end', id: 't1' });
+            controller.enqueue({
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage,
+            });
+            controller.close();
+          },
+        }),
+      }),
+    } as never);
+  }
+
+  it('hands the provider the tools, holds a gated call for approval, and runs it once allowed', async () => {
+    const turns: unknown[] = [];
+    const app = await startApp(undefined, {
+      assistants: {
+        runsOwnToolLoop: () => true,
+        resolveModel: (_id: string, turn?: Parameters<typeof loopModel>[0]) => {
+          if (turn) turns.push(turn);
+          return turn ? loopModel(turn) : makeModel();
+        },
+      },
+      heldCalls: new HeldCallBroker({ db, pollMs: 10 }),
+    });
+    server = app.server;
+    const response = await fetch(`${app.base}/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...credentialsHeader },
+      body: JSON.stringify(chatBody),
+    });
+    expect(response.status).toBe(200);
+    expect(turns).toHaveLength(1);
+    expect(Object.keys((turns[0] as { tools: object }).tools)).toEqual([
+      'github__create_or_update_file',
+    ]);
+
+    // Read until the approval card arrives; the call is held meanwhile.
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (!text.includes('"type":"tool-approval-request"')) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    const approvalId = /"approvalId":"(held-[^"]+)"/.exec(text)?.[1];
+    expect(approvalId).toBeDefined();
+    expect(text).toContain('"toolCallId":"toolu_1"');
+    await new Promise(r => setTimeout(r, 30));
+    expect(opened.some(c => c.callTool.mock.calls.length > 0)).toBe(false);
+
+    const answer = await fetch(`${app.base}/held-calls/${approvalId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: true }),
+    });
+    expect(answer.status).toBe(204);
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toContain('"type":"tool-output-available"');
+    expect(text).toContain('done');
+    expect(opened.some(c => c.callTool.mock.calls.length === 1)).toBe(true);
+    expect(app.logger.info).toHaveBeenCalledWith(
+      'assistants.tool.audit',
+      expect.objectContaining({
+        tool: 'create_or_update_file',
+        decision: 'approved',
+      }),
+    );
   });
 });

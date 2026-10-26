@@ -55,6 +55,7 @@ import { assistantsApiRef, type AssistantsApi } from '../api';
 import {
   ClientToolsProvider,
   useClientTools,
+  useHeldClientToolRunner,
 } from '../clientTools/ClientToolsProvider';
 import { ToolGuardsProvider, useToolGuards } from '../collapsible/toolGuards';
 import { ConnectChips } from '../collapsible/surface/ConnectChips';
@@ -491,6 +492,7 @@ function EmbeddedRuntime({
     [api],
   );
   const { tools: clientTools } = useClientTools();
+  const heldClientToolRunner = useHeldClientToolRunner();
   const clientToolAttributesRef = useRef<Record<string, ClientToolAttributes>>(
     {},
   );
@@ -510,6 +512,7 @@ function EmbeddedRuntime({
         modelIdRef,
         reasoningLevelRef,
         getClientToolAttributes: () => clientToolAttributesRef.current,
+        heldClientToolRunner,
         getCredentialsHeader: assistantId =>
           toolGuardsRef.current.credentialsHeader(assistantId),
         getPageContext: () => pageContextRef.current,

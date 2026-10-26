@@ -290,18 +290,20 @@ export interface Config {
     providers: {
       [providerId: string]: {
         /**
-         * The AI-SDK factory to instantiate for this provider. Selects the
-         * `@ai-sdk/*` package used to build the connection; model ids are
-         * `<providerId>:<model>`.
+         * The AI-SDK factory to instantiate for this provider: `openai`,
+         * `anthropic`, `azure`, or `openai-compatible`, or a type a backend
+         * module contributes through `assistantsModelProvidersExtensionPoint`.
+         * Model ids are `<providerId>:<model>`.
          */
-        type: 'openai' | 'anthropic' | 'azure' | 'openai-compatible';
+        type: string;
 
         /**
-         * Provider API key.
+         * Provider API key. Required by the built-in types; a contributed
+         * type reads whatever keys it documents.
          *
          * @visibility secret
          */
-        apiKey: string;
+        apiKey?: string;
 
         /** Optional override for the provider base URL. */
         baseUrl?: string;

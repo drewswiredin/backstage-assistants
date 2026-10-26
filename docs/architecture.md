@@ -4,21 +4,21 @@
 
 ## Stack
 
-| Package                                                              | Role                                                                                                                                                                                   |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@assistant-ui/react`, `-core`, `-react-markdown`                    | Message and tool-call primitives; `useRemoteThreadListRuntime` is the one runtime for every assistant and conversation                                                                 |
-| `@assistant-ui/react-ai-sdk`                                         | `useAISDKRuntime` and `AssistantChatTransport`, the bridge from `useChat` to the runtime; `respondToApproval`; sends registered frontend tools as `tools` and runs them in the browser |
-| `ai`, `@ai-sdk/react`                                                | `streamText` tool loop, UI message streaming, `toolApproval`, persistence hooks; `useChat` on the client                                                                               |
-| `@ai-sdk/openai`, `-anthropic`, `-azure`                             | Provider factories selected by the configured `type`; OpenAI-compatible gateways use the `openai` factory                                                                              |
-| `@backstage/backend-plugin-api/alpha` (Actions), `@ai-sdk/mcp`       | Backstage actions run as the user; MCP servers run as a configured credential or as the user with their own token; both become AI SDK tools                                            |
-| `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react` | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                                                                                               |
-| `@backstage/plugin-app-react`                                        | `AppRootWrapperBlueprint` for the panel, which wraps the app layout                                                                                                                    |
-| `@backstage/plugin-home-react` (optional peer)                       | `HomePageWidgetBlueprint` for the homepage composer, loaded only through the `./home` entry point                                                                                      |
-| `@backstage/backend-plugin-api`, `backend-openapi-utils`             | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                                                                                       |
-| `coreServices.database` with `knex`                                  | The `threads`, `messages`, `stream_chunks`, `assistants`, `assistants_meta`, `mcp_tool_cache`, `mcp_oauth_*`, and `mcp_elicitations` tables on SQLite, Postgres, or MySQL              |
-| `vector` (pgvector), `pg_trgm`, `ai` `embedMany`                     | The knowledge index module: hybrid semantic, fuzzy, and keyword retrieval in the plugin's Postgres database                                                                            |
-| `@backstage/plugin-signals-node`, `-react`                           | Real-time working and unread indicators; the browser polls when the host has no Signals API                                                                                            |
-| `mermaid`, `remark-gfm`, `@material-ui/core` v4                      | Diagrams and GitHub-flavoured Markdown in replies; Backstage's component theme                                                                                                         |
+| Package                                                              | Role                                                                                                                                                                                    |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@assistant-ui/react`, `-core`, `-react-markdown`                    | Message and tool-call primitives; `useRemoteThreadListRuntime` is the one runtime for every assistant and conversation                                                                  |
+| `@assistant-ui/react-ai-sdk`                                         | `useAISDKRuntime` and `AssistantChatTransport`, the bridge from `useChat` to the runtime; `respondToApproval`; sends registered frontend tools as `tools` and runs them in the browser  |
+| `ai`, `@ai-sdk/react`                                                | `streamText` tool loop, UI message streaming, `toolApproval`, persistence hooks; `useChat` on the client                                                                                |
+| `@ai-sdk/openai`, `-anthropic`, `-azure`                             | Provider factories selected by the configured `type`; OpenAI-compatible gateways use the `openai` factory                                                                               |
+| `@backstage/backend-plugin-api/alpha` (Actions), `@ai-sdk/mcp`       | Backstage actions run as the user; MCP servers run as a configured credential or as the user with their own token; both become AI SDK tools                                             |
+| `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react` | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                                                                                                |
+| `@backstage/plugin-app-react`                                        | `AppRootWrapperBlueprint` for the panel, which wraps the app layout                                                                                                                     |
+| `@backstage/plugin-home-react` (optional peer)                       | `HomePageWidgetBlueprint` for the homepage composer, loaded only through the `./home` entry point                                                                                       |
+| `@backstage/backend-plugin-api`, `backend-openapi-utils`             | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                                                                                        |
+| `coreServices.database` with `knex`                                  | The `threads`, `messages`, `stream_chunks`, `assistants`, `assistants_meta`, `mcp_tool_cache`, `mcp_oauth_*`, `mcp_elicitations`, and `held_calls` tables on SQLite, Postgres, or MySQL |
+| `vector` (pgvector), `pg_trgm`, `ai` `embedMany`                     | The knowledge index module: hybrid semantic, fuzzy, and keyword retrieval in the plugin's Postgres database                                                                             |
+| `@backstage/plugin-signals-node`, `-react`                           | Real-time working and unread indicators; the browser polls when the host has no Signals API                                                                                             |
+| `mermaid`, `remark-gfm`, `@material-ui/core` v4                      | Diagrams and GitHub-flavoured Markdown in replies; Backstage's component theme                                                                                                          |
 
 The thread and composer components from assistant-ui's registry template are vendored under `packages/assistants/src/collapsible/surface/react-ui/` so they stay editable.
 
@@ -37,7 +37,9 @@ flowchart LR
   MP["MCP pool\nmcp.ts"]
   KI["Knowledge index\nmodule-semantic-search"]
   DB[("Database")]
-  PV["LLM providers"]
+  PV["LLM providers\nbuilt in, or from modules"]
+  PM["Provider modules\nmodelProviders.ts extension point"]
+  HC["Held calls\nheldCalls.ts"]
   RT -->|"/chat /threads"| RO
   PN -->|"/chat with page, /threads/:id"| RO
   HO -->|"first /chat, then hands off"| PN
@@ -48,6 +50,11 @@ flowchart LR
   LP -->|"persist turn"| ST
   LP -->|"model calls"| PV
   LP -->|"tool calls"| MP
+  PM -->|"provider types"| PV
+  PV -->|"an own-loop provider runs the turn's tools"| HC
+  HC -->|"approval cards, browser tools"| RT
+  RT -->|"/held-calls/:id"| HC
+  HC -->|"tool calls"| MP
   TA -->|"cached tools"| MP
   ST --> DB
   SR["Backstage search\ncollator runs"]
@@ -57,21 +64,22 @@ flowchart LR
   KI --> DB
 ```
 
-| Node              | Module path                                                                        | Owns                                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Browser runtime   | `packages/assistants/src/collapsible/`                                             | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                          |
-| Panel             | `packages/assistants/src/panel/`, `embedded/`                                      | The app root wrapper: the floating button, the side panel beside the page, one conversation     |
-| Homepage composer | `packages/assistants/src/home.tsx`, `home/`                                        | `AssistantComposer` in four looks; starts the conversation and hands it to the panel            |
-| Admin editor      | `packages/assistants/src/collapsible/admin/`                                       | The `assistant.manage` dialog and client-side delta-validation                                  |
-| Router            | `packages/assistants-backend/src/router.ts`, `manage.ts`                           | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`                   |
-| Tool assembly     | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts`           | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping       |
-| AI SDK loop       | `packages/assistants-backend/src/router.ts`                                        | `streamText`, the approval map, persistence on start and finish, signals                        |
-| Stores            | `packages/assistants-backend/src/assistants.ts`, `threads.ts`                      | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                    |
-| MCP pool          | `packages/assistants-backend/src/mcp.ts`                                           | One client per shared server and one per user of a per-user server, per process; the tool cache |
-| MCP OAuth         | `packages/assistants-backend/src/mcpOAuth.ts`, `mcpOAuthRouter.ts`, `secretBox.ts` | Sign-in to servers that run their own OAuth; the sealed token store; refresh                    |
-| Knowledge index   | `packages/assistants-backend-module-semantic-search/src/`                          | The search decorator, the index copy, and the `search-knowledge` action                         |
-| Database          | Backstage `backend.database`                                                       | The plugin tables, plus the three knowledge index tables on Postgres                            |
-| LLM providers     | `packages/assistants-backend/src/config.ts`                                        | The AI SDK provider registry built from config                                                  |
+| Node              | Module path                                                                               | Owns                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Browser runtime   | `packages/assistants/src/collapsible/`                                                    | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                                     |
+| Panel             | `packages/assistants/src/panel/`, `embedded/`                                             | The app root wrapper: the floating button, the side panel beside the page, one conversation                |
+| Homepage composer | `packages/assistants/src/home.tsx`, `home/`                                               | `AssistantComposer` in four looks; starts the conversation and hands it to the panel                       |
+| Admin editor      | `packages/assistants/src/collapsible/admin/`                                              | The `assistant.manage` dialog and client-side delta-validation                                             |
+| Router            | `packages/assistants-backend/src/router.ts`, `manage.ts`                                  | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`                              |
+| Tool assembly     | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts`                  | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping                  |
+| AI SDK loop       | `packages/assistants-backend/src/router.ts`                                               | `streamText`, the approval map, persistence on start and finish, signals                                   |
+| Stores            | `packages/assistants-backend/src/assistants.ts`, `threads.ts`                             | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                               |
+| MCP pool          | `packages/assistants-backend/src/mcp.ts`                                                  | One client per shared server and one per user of a per-user server, per process; the tool cache            |
+| MCP OAuth         | `packages/assistants-backend/src/mcpOAuth.ts`, `mcpOAuthRouter.ts`, `secretBox.ts`        | Sign-in to servers that run their own OAuth; the sealed token store; refresh                               |
+| Knowledge index   | `packages/assistants-backend-module-semantic-search/src/`                                 | The search decorator, the index copy, and the `search-knowledge` action                                    |
+| Database          | Backstage `backend.database`                                                              | The plugin tables, plus the three knowledge index tables on Postgres                                       |
+| LLM providers     | `packages/assistants-backend/src/config.ts`, `modelProviders.ts`                          | The AI SDK provider registry built from config                                                             |
+| Held calls        | `packages/assistants-backend/src/heldCalls.ts`, `assistants/src/collapsible/heldCalls.ts` | A provider loop's calls held for the user: the broker, call pairing, injected parts, the browser's answers |
 
 ## Routes
 
@@ -98,6 +106,7 @@ Every route accepts user tokens only, except the OAuth sign-in callback and the 
 | DELETE | `/mcp/:serverId/oauth`           | `assistant.use`      | `mcp_oauth_tokens`, the revocation endpoint                                                                | `mcp_oauth_tokens` row deleted, the user's pooled connection closed              |                                      |
 | GET    | `/mcp/oauth/client-metadata/:id` | none                 | config                                                                                                     |                                                                                  |                                      |
 | POST   | `/elicitations/:id`              | `assistant.use`      | `mcp_elicitations` (the caller must own the question)                                                      | `response_json`                                                                  |                                      |
+| POST   | `/held-calls/:id`                | `assistant.use`      | `held_calls` (the caller must own the call)                                                                | `response_json`                                                                  |                                      |
 | GET    | `/capabilities`                  | `assistant.manage`   | `actions.list`, model pool, MCP pool, `mcp_tool_cache`, the admin's credentials header                     | `mcp_tool_cache`                                                                 |                                      |
 | GET    | `/manage/assistants`             | `assistant.manage`   | `assistants` (DB)                                                                                          |                                                                                  |                                      |
 | POST   | `/manage/assistants`             | `assistant.manage`   | capabilities                                                                                               | `assistants` row, snapshot rebuild                                               |                                      |
@@ -256,6 +265,35 @@ The runtime's `execute` wrapper runs the steps in order and returns a `{ _error:
 
 `sendAutomaticallyWhen` flushes the turn once every tool part in the latest step is settled and at least one is client-driven: a client tool's output, unless it records that the user stopped the turn, or an answered approval. A server tool truncated at `maxSteps` is never auto-resumed.
 
+### Providers that run their own tool loop
+
+A backend module adds provider types through `assistantsModelProvidersExtensionPoint` (`modelProviders.ts`); `readConfig` hands each provider block of a contributed `type` to its factory, and `resolveModel(modelId, turn)` asks that provider for the turn's model. A provider with `runsOwnToolLoop` (an agent SDK or CLI) executes tools inside its own loop, so `/chat` builds its model after tool assembly: `buildLoopTools` (`heldCalls.ts`) turns the turn's tools into `AssistantsTurnTool`s (JSON Schema plus an `execute`), and `streamText` runs with no `tools` and no `toolApproval`. The provider reports each call and its result as provider-executed (dynamic) tool parts named as in `turn.tools`.
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant R as Router (/chat)
+  participant P as Provider (agent CLI)
+  participant H as HeldCallBroker
+  B->>R: POST /chat
+  R->>P: streamText, model built with turn.tools
+  P-->>R: tool-call (provider-executed)
+  P->>R: turn.tools[name].execute(input)
+  R-->>B: tool-approval-request (held-<uuid>)
+  R->>H: hold(held-<uuid>)
+  B->>R: POST /held-calls/held-<uuid>
+  R->>H: respond (any replica)
+  H-->>R: approved
+  R->>R: run the tool as the user
+  R-->>P: result
+  P-->>R: tool-result, reply
+  R-->>B: tool output, reply
+```
+
+A call that needs the user can't end such a turn, so it is held. `withInjectedParts` reads the provider's stream eagerly, shows each part to `ToolCallCorrelator`, and lets held calls inject parts. Each `execute` first applies the gate: an argument rule's denial throws its reason into the provider's loop at once; otherwise the correlator pairs the call (by name and key-sorted input, in order) with the tool call the stream reported, for its `toolCallId`. A gated call (the same predicate as the `toolApproval` map, with "Always allow" answers recorded for the rest of the turn) injects a `tool-approval-request` with id `held-<uuid>` on that call and waits in `HeldCallBroker.hold`; the browser renders the usual card. A client tool's call waits under `tool-<toolCallId>`. An MCP tool's preliminary outputs (questions) are injected as preliminary `tool-result` parts on the call. The broker stores each held call in `held_calls` and resolves it from `POST /held-calls/:id` (403 for another user, 410 once settled or expired, 400 for an answer that is not `{ approved, reason? }`, `{ output }`, or `{ error }`), at once on the replica that took the answer and from the row (polled every second) elsewhere. It gives up at 10 minutes or when the turn stops; a denied, expired, or failed call throws `HeldCallError`, whose message the model sees as the tool's error.
+
+In the browser, `withHeldCalls` wraps `useChat`'s helpers before `useAISDKRuntime`: an approval answer whose id starts with `held-`, and a tool output for a provider-executed part, also go to `/held-calls/:id`, and the local message updates as usual. assistant-ui does not run a frontend tool on a provider-owned call, so `useHeldClientTools` runs each provider-executed client tool call that has a runner while the turn is live: `useHeldClientToolRunner` runs it through `runClientTool` with no card to ask on, so a tool that would ask (a write, or Connect) returns its `declined` or `not_authorized` result. `render_form` has no runner; its card's result goes through `withHeldCalls`. Provider-executed parts are `dynamic-tool` parts, so `shouldSendAutomatically` never resumes the turn for them.
+
 ## Authorization
 
 | Order | Layer                       | Where                                                                      | Rule                                                                                                                                                                                                                                                                                                                                                          |
@@ -285,36 +323,37 @@ A low-privilege user chatting with an assistant wired to a powerful shared MCP s
 
 ## State and lifetime
 
-| Store                                | Where          | Scope                             | Written by                                                                           | Lifetime                                                                      | Several replicas                               |
-| ------------------------------------ | -------------- | --------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------- |
-| `threads`, `messages`                | DB             | Per `user_ref`                    | `ThreadService` from `/chat` and `/threads`                                          | Durable                                                                       | Shared                                         |
-| `assistants`, `assistants_meta`      | DB             | Global                            | `AssistantStore` from `/manage`, seed-once                                           | Durable                                                                       | Shared                                         |
-| `assistants_knowledge_*`             | DB             | Global                            | The replica that ran the search collator; each replica copies its runs one at a time | Rebuildable copy; rebuilt when the embedding model changes                    | Shared                                         |
-| Assistant snapshot                   | Process memory | Global                            | Write-through on the editing replica                                                 | Lazy refresh after 60 s elsewhere                                             | Stale up to 60 s; `/chat` reads the row        |
-| `stream_chunks`                      | DB             | Per thread, owner-checked on read | `StreamBuffer` from the `consumeSseStream` tee                                       | Replaced by the next turn; deleted 60 s after completion; swept after an hour | Shared                                         |
-| Turn state                           | DB             | Per thread                        | `noteStarted`, a 5 s heartbeat, `noteFinished`                                       | Cleared on finish, abort, or error; stale after 30 s                          | Shared                                         |
-| Abort handles                        | Process memory | Per thread                        | `/chat`                                                                              | Cleared on finish, abort, or error                                            | A cancel elsewhere lands on the next heartbeat |
-| MCP pool and tool cache              | Process memory | Per server                        | `maintainMcpConnections` every 2 min                                                 | Until shutdown; 5 min freshness for `/capabilities`                           | Each replica keeps its own                     |
-| Per-user MCP connections             | Process memory | Per server and user               | `/chat`, `/preview`, `/capabilities` with the user's token                           | Reconnected when the token changes; closed after 10 min idle; at most 200     | Each replica keeps its own                     |
-| `mcp_tool_cache`                     | DB             | Per per-user server               | The first listing after a change, from any user's connection                         | Rebuildable; replaced by each changed listing                                 | Shared                                         |
-| `mcp_oauth_tokens`                   | DB             | Per server and `user_ref`         | The sign-in callback; each refresh                                                   | Until disconnect, or a refresh the server refuses                             | Shared                                         |
-| `mcp_oauth_clients`                  | DB             | Per OAuth server                  | The first sign-in, by dynamic client registration                                    | Durable; deleted when the server rejects the client                           | Shared                                         |
-| `mcp_oauth_state`                    | DB             | Per sign-in, bound to `user_ref`  | `/mcp/:serverId/oauth/start`                                                         | Deleted by the callback; swept after 10 min                                   | Shared                                         |
-| `mcp_elicitations`                   | DB             | Per question, owned by `user_ref` | `ElicitationBroker.handle`; the answer from `/elicitations/:id`                      | The action only once settled; swept a minute after expiry                     | Shared                                         |
-| Calls in flight per MCP client       | Process memory | Per client                        | `runAskingUser` while `callTool` runs                                                | Released when the call settles                                                | Each replica keeps its own                     |
-| OAuth refresh lock                   | Process memory | Per server and user               | `McpOAuthService.accessToken`                                                        | Released when the refresh settles                                             | Each replica keeps its own                     |
-| OAuth connections                    | Browser memory | Per tab                           | `ToolGuardsProvider` from `/mcp/oauth/status`                                        | Refetched after Connect and Disconnect                                        | n/a                                            |
-| Runtime messages                     | Browser memory | Per tab                           | `useChat` stream, history adapter load                                               | Until unmount; never persisted                                                | n/a                                            |
-| Thread status rows                   | Browser memory | Per tab                           | `useThreadStatus`'s shared store, one per tab                                        | Until reload; refetching stops while no view is mounted                       | n/a                                            |
-| `interruptedTurns` reasons           | Browser memory | Per message id                    | `useChat.onFinish`                                                                   | Cleared on reload; the DB flag takes over                                     | n/a                                            |
-| Model and effort refs                | React refs     | Per tab                           | The composer's `ModelControls`; PATCHed to the thread                                | Until unmount                                                                 | n/a                                            |
-| Side pane collapsed                  | `localStorage` | Per browser                       | The collapse control                                                                 | Persistent                                                                    | n/a                                            |
-| Panel conversation, width, pick, pin | `localStorage` | Per browser                       | `panelStorage` from the panel                                                        | Persistent; the conversation is forgotten on "+" and "Open in Assistants"     | n/a                                            |
-| Panel mode                           | React state    | Per tab                           | The button, Close, Escape, click-off, `Ctrl+/`, `PanelControl.open`                  | Until reload; closed on load                                                  | n/a                                            |
-| Default assistant                    | DB             | Global                            | `setDefault` from "Make default", the seed, `ensureDefault` at init                  | Durable; read with the snapshot                                               | Shared                                         |
-| Active assistant                     | URL            | Per tab                           | `?assistant=<id>`, rewritten on each switch                                          | Survives reload                                                               | n/a                                            |
-| Scaffolder field registry            | Module memory  | Per tab                           | `render_form`'s first `loadFormFields()`                                             | Until reload                                                                  | n/a                                            |
-| Client tool prompts                  | Browser memory | Per tool call                     | The runtime's `execute` wrapper via `human`                                          | Until answered or the turn stops; a reload re-runs the call and asks again    | n/a                                            |
+| Store                                | Where          | Scope                              | Written by                                                                           | Lifetime                                                                      | Several replicas                               |
+| ------------------------------------ | -------------- | ---------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------- |
+| `threads`, `messages`                | DB             | Per `user_ref`                     | `ThreadService` from `/chat` and `/threads`                                          | Durable                                                                       | Shared                                         |
+| `assistants`, `assistants_meta`      | DB             | Global                             | `AssistantStore` from `/manage`, seed-once                                           | Durable                                                                       | Shared                                         |
+| `assistants_knowledge_*`             | DB             | Global                             | The replica that ran the search collator; each replica copies its runs one at a time | Rebuildable copy; rebuilt when the embedding model changes                    | Shared                                         |
+| Assistant snapshot                   | Process memory | Global                             | Write-through on the editing replica                                                 | Lazy refresh after 60 s elsewhere                                             | Stale up to 60 s; `/chat` reads the row        |
+| `stream_chunks`                      | DB             | Per thread, owner-checked on read  | `StreamBuffer` from the `consumeSseStream` tee                                       | Replaced by the next turn; deleted 60 s after completion; swept after an hour | Shared                                         |
+| Turn state                           | DB             | Per thread                         | `noteStarted`, a 5 s heartbeat, `noteFinished`                                       | Cleared on finish, abort, or error; stale after 30 s                          | Shared                                         |
+| Abort handles                        | Process memory | Per thread                         | `/chat`                                                                              | Cleared on finish, abort, or error                                            | A cancel elsewhere lands on the next heartbeat |
+| MCP pool and tool cache              | Process memory | Per server                         | `maintainMcpConnections` every 2 min                                                 | Until shutdown; 5 min freshness for `/capabilities`                           | Each replica keeps its own                     |
+| Per-user MCP connections             | Process memory | Per server and user                | `/chat`, `/preview`, `/capabilities` with the user's token                           | Reconnected when the token changes; closed after 10 min idle; at most 200     | Each replica keeps its own                     |
+| `mcp_tool_cache`                     | DB             | Per per-user server                | The first listing after a change, from any user's connection                         | Rebuildable; replaced by each changed listing                                 | Shared                                         |
+| `mcp_oauth_tokens`                   | DB             | Per server and `user_ref`          | The sign-in callback; each refresh                                                   | Until disconnect, or a refresh the server refuses                             | Shared                                         |
+| `mcp_oauth_clients`                  | DB             | Per OAuth server                   | The first sign-in, by dynamic client registration                                    | Durable; deleted when the server rejects the client                           | Shared                                         |
+| `mcp_oauth_state`                    | DB             | Per sign-in, bound to `user_ref`   | `/mcp/:serverId/oauth/start`                                                         | Deleted by the callback; swept after 10 min                                   | Shared                                         |
+| `mcp_elicitations`                   | DB             | Per question, owned by `user_ref`  | `ElicitationBroker.handle`; the answer from `/elicitations/:id`                      | The action only once settled; swept a minute after expiry                     | Shared                                         |
+| `held_calls`                         | DB             | Per held call, owned by `user_ref` | `HeldCallBroker.hold`; the answer from `/held-calls/:id`                             | Settled once answered; swept a minute after expiry                            | Shared                                         |
+| Calls in flight per MCP client       | Process memory | Per client                         | `runAskingUser` while `callTool` runs                                                | Released when the call settles                                                | Each replica keeps its own                     |
+| OAuth refresh lock                   | Process memory | Per server and user                | `McpOAuthService.accessToken`                                                        | Released when the refresh settles                                             | Each replica keeps its own                     |
+| OAuth connections                    | Browser memory | Per tab                            | `ToolGuardsProvider` from `/mcp/oauth/status`                                        | Refetched after Connect and Disconnect                                        | n/a                                            |
+| Runtime messages                     | Browser memory | Per tab                            | `useChat` stream, history adapter load                                               | Until unmount; never persisted                                                | n/a                                            |
+| Thread status rows                   | Browser memory | Per tab                            | `useThreadStatus`'s shared store, one per tab                                        | Until reload; refetching stops while no view is mounted                       | n/a                                            |
+| `interruptedTurns` reasons           | Browser memory | Per message id                     | `useChat.onFinish`                                                                   | Cleared on reload; the DB flag takes over                                     | n/a                                            |
+| Model and effort refs                | React refs     | Per tab                            | The composer's `ModelControls`; PATCHed to the thread                                | Until unmount                                                                 | n/a                                            |
+| Side pane collapsed                  | `localStorage` | Per browser                        | The collapse control                                                                 | Persistent                                                                    | n/a                                            |
+| Panel conversation, width, pick, pin | `localStorage` | Per browser                        | `panelStorage` from the panel                                                        | Persistent; the conversation is forgotten on "+" and "Open in Assistants"     | n/a                                            |
+| Panel mode                           | React state    | Per tab                            | The button, Close, Escape, click-off, `Ctrl+/`, `PanelControl.open`                  | Until reload; closed on load                                                  | n/a                                            |
+| Default assistant                    | DB             | Global                             | `setDefault` from "Make default", the seed, `ensureDefault` at init                  | Durable; read with the snapshot                                               | Shared                                         |
+| Active assistant                     | URL            | Per tab                            | `?assistant=<id>`, rewritten on each switch                                          | Survives reload                                                               | n/a                                            |
+| Scaffolder field registry            | Module memory  | Per tab                            | `render_form`'s first `loadFormFields()`                                             | Until reload                                                                  | n/a                                            |
+| Client tool prompts                  | Browser memory | Per tool call                      | The runtime's `execute` wrapper via `human`                                          | Until answered or the turn stops; a reload re-runs the call and asks again    | n/a                                            |
 
 Turn state and the stream buffer are in the database, so `working`, Stop, and rejoining a running reply work on any replica. The abort handles live in process memory; a Stop received elsewhere reaches them through the heartbeat.
 
@@ -392,6 +431,16 @@ Turn state and the stream buffer are in the database, so `working`, Stop, and re
 | `attempts`              | Answers rejected so far; the second cancels                                       |
 | `response_json`         | The answer while it travels to the replica running the call, then its action only |
 | `expires_at`            | `elicitationTimeoutMs` after the question                                         |
+
+`held_calls`
+
+| Column                  | Notes                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `id`                    | Primary key: `held-<uuid>` for an approval, `tool-<toolCallId>` for a client tool |
+| `user_ref`, `thread_id` | Whose turn holds the call, and its conversation                                   |
+| `kind`, `tool`          | `approval` or `client-tool`, and the tool                                         |
+| `response_json`         | The answer while it travels to the replica holding the call, then settled         |
+| `expires_at`            | 10 minutes after the call is held                                                 |
 
 Sealed values are `v1.<key id>.<iv>.<tag>.<ciphertext>`; the key id is a hash prefix of the key, so a value sealed under a key in `mcp.oauth.previousEncryptionKeys` still opens and is resealed under the current key when next used.
 

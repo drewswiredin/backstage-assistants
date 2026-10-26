@@ -6,17 +6,22 @@
 import type { ApiHolder } from '@backstage/core-plugin-api';
 import { ApiRef } from '@backstage/frontend-plugin-api';
 import type { ApiRef as ApiRef_2 } from '@backstage/core-plugin-api';
+import { ApprovalPreviewRequest } from '@drewswiredin/backstage-plugin-assistants-common';
+import { ApprovalPreviewResponse } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantDefinition } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssistantId } from '@drewswiredin/backstage-plugin-assistants-common';
 import { CapabilitiesResponse } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { ClientToolAttributes } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { ComponentType } from 'react';
 import { ConfigurableExtensionDataRef } from '@backstage/frontend-plugin-api';
+import { ElicitationResponseRequest } from '@drewswiredin/backstage-plugin-assistants-common';
 import { ExtensionBlueprint } from '@backstage/frontend-plugin-api';
 import { ExtensionBlueprintParams } from '@backstage/frontend-plugin-api';
 import { ExtensionDataRef } from '@backstage/frontend-plugin-api';
+import { HeldCallAnswer } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { JsonObject } from '@backstage/types';
 import { JSX as JSX_2 } from 'react';
+import { McpOAuthConnection } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { ModelId } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { OAuthApi } from '@backstage/core-plugin-api';
 import { PathParams } from '@backstage/core-plugin-api';
@@ -68,20 +73,34 @@ export const AssistantClientToolBlueprint: ExtensionBlueprint<{
 
 // @public
 export interface AssistantsApi {
+  answerHeldCall(id: string, answer: HeldCallAnswer): Promise<void>;
   createAssistant(
     definition: AssistantDefinition,
   ): Promise<AssistantDefinition>;
   deleteAssistant(id: AssistantId): Promise<void>;
+  disconnectMcpOAuth(serverId: string): Promise<void>;
   fetch: typeof fetch;
   getBaseUrl(): Promise<string>;
-  getCapabilities(): Promise<CapabilitiesResponse>;
+  getCapabilities(
+    headers?: Record<string, string>,
+  ): Promise<CapabilitiesResponse>;
+  getMcpOAuthStatus(): Promise<Record<string, McpOAuthConnection>>;
   getStatus(): Promise<StatusResponse>;
   getThreadsStatus(): Promise<ConversationStatusRow[]>;
   listManagedAssistants(): Promise<AssistantDefinition[]>;
   markThreadRead(threadId: string): Promise<void>;
   patchThread(threadId: string, patch: ThreadPatch): Promise<void>;
+  previewApproval(
+    request: ApprovalPreviewRequest,
+    headers?: Record<string, string>,
+  ): Promise<ApprovalPreviewResponse>;
   requestJson<T = void>(path: string, init?: RequestInit): Promise<T>;
+  respondElicitation(
+    id: string,
+    answer: ElicitationResponseRequest,
+  ): Promise<void>;
   setDefaultAssistant(id: AssistantId): Promise<AssistantDefinition>;
+  startMcpOAuth(serverId: string): Promise<string>;
   updateAssistant(
     id: AssistantId,
     definition: AssistantDefinition,

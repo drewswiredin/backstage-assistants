@@ -11,6 +11,7 @@ import {
   ApprovalPreviewResponse,
   CapabilitiesResponse,
   ElicitationResponseRequest,
+  HeldCallAnswer,
   McpOAuthConnection,
   McpOAuthStartResponse,
   McpOAuthStatusResponse,
@@ -143,6 +144,13 @@ export interface AssistantsApi {
     id: string,
     answer: ElicitationResponseRequest,
   ): Promise<void>;
+
+  /**
+   * Answer a tool call held inside a provider's own tool loop: an approval
+   * decision, or a client tool's result. Rejects when the call was already
+   * answered or has expired.
+   */
+  answerHeldCall(id: string, answer: HeldCallAnswer): Promise<void>;
 
   /**
    * List the full assistant definitions for the editor
@@ -319,6 +327,25 @@ export class AssistantsClient implements AssistantsApi {
     const baseUrl = await this.getBaseUrl();
     const response = await this.fetchApi.fetch(
       `${baseUrl}/elicitations/${encodeURIComponent(id)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(answer),
+      },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(
+        body?.error?.message ??
+          `The answer was not accepted (${response.status})`,
+      );
+    }
+  }
+
+  async answerHeldCall(id: string, answer: HeldCallAnswer): Promise<void> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/held-calls/${encodeURIComponent(id)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

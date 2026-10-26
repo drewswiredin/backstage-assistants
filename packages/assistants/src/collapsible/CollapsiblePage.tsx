@@ -63,6 +63,7 @@ import { resolveRequestedThread } from './resolveRequestedThread';
 import {
   ClientToolsProvider,
   useClientTools,
+  useHeldClientToolRunner,
 } from '../clientTools/ClientToolsProvider';
 import { ToolGuardsProvider, useToolGuards } from './toolGuards';
 import { ConnectChips } from './surface/ConnectChips';
@@ -429,6 +430,7 @@ function ChatRuntime({
   );
   // The registered client tools' attributes, read live by the transport.
   const { tools: clientTools } = useClientTools();
+  const heldClientToolRunner = useHeldClientToolRunner();
   const clientToolAttributesRef = useRef<Record<string, ClientToolAttributes>>(
     {},
   );
@@ -448,6 +450,7 @@ function ChatRuntime({
         modelIdRef,
         reasoningLevelRef,
         getClientToolAttributes: () => clientToolAttributesRef.current,
+        heldClientToolRunner,
         getCredentialsHeader: assistantId =>
           toolGuardsRef.current.credentialsHeader(assistantId),
       }),

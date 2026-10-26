@@ -6,6 +6,38 @@
 import { BasicPermission } from '@backstage/plugin-permission-common';
 
 // @public
+export interface ApprovalPreview {
+  diff: boolean;
+  fields: {
+    repo?: string;
+    branch?: string;
+    path?: string;
+    content?: string;
+    files?: string;
+    message?: string;
+  };
+  type: 'file' | 'files';
+}
+
+// @public
+export interface ApprovalPreviewRequest {
+  assistantId: string;
+  input: Record<string, unknown>;
+  tool: string;
+}
+
+// @public
+export interface ApprovalPreviewResponse {
+  // (undocumented)
+  files: Array<{
+    path: string;
+    exists: boolean;
+    content?: string;
+    error?: string;
+  }>;
+}
+
+// @public
 export interface AssistantAccess {
   allowAuthenticated: boolean;
   groups: string[];
@@ -51,6 +83,7 @@ export interface AssistantSummary {
   title: string;
   tools?: ToolSummary[];
   ui?: UiOptions;
+  userCredentials?: UserCredentialSpec[];
 }
 
 // @public
@@ -118,7 +151,126 @@ export type ClientToolErrorCode =
   | 'failed';
 
 // @public
+export type ElicitationField = {
+  name: string;
+  title: string;
+  description?: string;
+  required: boolean;
+} & (
+  | {
+      kind: 'text';
+      format?: 'email' | 'uri' | 'date' | 'date-time';
+      minLength?: number;
+      maxLength?: number;
+      default?: string;
+    }
+  | {
+      kind: 'number';
+      integer: boolean;
+      minimum?: number;
+      maximum?: number;
+      default?: number;
+    }
+  | {
+      kind: 'boolean';
+      default?: boolean;
+    }
+  | {
+      kind: 'select';
+      options: ElicitationOption[];
+      default?: string;
+    }
+  | {
+      kind: 'multiselect';
+      options: ElicitationOption[];
+      minItems?: number;
+      maxItems?: number;
+      default?: string[];
+    }
+);
+
+// @public
+export interface ElicitationOption {
+  // (undocumented)
+  label: string;
+  // (undocumented)
+  value: string;
+}
+
+// @public
+export interface ElicitationPrompt {
+  answered?: string[];
+  expiresAt: string;
+  id: string;
+  message: string;
+  requestedSchema: unknown;
+  server: string;
+  serverTitle: string;
+  // (undocumented)
+  status: ElicitationStatus;
+  tool?: string;
+}
+
+// @public
+export interface ElicitationResponseRequest {
+  // (undocumented)
+  action: 'accept' | 'decline' | 'cancel';
+  content?: Record<string, unknown>;
+}
+
+// @public
+export type ElicitationStatus =
+  | 'open'
+  | 'accepted'
+  | 'declined'
+  | 'cancelled'
+  | 'expired';
+
+// @public
+export const HELD_APPROVAL_PREFIX = 'held-';
+
+// @public
+export type HeldCallAnswer =
+  | {
+      approved: boolean;
+      reason?: string;
+    }
+  | {
+      output: unknown;
+    }
+  | {
+      error: string;
+    };
+
+// @public
+export function heldToolCallId(toolCallId: string): string;
+
+// @public
 export function isClientToolName(name: string): boolean;
+
+// @public
+export function isSensitiveElicitationField(field: {
+  name: string;
+  title?: string;
+}): boolean;
+
+// @public
+export const MCP_OAUTH_MESSAGE_TYPE = 'assistants-mcp-oauth';
+
+// @public
+export type McpOAuthConnection = 'connected' | 'missing' | 'expired';
+
+// @public
+export interface McpOAuthStartResponse {
+  // (undocumented)
+  authorizationUrl: string;
+}
+
+// @public
+export interface McpOAuthStatusResponse {
+  // (undocumented)
+  servers: Record<string, McpOAuthConnection>;
+}
 
 // @public
 export interface McpServerCapability {
@@ -129,6 +281,7 @@ export interface McpServerCapability {
     name: string;
     description?: string;
   }>;
+  userCredentials?: UserCredentialSpec;
 }
 
 // @public
@@ -151,6 +304,15 @@ export interface PageContext {
 }
 
 // @public
+export function parseElicitationSchema(schema: unknown):
+  | {
+      fields: ElicitationField[];
+    }
+  | {
+      unsupported: string;
+    };
+
+// @public
 export const PLATFORM_INSTRUCTIONS: string;
 
 // @public
@@ -160,7 +322,15 @@ export const REASONING_LEVELS: ReasoningLevel[];
 export type ReasoningLevel = 'low' | 'medium' | 'high' | 'max';
 
 // @public
+export function resolvePreviewField(
+  template: string | undefined,
+  input: Record<string, unknown>,
+): unknown;
+
+// @public
 export interface StatusResponse {
+  approvalPreviews?: Record<string, ApprovalPreview>;
+  approveEachCall?: string[];
   assistants: AssistantSummary[];
   defaultAssistant?: AssistantId;
   defaultModel: ModelId;
@@ -186,7 +356,32 @@ export interface UiOptions {
   }>;
 }
 
+// @public
+export const USER_CREDENTIALS_HEADER = 'x-assistants-credentials';
+
+// @public
+export interface UserCredentialSpec {
+  host?: string;
+  provider: string;
+  scopes?: string[];
+  server: string;
+  title: string;
+}
+
+// @public
+export function validateElicitationContent(
+  fields: ElicitationField[],
+  content: unknown,
+): string[];
+
 // Warnings were encountered during analysis:
 //
+// src/elicitation.d.ts:47:5 - (ae-undocumented) Missing documentation for "status".
+// src/elicitation.d.ts:57:5 - (ae-undocumented) Missing documentation for "action".
+// src/elicitation.d.ts:67:5 - (ae-undocumented) Missing documentation for "value".
+// src/elicitation.d.ts:68:5 - (ae-undocumented) Missing documentation for "label".
+// src/userCredentials.d.ts:63:5 - (ae-undocumented) Missing documentation for "servers".
+// src/userCredentials.d.ts:72:5 - (ae-undocumented) Missing documentation for "authorizationUrl".
+// src/userCredentials.d.ts:134:5 - (ae-undocumented) Missing documentation for "files".
 // /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```

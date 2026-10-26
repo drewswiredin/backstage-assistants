@@ -15,7 +15,7 @@ docs, run a scaffolder template) with the permissions of the person asking.
 They can also call MCP servers, either under a credential you configure for
 the server or as each user with their own sign-in. Platform admins create
 assistants in-app with a prompt, models, tools, and audience, and connect any
-model provider in app-config.
+model provider in app-config, or one a backend module adds.
 
 > Requires the new frontend system (`createApp` from
 > `@backstage/frontend-defaults`) on Backstage 1.56 or later, and Node 22.12 or
@@ -112,7 +112,9 @@ https://github.com/user-attachments/assets/15649e1a-a80c-44c1-810e-fbe44fd18478
   `assistant.manage`) plus a per-assistant audience; works with your permission
   policy or the RBAC plugin.
 - **Providers and storage.** Providers: OpenAI, Anthropic, Azure OpenAI, or any
-  OpenAI-compatible endpoint. Database: SQLite, Postgres, or MySQL.
+  OpenAI-compatible endpoint, or a provider type your own backend module adds,
+  including an agent SDK or CLI that runs its own tool loop. Database: SQLite,
+  Postgres, or MySQL.
 
 ## Requirements
 
@@ -123,7 +125,8 @@ https://github.com/user-attachments/assets/15649e1a-a80c-44c1-810e-fbe44fd18478
 - React 18 and `react-router-dom` ^6.30.2 in the app.
 - A plugin database: SQLite, Postgres, or MySQL.
 - A model provider and API key: OpenAI, Anthropic, Azure OpenAI / AI Foundry,
-  or any OpenAI-compatible endpoint such as [OpenRouter](https://openrouter.ai).
+  or any OpenAI-compatible endpoint such as [OpenRouter](https://openrouter.ai);
+  or a provider type a backend module adds.
 - Recommended: `@backstage/plugin-signals` in the app and
   `@backstage/plugin-signals-backend` in the backend. The frontend uses Signals
   for live status when the app has them and polls when it does not.

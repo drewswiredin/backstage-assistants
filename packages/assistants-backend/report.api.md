@@ -4,10 +4,61 @@
 
 ```ts
 import { BackendFeature } from '@backstage/backend-plugin-api';
+import type { Config } from '@backstage/config';
+import { ExtensionPoint } from '@backstage/backend-plugin-api';
+import type { JSONSchema7 } from 'ai';
+import type { JSONValue } from 'ai';
+import type { LanguageModel } from 'ai';
+import { LoggerService } from '@backstage/backend-plugin-api';
+import type { ReasoningLevel } from '@drewswiredin/backstage-plugin-assistants-common';
+
+// @public
+export interface AssistantsModelProvider {
+  languageModel(modelName: string, turn: AssistantsModelTurn): LanguageModel;
+  reasoningOptions?(
+    modelName: string,
+    level: ReasoningLevel,
+  ): Record<string, Record<string, JSONValue>> | undefined;
+  runsOwnToolLoop?: boolean;
+}
+
+// @public
+export type AssistantsModelProviderFactory = (options: {
+  providerId: string;
+  config: Config;
+  logger: LoggerService;
+}) => AssistantsModelProvider;
+
+// @public
+export interface AssistantsModelProvidersExtensionPoint {
+  addProviderType(type: string, factory: AssistantsModelProviderFactory): void;
+}
+
+// @public
+export const assistantsModelProvidersExtensionPoint: ExtensionPoint<AssistantsModelProvidersExtensionPoint>;
+
+// @public
+export interface AssistantsModelTurn {
+  abortSignal: AbortSignal;
+  threadId?: string;
+  tools: Record<string, AssistantsTurnTool>;
+}
 
 // @public
 const assistantsPlugin: BackendFeature;
 export default assistantsPlugin;
+
+// @public
+export interface AssistantsTurnTool {
+  description?: string;
+  execute(
+    input: unknown,
+    options?: {
+      abortSignal?: AbortSignal;
+    },
+  ): Promise<unknown>;
+  inputSchema: JSONSchema7;
+}
 
 // Warnings were encountered during analysis:
 //

@@ -62,6 +62,12 @@ import {
 } from './mcp';
 import type { McpOAuthService } from './mcpOAuth';
 import type { ElicitationBroker } from './mcpElicitation';
+import {
+  buildLoopTools,
+  ToolCallCorrelator,
+  withInjectedParts,
+  type HeldCallBroker,
+} from './heldCalls';
 import { createMcpOAuthRouter } from './mcpOAuthRouter';
 import { mcpCallerFor, userCredentialSpec } from './userCredentials';
 import {
@@ -123,6 +129,12 @@ export interface RouterOptions {
   appOrigin?: string;
   /** Answers MCP servers' questions (elicitation). */
   elicitations?: ElicitationBroker;
+  /**
+   * Holds tool calls for the user inside a provider's own tool loop
+   * (approvals, client tools). Without it such a provider's turns get no
+   * tools that need the user.
+   */
+  heldCalls?: HeldCallBroker;
 }
 
 /**
@@ -447,6 +459,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     signals,
     oauth,
     elicitations,
+    heldCalls,
   } = options;
 
   /**
@@ -747,6 +760,35 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     })().catch(next);
   });
 
+  // The browser's answer to a call held inside a provider's own tool loop:
+  // an approval decision, or a client tool's result.
+  streamRouter.post('/held-calls/:id', (req, res, next) => {
+    (async () => {
+      const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+      await requireUse(credentials);
+      if (!heldCalls) throw new NotFoundError('No call is held');
+      const user = await userInfo.getUserInfo(credentials);
+      const { status } = await heldCalls.respond(
+        req.params.id,
+        user.userEntityRef,
+        req.body,
+      );
+      if (status === 204) {
+        res.status(204).end();
+        return;
+      }
+      const messages: Record<number, string> = {
+        400: 'Send { approved }, { output }, or { error }',
+        403: 'This call belongs to another user',
+        404: 'No such call',
+        410: 'This call was already answered or has expired',
+      };
+      res.status(status).json({
+        error: { name: 'HeldCallError', message: messages[status] },
+      });
+    })().catch(next);
+  });
+
   router.use(streamRouter);
 
   /**
@@ -920,7 +962,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         `Model '${modelId}' is not available for assistant '${assistantId}'`,
       );
     }
-    const model = assistants.resolveModel(modelId);
+    // A provider that runs its own tool loop builds its model once the
+    // turn's tools exist (step 9); every other model resolves now.
+    const runsOwnToolLoop = assistants.runsOwnToolLoop(modelId);
+    let model = assistants.resolveModel(modelId);
 
     // 5a. Output ceiling. Only sent when configured — a provider's own default
     //     is right for models it recognises, but it can guess badly (and low)
@@ -1206,6 +1251,65 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // the model explains (connect, or no access) instead of guessing.
     const unavailableNote = unavailableServerInstructions(unavailableServers);
 
+    // 9a. A provider that runs its own tool loop gets the turn's tools to run
+    //     itself; calls that need the user (approvals, client tools) are held
+    //     open inside its loop rather than ending the turn. Its stream gets the
+    //     held calls' parts (approval cards, preliminary results) injected.
+    const correlator = new ToolCallCorrelator();
+    let inject: Parameters<typeof buildLoopTools>[0]['inject'] = () => {};
+    if (runsOwnToolLoop) {
+      const standing = new Set<string>();
+      const needsUser = new Set([
+        ...Object.keys(clientTools.tools),
+        ...Object.keys(toolApproval),
+      ]);
+      // Without a broker nothing can be held: drop what would need it.
+      const loopSource = heldCalls
+        ? tools
+        : Object.fromEntries(
+            Object.entries(tools).filter(([name]) => !needsUser.has(name)),
+          );
+      const loopTools = heldCalls
+        ? await buildLoopTools({
+            tools: loopSource,
+            clientToolNames: new Set(Object.keys(clientTools.tools)),
+            approvalFor: (name, input) => {
+              const gate = toolApproval[name];
+              if (!gate) return 'not-applicable';
+              const decision = gate(input, { messages: modelMessages });
+              if (
+                decision === 'user-approval' &&
+                standing.has(name) &&
+                !assistants.approveEachCall.has(name)
+              ) {
+                return 'not-applicable';
+              }
+              return decision;
+            },
+            grantStanding: name => standing.add(name),
+            broker: heldCalls,
+            correlator,
+            inject: part => inject(part),
+            userEntityRef: user.userEntityRef,
+            ...(threadId ? { threadId } : {}),
+            messages: modelMessages,
+            toolResultMaxChars: assistants.toolResultMaxChars,
+            signal: turnAbort.signal,
+            onDecision: (name, approved, input) => {
+              if (assistants.requireApproval.has(name)) {
+                const [server, tool] = splitToolName(name);
+                audit(server, tool, approved ? 'approved' : 'denied', input);
+              }
+            },
+          })
+        : {};
+      model = assistants.resolveModel(modelId, {
+        tools: loopTools,
+        ...(threadId ? { threadId } : {}),
+        abortSignal: turnAbort.signal,
+      });
+    }
+
     const result = streamText({
       model,
       // The page note comes last: it describes this turn only.
@@ -1216,8 +1320,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         ...(page ? [pageContextInstructions(page)] : []),
       ].join('\n\n'),
       messages: modelMessages,
-      tools,
-      ...(Object.keys(toolApproval).length > 0 ? { toolApproval } : {}),
+      // A provider running its own loop executes the tools itself.
+      ...(runsOwnToolLoop
+        ? {}
+        : {
+            tools,
+            ...(Object.keys(toolApproval).length > 0 ? { toolApproval } : {}),
+          }),
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       ...(providerOptions ? { providerOptions } : {}),
       stopWhen: stepCountIs(assistants.maxSteps),
@@ -1329,11 +1438,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // usage at the end, so fall back to `finish.totalUsage` when no step usage
     // was seen. Streams live AND lands in the persisted message (survives reload).
     let sawStepUsage = false;
+    let turnStream = result.stream;
+    if (runsOwnToolLoop) {
+      const injected = withInjectedParts(result.stream, part =>
+        correlator.observe(part),
+      );
+      inject = injected.inject;
+      turnStream = injected.stream;
+    }
     void pipeUIMessageStreamToResponse({
       response: res,
       stream: toUIMessageStream({
-        stream: result.stream,
-        tools,
+        stream: turnStream,
+        ...(runsOwnToolLoop ? {} : { tools }),
         originalMessages: messages as UIMessage[],
         generateMessageId: () => `msg-${randomUUID()}`,
         messageMetadata: ({ part }) => {

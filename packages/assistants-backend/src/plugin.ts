@@ -26,6 +26,12 @@ import {
 import { McpOAuthService } from './mcpOAuth';
 import { ElicitationBroker } from './mcpElicitation';
 import { MCP_OAUTH_PUBLIC_PATHS } from './mcpOAuthRouter';
+import {
+  assistantsModelProvidersExtensionPoint,
+  type AssistantsModelProviderFactory,
+} from './modelProviders';
+import { isBuiltinProviderType } from './config';
+import { HeldCallBroker } from './heldCalls';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -47,6 +53,22 @@ import { MCP_OAUTH_PUBLIC_PATHS } from './mcpOAuthRouter';
 export const assistantsPlugin = createBackendPlugin({
   pluginId: 'assistants',
   register(env) {
+    // Provider types backend modules contribute, read when the config is.
+    const providerTypes = new Map<string, AssistantsModelProviderFactory>();
+    env.registerExtensionPoint(assistantsModelProvidersExtensionPoint, {
+      addProviderType(type, factory) {
+        if (isBuiltinProviderType(type)) {
+          throw new Error(
+            `Provider type '${type}' is built in and can't be replaced`,
+          );
+        }
+        if (providerTypes.has(type)) {
+          throw new Error(`Provider type '${type}' is already registered`);
+        }
+        providerTypes.set(type, factory);
+      },
+    });
+
     env.registerInit({
       deps: {
         logger: coreServices.logger,
@@ -90,7 +112,7 @@ export const assistantsPlugin = createBackendPlugin({
         // UIs (e.g. the RBAC role editor) can discover and grant them.
         permissionsRegistry.addPermissions(assistantsPermissions);
 
-        const assistants = readConfig(config);
+        const assistants = readConfig(config, { providerTypes, logger });
 
         // Register the built-in catalog/search/TechDocs actions only when the
         // operator opts in (config `assistants.builtinActions`). They surface
@@ -177,6 +199,8 @@ export const assistantsPlugin = createBackendPlugin({
           signals,
           oauth,
           elicitations,
+          // Approvals and client tools held inside a provider's own tool loop.
+          heldCalls: new HeldCallBroker({ db }),
           appOrigin: new URL(config.getString('app.baseUrl')).origin,
         });
 

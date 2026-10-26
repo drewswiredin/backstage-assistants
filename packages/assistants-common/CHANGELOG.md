@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `HeldCallAnswer`, `HELD_APPROVAL_PREFIX`, and `heldToolCallId`: the contract for answering a call held inside a provider's own tool loop.
+
 ## 0.18.1 - 2026-10-26
 
 ### Fixed

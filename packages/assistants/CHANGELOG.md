@@ -9,6 +9,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The collapsed panel's strip has a left edge in the assistant's color, so it stays distinct beside a drawer of the same shade. It glows onto the page in a slow pulse while the assistant is working and holds the glow while a reply is unread, matching the dot on its icon; hovering thickens the edge.
 
+- Turns on a provider that runs its own tool loop: an approval asked on a held call is answered through `/held-calls/:id`, and a client tool's call runs in the browser while the turn is live. `render_form` waits for the form; a tool that would ask first (a write, or Connect) is declined with a message the model sees.
+
 ### Fixed
 
 - Backstage dialogs and drawers, such as a Kubernetes pod or deployment, now open beside the panel and the collapsed strip instead of covering them. A right-hand drawer now slides in from the panel's edge and takes its width from the page beside the panel. The 0.23.0 rules never matched, because the panel's theme renames MUI's class names.

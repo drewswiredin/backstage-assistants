@@ -10,6 +10,11 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
 import { mcpToolName } from './mcp';
+import type {
+  AssistantsModelProvider,
+  AssistantsModelProviderFactory,
+  AssistantsModelTurn,
+} from './modelProviders';
 import {
   type ApprovalPreview,
   ModelOption,
@@ -39,6 +44,11 @@ export type SupportedProviderType = (typeof SUPPORTED_PROVIDER_TYPES)[number];
 
 function isSupportedProviderType(type: string): type is SupportedProviderType {
   return (SUPPORTED_PROVIDER_TYPES as readonly string[]).includes(type);
+}
+
+/** True for a provider `type` the plugin builds itself. */
+export function isBuiltinProviderType(type: string): boolean {
+  return isSupportedProviderType(type);
 }
 
 /**
@@ -256,15 +266,24 @@ export interface AssistantsConfig {
    * gated tools of per-user servers without `allowStandingApproval`.
    */
   approveEachCall: Set<string>;
-  /** Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. */
-  resolveModel: (modelId: string) => LanguageModel;
+  /**
+   * Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. A
+   * provider a module contributed builds it for `turn`; without one it gets
+   * an empty turn.
+   */
+  resolveModel: (modelId: string, turn?: AssistantsModelTurn) => LanguageModel;
+  /**
+   * True when the model's provider runs its own tool loop and executes the
+   * turn's tools itself (see {@link AssistantsModelProvider.runsOwnToolLoop}).
+   */
+  runsOwnToolLoop: (modelId: string) => boolean;
   /**
    * The configured `type` of the provider a `provider:model` id belongs to, or
    * undefined for an id outside the pool. Provider-specific behaviour keys on
    * this, never on the provider id: `claude` with `type: anthropic` is
    * Anthropic; `anthropic` with `type: openai-compatible` is not.
    */
-  resolveProviderType: (modelId: string) => SupportedProviderType | undefined;
+  resolveProviderType: (modelId: string) => string | undefined;
   /**
    * The configured output-token ceiling for a model, or undefined to leave the
    * provider's own default in place. Only needed when a provider guesses badly
@@ -596,14 +615,31 @@ function readApprovalPreviews(
  *
  * @public
  */
-export function readConfig(config: Config): AssistantsConfig {
+/** Options for {@link readConfig}. */
+export interface ReadConfigOptions {
+  /** Provider types modules contributed, by `type`. */
+  providerTypes?: ReadonlyMap<string, AssistantsModelProviderFactory>;
+  /** Handed to contributed provider factories. */
+  logger?: Parameters<AssistantsModelProviderFactory>[0]['logger'];
+}
+
+export function readConfig(
+  config: Config,
+  options: ReadConfigOptions = {},
+): AssistantsConfig {
   const root = config.getConfig('assistants');
+  const providerTypes = options.providerTypes ?? new Map();
 
   // --- Providers + models -------------------------------------------------
   const providersConfig = root.getConfig('providers');
   const providerIds = providersConfig.keys();
   /** Provider type per `provider:model` id in the pool. */
-  const providerTypeByModelId = new Map<string, SupportedProviderType>();
+  const providerTypeByModelId = new Map<string, string>();
+  /** A contributed provider and the model's name, per `provider:model` id. */
+  const contributedByModelId = new Map<
+    string,
+    { provider: AssistantsModelProvider; name: string }
+  >();
   /** Provider type per reasoning-capable `provider:model` id. */
   const reasoningTypeByModelId = new Map<string, SupportedProviderType>();
   /** Configured output-token ceiling per `provider:model` id. */
@@ -618,14 +654,25 @@ export function readConfig(config: Config): AssistantsConfig {
   for (const providerId of providerIds) {
     const providerConfig = providersConfig.getConfig(providerId);
     const type = providerConfig.getString('type');
-    if (!isSupportedProviderType(type)) {
+    const factory = providerTypes.get(type);
+    let contributed: AssistantsModelProvider | undefined;
+    if (isSupportedProviderType(type)) {
+      registryProviders[providerId] = buildProvider(type, providerConfig);
+    } else if (factory) {
+      contributed = factory({
+        providerId,
+        config: providerConfig,
+        logger: options.logger!,
+      });
+    } else {
       throw new InputError(
         `Unsupported provider type '${type}' for provider '${providerId}'. ` +
-          `Supported types: ${SUPPORTED_PROVIDER_TYPES.join(', ')}`,
+          `Supported types: ${[
+            ...SUPPORTED_PROVIDER_TYPES,
+            ...providerTypes.keys(),
+          ].join(', ')}`,
       );
     }
-
-    registryProviders[providerId] = buildProvider(type, providerConfig);
 
     // Each model is an object `{ name, contextWindow?, reasoning? }`. The
     // optional `contextWindow` is surfaced to the UI's context-usage gauge;
@@ -637,8 +684,10 @@ export function readConfig(config: Config): AssistantsConfig {
       const contextWindow = modelConfig.getOptionalNumber('contextWindow');
       const reasoning = modelConfig.getOptionalBoolean('reasoning') ?? false;
       providerTypeByModelId.set(id, type);
-      if (reasoning) {
-        reasoningTypeByModelId.set(id, type);
+      if (contributed) {
+        contributedByModelId.set(id, { provider: contributed, name });
+      } else if (reasoning) {
+        reasoningTypeByModelId.set(id, type as SupportedProviderType);
       }
       const maxOutputTokens = modelConfig.getOptionalNumber('maxOutputTokens');
       if (maxOutputTokens !== undefined) {
@@ -840,13 +889,30 @@ export function readConfig(config: Config): AssistantsConfig {
     requestBodyLimit,
     requireApproval,
     approveEachCall,
-    resolveModel: (modelId: string) =>
-      registry.languageModel(modelId as `${string}:${string}`),
+    resolveModel: (modelId: string, turn?: AssistantsModelTurn) => {
+      const contributed = contributedByModelId.get(modelId);
+      if (!contributed) {
+        return registry.languageModel(modelId as `${string}:${string}`);
+      }
+      return contributed.provider.languageModel(
+        contributed.name,
+        turn ?? { tools: {}, abortSignal: new AbortController().signal },
+      );
+    },
+    runsOwnToolLoop: (modelId: string) =>
+      contributedByModelId.get(modelId)?.provider.runsOwnToolLoop === true,
     resolveProviderType: (modelId: string) =>
       providerTypeByModelId.get(modelId),
     resolveMaxOutputTokens: (modelId: string) =>
       maxOutputTokensByModelId.get(modelId),
     resolveReasoning: (modelId: string, level: ReasoningLevel) => {
+      const contributed = contributedByModelId.get(modelId);
+      if (contributed) {
+        const reasons = models.find(m => m.id === modelId)?.reasoning;
+        return reasons
+          ? contributed.provider.reasoningOptions?.(contributed.name, level)
+          : undefined;
+      }
       const type = reasoningTypeByModelId.get(modelId);
       return type ? buildReasoningOptions(type, level) : undefined;
     },

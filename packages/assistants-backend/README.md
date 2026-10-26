@@ -16,6 +16,7 @@ Pairs with the frontend plugin
 - [Install](#install)
 - [Minimal configuration](#minimal-configuration)
 - [Configure a provider](#configure-a-provider)
+- [Add a provider type from a backend module](#add-a-provider-type-from-a-backend-module)
 - [Give an assistant Backstage actions](#give-an-assistant-backstage-actions)
 - [Add an MCP server](#add-an-mcp-server)
 - [Connect an MCP server per user](#connect-an-mcp-server-per-user)
@@ -232,6 +233,75 @@ models:
     reasoning: true
     maxOutputTokens: 128000
 ```
+
+## Add a provider type from a backend module
+
+A backend module can serve provider types beyond the four built in, for
+example a cloud SDK or a company AI gateway, through
+`assistantsModelProvidersExtensionPoint`. The module registers a factory for
+a `type`; each `assistants.providers.<id>` block with that `type` is handed to
+it, with its `models` read as usual:
+
+```ts
+import { createBackendModule } from '@backstage/backend-plugin-api';
+import { assistantsModelProvidersExtensionPoint } from '@drewswiredin/backstage-plugin-assistants-backend';
+import { createGateway } from './gateway';
+
+export default createBackendModule({
+  pluginId: 'assistants',
+  moduleId: 'gateway-provider',
+  register(env) {
+    env.registerInit({
+      deps: { providers: assistantsModelProvidersExtensionPoint },
+      async init({ providers }) {
+        providers.addProviderType('gateway', ({ config }) => {
+          const gateway = createGateway({ url: config.getString('url') });
+          return { languageModel: name => gateway.languageModel(name) };
+        });
+      },
+    });
+  },
+});
+```
+
+```yaml
+assistants:
+  providers:
+    corp:
+      type: gateway
+      url: https://ai.example.com
+      models:
+        - name: frontier-large
+# ids: corp:frontier-large
+```
+
+`languageModel` returns an AI SDK language model. `reasoningOptions(name,
+level)` supplies the `providerOptions` for the effort tiers of models marked
+`reasoning: true`; omit it and no tier is sent. A built-in type can't be
+replaced, and an unknown `type` fails at startup with the list of types
+available.
+
+**Providers that run their own tool loop.** An agent SDK or CLI executes
+tools itself rather than returning calls for the plugin to run. Such a
+provider sets `runsOwnToolLoop: true` and receives the turn's tools in
+`languageModel(name, turn)` as `turn.tools`, each with its JSON Schema and an
+`execute` that runs the tool as the plugin would: as the user, behind the
+approval gate and argument rules. It reports each call and result as
+provider-executed tool parts named as in `turn.tools`. The turn runs as
+usual otherwise:
+
+- A gated call shows the approval card while the provider waits; Allow runs
+  it, Deny returns the denial to the model, and Always allow covers that tool
+  for the rest of the turn.
+- A client tool's call runs in the browser and its result returns to the
+  provider. `render_form` waits for the form; a tool that needs nothing from
+  the user (`read_current_page`, `describe_portal`, a read-only contributed
+  tool) runs at once; one that would ask first (a write, or Connect) is
+  declined with a message the model sees.
+- An MCP server's question shows on its call as usual.
+
+A held call waits up to 10 minutes and is answered through
+`POST /held-calls/:id`, from any replica. Stop ends the wait.
 
 ## Give an assistant Backstage actions
 
@@ -1070,8 +1140,8 @@ All keys sit under `assistants`. `assistants.semanticSearch` belongs to the
 | `toolResultMaxChars`                      | `30000`                           | Max chars of a single tool result (head+tail truncation; `0` disables).                                                                                                                                                                                                 |
 | `requireApproval`                         | `[]`                              | Action ids, MCP tool names, and client tool names gated by Allow / Deny in the conversation.                                                                                                                                                                            |
 | `requestBodyLimit`                        | `10mb`                            | JSON body limit for every plugin request, sized for `/chat` attachments.                                                                                                                                                                                                |
-| `providers.<id>.type`                     | required                          | `openai` \| `anthropic` \| `azure` \| `openai-compatible`.                                                                                                                                                                                                              |
-| `providers.<id>.apiKey`                   | required                          | Provider key (secret).                                                                                                                                                                                                                                                  |
+| `providers.<id>.type`                     | required                          | `openai` \| `anthropic` \| `azure` \| `openai-compatible`, or a type a backend module added.                                                                                                                                                                            |
+| `providers.<id>.apiKey`                   | built-in types                    | Provider key (secret).                                                                                                                                                                                                                                                  |
 | `providers.<id>.baseUrl`                  |                                   | Base URL override.                                                                                                                                                                                                                                                      |
 | `providers.<id>.options`                  |                                   | Untyped passthrough object spread into the `@ai-sdk/*` factory (e.g. Azure `useDeploymentBasedUrls`). Not schema-validated; keep credentials out of it and use `apiKey`.                                                                                                |
 | `providers.<id>.models`                   | required                          | Object list; each `{ name, contextWindow?, reasoning?, maxOutputTokens? }`. A plain string list is rejected at startup.                                                                                                                                                 |
@@ -1106,7 +1176,8 @@ exits with the message. A missing `assistants` block, `defaultModel`,
 Backstage's own missing-config error naming the key.
 
 - `Unsupported provider type '<type>' for provider '<id>'`: `type` is not one
-  of `openai`, `anthropic`, `azure`, `openai-compatible`.
+  of `openai`, `anthropic`, `azure`, `openai-compatible`, or a type a backend
+  module added; the message lists them.
 - `assistants config must declare at least one model`: no provider has a
   `models` entry.
 - `assistants.defaultModel '<id>' is not one of the configured models`:
@@ -1137,33 +1208,34 @@ All routes are under `/api/assistants`. `/status`, `/chat`, `/preview`, and the
 thread list, create, and status routes also apply the per-assistant access policy;
 every conversation route is scoped to the owning user.
 
-| Route                                      | Permission                         | Purpose                                                                                                     |
-| ------------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `GET /status`                              | `assistant.use`                    | Accessible assistants (the default first), model pool and defaults, tool lists, the approval floor's names. |
-| `POST /chat`                               | `assistant.use`                    | Run a turn; streams the reply. `tools` carries client tool declarations; `page` the panel's page context.   |
-| `GET /chat/resume/:threadId`               | `assistant.use`                    | Rejoin an in-flight reply's stream.                                                                         |
-| `POST /chat/cancel/:threadId`              | `assistant.use`                    | Stop an in-flight reply.                                                                                    |
-| `GET /threads`                             | `assistant.use`                    | List the caller's conversations; `?assistantId=` filters.                                                   |
-| `POST /threads`                            | `assistant.use`                    | Create a conversation.                                                                                      |
-| `GET /threads/status`                      | `assistant.use`                    | Working, unread, and token count per conversation.                                                          |
-| `GET /threads/:id`                         | `assistant.use`                    | One conversation.                                                                                           |
-| `PATCH /threads/:id`                       | `assistant.use`                    | Rename, pin, archive, or change model or reasoning level.                                                   |
-| `DELETE /threads/:id`                      | `assistant.use`                    | Delete a conversation and its messages.                                                                     |
-| `POST /threads/:id/read`                   | `assistant.use`                    | Mark a conversation read.                                                                                   |
-| `GET /threads/:id/messages`                | `assistant.use`                    | A conversation's messages.                                                                                  |
-| `POST /preview`                            | `assistant.use`                    | The current content behind a pending write, for the approval card's diff.                                   |
-| `POST /elicitations/:id`                   | `assistant.use`                    | Answer an MCP server's question; only the user whose call it interrupts.                                    |
-| `GET /mcp/oauth/status`                    | `assistant.use`                    | The caller's connection to each server that runs its own OAuth.                                             |
-| `POST /mcp/:serverId/oauth/start`          | `assistant.use`                    | Start a sign-in; returns the authorization URL.                                                             |
-| `DELETE /mcp/:serverId/oauth`              | `assistant.use`                    | Disconnect: revoke, and delete the stored tokens.                                                           |
-| `GET /mcp/oauth/callback`                  | none (`state` and the user cookie) | Where the authorization server returns the user; posts the outcome to the app window.                       |
-| `GET /mcp/oauth/client-metadata/:serverId` | none                               | The client metadata document of a server with `clientMetadataDocument`.                                     |
-| `GET /capabilities`                        | `assistant.manage`                 | Assignable inventory for the editor.                                                                        |
-| `GET /manage/assistants`                   | `assistant.manage`                 | All assistant definitions.                                                                                  |
-| `POST /manage/assistants`                  | `assistant.manage`                 | Create an assistant.                                                                                        |
-| `PUT /manage/assistants/:id`               | `assistant.manage`                 | Replace an assistant definition.                                                                            |
-| `DELETE /manage/assistants/:id`            | `assistant.manage`                 | Delete an assistant (not the default).                                                                      |
-| `PUT /manage/assistants/:id/default`       | `assistant.manage`                 | Make an assistant the default; opens it to every signed-in user.                                            |
+| Route                                      | Permission                         | Purpose                                                                                                       |
+| ------------------------------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `GET /status`                              | `assistant.use`                    | Accessible assistants (the default first), model pool and defaults, tool lists, the approval floor's names.   |
+| `POST /chat`                               | `assistant.use`                    | Run a turn; streams the reply. `tools` carries client tool declarations; `page` the panel's page context.     |
+| `GET /chat/resume/:threadId`               | `assistant.use`                    | Rejoin an in-flight reply's stream.                                                                           |
+| `POST /chat/cancel/:threadId`              | `assistant.use`                    | Stop an in-flight reply.                                                                                      |
+| `GET /threads`                             | `assistant.use`                    | List the caller's conversations; `?assistantId=` filters.                                                     |
+| `POST /threads`                            | `assistant.use`                    | Create a conversation.                                                                                        |
+| `GET /threads/status`                      | `assistant.use`                    | Working, unread, and token count per conversation.                                                            |
+| `GET /threads/:id`                         | `assistant.use`                    | One conversation.                                                                                             |
+| `PATCH /threads/:id`                       | `assistant.use`                    | Rename, pin, archive, or change model or reasoning level.                                                     |
+| `DELETE /threads/:id`                      | `assistant.use`                    | Delete a conversation and its messages.                                                                       |
+| `POST /threads/:id/read`                   | `assistant.use`                    | Mark a conversation read.                                                                                     |
+| `GET /threads/:id/messages`                | `assistant.use`                    | A conversation's messages.                                                                                    |
+| `POST /preview`                            | `assistant.use`                    | The current content behind a pending write, for the approval card's diff.                                     |
+| `POST /elicitations/:id`                   | `assistant.use`                    | Answer an MCP server's question; only the user whose call it interrupts.                                      |
+| `POST /held-calls/:id`                     | `assistant.use`                    | Answer a call held inside a provider's own tool loop (an approval, or a client tool's result); only its user. |
+| `GET /mcp/oauth/status`                    | `assistant.use`                    | The caller's connection to each server that runs its own OAuth.                                               |
+| `POST /mcp/:serverId/oauth/start`          | `assistant.use`                    | Start a sign-in; returns the authorization URL.                                                               |
+| `DELETE /mcp/:serverId/oauth`              | `assistant.use`                    | Disconnect: revoke, and delete the stored tokens.                                                             |
+| `GET /mcp/oauth/callback`                  | none (`state` and the user cookie) | Where the authorization server returns the user; posts the outcome to the app window.                         |
+| `GET /mcp/oauth/client-metadata/:serverId` | none                               | The client metadata document of a server with `clientMetadataDocument`.                                       |
+| `GET /capabilities`                        | `assistant.manage`                 | Assignable inventory for the editor.                                                                          |
+| `GET /manage/assistants`                   | `assistant.manage`                 | All assistant definitions.                                                                                    |
+| `POST /manage/assistants`                  | `assistant.manage`                 | Create an assistant.                                                                                          |
+| `PUT /manage/assistants/:id`               | `assistant.manage`                 | Replace an assistant definition.                                                                              |
+| `DELETE /manage/assistants/:id`            | `assistant.manage`                 | Delete an assistant (not the default).                                                                        |
+| `PUT /manage/assistants/:id/default`       | `assistant.manage`                 | Make an assistant the default; opens it to every signed-in user.                                              |
 
 ### Admin API
 
