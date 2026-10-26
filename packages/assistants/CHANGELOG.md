@@ -13,6 +13,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Backstage dialogs and drawers, such as the entity inspector or a Kubernetes pod, open beside the panel instead of covering it or the collapsed strip, and the floating button stays above them.
 - Clicking or typing in the panel no longer closes an open Backstage dialog or drawer, and the panel no longer collapses on clicks inside a Backstage UI dialog.
+- A conversation started from the homepage composer opens in the panel (or on the Assistants page) with its reply streaming, instead of an empty chat. The composer hands it over once the server reports the turn running, so a backend replica that starts the turn late no longer loses the race.
 
 ## 0.22.2 - 2026-10-23
 

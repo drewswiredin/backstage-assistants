@@ -619,6 +619,24 @@ function EmbeddedChrome({
   const didSelect = useRef(false);
   const adopted = useRef(false);
   useEffect(() => {
+    // The thread exists before its first turn reaches the server. The surface
+    // it is handed to checks once whether a turn is running and rejoins it, so
+    // the hand-off waits until the server says the turn is running (or this
+    // run ended, or 30 s passed); a slow replica otherwise leaves it blank.
+    let unmounted = false;
+    const handOffOnceStarted = async (id: string) => {
+      const deadline = Date.now() + 30_000;
+      let sawRun = false;
+      while (!unmounted && Date.now() < deadline) {
+        const running = runtime.thread.getState().isRunning;
+        if (running) sawRun = true;
+        else if (sawRun) break;
+        const rows = await api.getThreadsStatus().catch(() => []);
+        if (rows.find(r => r.threadId === id)?.working) break;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      if (!unmounted) onThreadChange(id);
+    };
     const sync = () => {
       const state = runtime.threads.getState();
       // The remembered thread lists as the only item; select it once loaded
@@ -655,11 +673,16 @@ function EmbeddedChrome({
       if (id && id !== remoteIdRef.current) {
         remoteIdRef.current = id;
         setRemoteId(id);
-        onThreadChange(id);
+        if (composerOnly) void handOffOnceStarted(id);
+        else onThreadChange(id);
       }
     };
     sync();
-    return runtime.threads.subscribe(sync);
+    const unsubscribe = runtime.threads.subscribe(sync);
+    return () => {
+      unmounted = true;
+      unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime]);
 
