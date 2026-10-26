@@ -25,19 +25,19 @@ models, tools, and audience, and connect any model provider in app-config.
 searches the catalog and TechDocs, reads the pages it found, and answers with
 tables, a Mermaid architecture diagram, and the gaps it noticed.
 
-[![Explaining the podcast system in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/explain-system.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/explain-system.mp4)
+https://github.com/user-attachments/assets/5891c498-5181-42d7-81bb-1af57e4d465c
 
 **Create a project from a template.** The assistant finds the scaffolder
 template and renders its own form in the conversation, with the catalog's owner
 and system pickers, then waits for approval before it runs.
 
-[![A scaffolder form with an owner picker in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/create-project.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/create-project.mp4)
+https://github.com/user-attachments/assets/b0d3c659-8f9a-481c-b951-83532c3c0e12
 
 **A tour.** The homepage composer in its four looks, the hand-off to the panel,
 the full chat page, and creating an assistant: prompt, starter suggestions,
 models, access, and tools.
 
-[![The homepage composers and the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/ui-tour.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/ui-tour.mp4)
+https://github.com/user-attachments/assets/15649e1a-a80c-44c1-810e-fbe44fd18478
 
 ## What users get
 

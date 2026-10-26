@@ -22,9 +22,9 @@ ask for input, the question appears on the tool call as a form. It pairs with:
 - [`@drewswiredin/backstage-plugin-assistants-common`](https://www.npmjs.com/package/@drewswiredin/backstage-plugin-assistants-common),
   shared types and permissions (installed transitively)
 
-[![Explaining a system in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/explain-system.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/explain-system.mp4)
+[![Explaining a system in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/explain-system.png)](https://github.com/user-attachments/assets/5891c498-5181-42d7-81bb-1af57e4d465c)
 
-[![A scaffolder form with an owner picker in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/create-project.png)](https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/create-project.mp4)
+[![A scaffolder form with an owner picker in the panel (watch the video)](https://raw.githubusercontent.com/drewswiredin/backstage-assistants/main/docs/images/create-project.png)](https://github.com/user-attachments/assets/b0d3c659-8f9a-481c-b951-83532c3c0e12)
 
 ## Requirements
 
