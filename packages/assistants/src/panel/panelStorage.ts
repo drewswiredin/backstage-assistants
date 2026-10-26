@@ -99,8 +99,9 @@ export function loadPanelWidth(viewportWidth: number): number {
   return clampPanelWidth(Number(read(WIDTH_KEY)), viewportWidth);
 }
 
-export function savePanelWidth(width: number) {
-  write(WIDTH_KEY, String(Math.round(width)));
+/** Remember the panel width; `undefined` forgets it (back to the default). */
+export function savePanelWidth(width: number | undefined) {
+  write(WIDTH_KEY, width === undefined ? undefined : String(Math.round(width)));
 }
 
 /** A pinned panel stays open on clicks beside it. */

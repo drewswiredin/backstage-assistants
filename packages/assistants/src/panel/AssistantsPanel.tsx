@@ -437,7 +437,19 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event('resize'));
   }, []);
 
+  // Double-click (or Home) on the edge goes back to the default width.
+  const resetWidth = () => {
+    savePanelWidth(undefined);
+    setWidth(loadPanelWidth(window.innerWidth));
+    window.dispatchEvent(new Event('resize'));
+  };
+
   const onHandleKey = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Home') {
+      e.preventDefault();
+      resetWidth();
+      return;
+    }
     let step = 0;
     if (e.key === 'ArrowLeft') step = 24;
     if (e.key === 'ArrowRight') step = -24;
@@ -504,20 +516,29 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
               data-assistants-panel="true"
             >
               {!fullScreen && (
-                // A focusable separator is interactive per ARIA (drag or arrow
-                // keys resize), which the a11y rules do not model.
-                // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-                <div
-                  className={classes.handle}
-                  onMouseDown={onHandleDown}
-                  onKeyDown={onHandleKey}
-                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-                  tabIndex={0}
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="Resize panel"
-                  aria-valuenow={width}
-                />
+                <Tooltip
+                  title={
+                    dragging ? '' : 'Drag to resize. Double-click to reset.'
+                  }
+                  placement="left"
+                  enterDelay={600}
+                >
+                  {/* A focusable separator is interactive per ARIA (drag or
+                      arrow keys resize), which the a11y rules do not model. */}
+                  {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+                  <div
+                    className={classes.handle}
+                    onMouseDown={onHandleDown}
+                    onDoubleClick={resetWidth}
+                    onKeyDown={onHandleKey}
+                    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+                    tabIndex={0}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize panel. Home resets the width."
+                    aria-valuenow={width}
+                  />
+                </Tooltip>
               )}
               <div className={classes.content}>
                 <Suspense fallback={<LinearProgress />}>

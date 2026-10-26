@@ -9,6 +9,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A pin in the panel header keeps the panel open while you work on the page; unpinned, a click on the page or `Esc` collapses it as before. The pin is remembered in this browser. The header's separate hide chevron is gone: unpinned, clicking the page does the same, and `Ctrl+/` still toggles.
 
+- Double-clicking the panel's left edge (or `Home` while it has focus) resets the panel to its default width; the edge's tooltip says so.
+
 ### Fixed
 
 - Backstage dialogs and drawers, such as the entity inspector or a Kubernetes pod, open beside the panel instead of covering it or the collapsed strip, and the floating button stays above them.

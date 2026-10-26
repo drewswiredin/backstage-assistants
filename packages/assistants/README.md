@@ -135,8 +135,8 @@ Close (the x) removes the strip and brings the button back. Backstage dialogs
 and drawers, such as the entity inspector or a Kubernetes pod, open beside the
 panel instead of over it, and clicking or typing in the panel leaves them
 open.
-Dragging the left edge resizes the panel, and below tablet width it fills the
-screen. The panel remembers your last quick conversation in this browser; only
+Dragging the left edge resizes the panel, double-clicking it goes back to the
+default width, and below tablet width it fills the screen. The panel remembers your last quick conversation in this browser; only
 "+" and "Open in Assistants" start fresh. Tools, approvals, forms, and
 attachments work as on the page. The button is hidden on the Assistants page
 itself and for users without `assistant.use`.

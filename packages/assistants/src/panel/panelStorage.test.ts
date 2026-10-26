@@ -35,6 +35,8 @@ describe('panelStorage', () => {
     expect(loadPanelWidth(1400)).toBe(700);
     savePanelWidth(10);
     expect(loadPanelWidth(1400)).toBe(MIN_PANEL_WIDTH);
+    savePanelWidth(undefined);
+    expect(loadPanelWidth(1400)).toBe(DEFAULT_PANEL_WIDTH);
   });
 
   it('remembers the picked assistant', () => {
