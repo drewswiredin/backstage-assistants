@@ -33,6 +33,7 @@ import { shouldSendAutomatically } from './autoSend';
 import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
 import { createHistoryAdapter } from './threadListAdapter';
+import { refreshThreadStatus } from './useThreadStatus';
 
 /**
  * True when an assistant turn legitimately paused for the user (a client tool
@@ -82,6 +83,22 @@ interface RuntimeHookOptions {
   getCredentialsHeader?: (
     assistantId: AssistantId,
   ) => Promise<Record<string, string>>;
+}
+
+/**
+ * Refreshes this tab's conversation status once a turn's request is answered.
+ * The server records the turn as running before it answers, so the refetch
+ * sees it working whichever replica runs it.
+ */
+function refreshingStatusOnTurn(
+  api: AssistantsApi,
+  turnFetch: typeof fetch,
+): typeof fetch {
+  return async (input, init) => {
+    const response = await turnFetch(input, init);
+    if (init?.method === 'POST' && response.ok) refreshThreadStatus(api);
+    return response;
+  };
 }
 
 /**
@@ -219,15 +236,18 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       () =>
         new AssistantChatTransport({
           api: `${baseUrl}/chat`,
-          fetch: createInjectingFetch(
-            api.fetch,
-            baseUrl,
-            () => assistantIdRef.current,
-            modelIdRef,
-            reasoningLevelRef,
-            getClientToolAttributes,
-            getPageContext,
-            getCredentialsHeader,
+          fetch: refreshingStatusOnTurn(
+            api,
+            createInjectingFetch(
+              api.fetch,
+              baseUrl,
+              () => assistantIdRef.current,
+              modelIdRef,
+              reasoningLevelRef,
+              getClientToolAttributes,
+              getPageContext,
+              getCredentialsHeader,
+            ),
           ),
           resumable: {
             // Reconnect by the THREAD id — the backend buffers the in-flight SSE

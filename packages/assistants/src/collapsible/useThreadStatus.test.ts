@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { AssistantsApi, ConversationStatusRow } from '../api';
-import { useThreadStatus } from './useThreadStatus';
+import { refreshThreadStatus, useThreadStatus } from './useThreadStatus';
 
 // Signals is installed; a test fires `signal()` to deliver a message, and
 // otherwise it never delivers, as for a browser connected to a replica other
@@ -135,5 +135,31 @@ describe('useThreadStatus', () => {
     await signal();
     await answerAll(false);
     expect(assistants.getThreadsStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a turn this tab started as working, then unread, when its replica never signals', async () => {
+    jest.useFakeTimers();
+    let server = { working: false, unread: false };
+    const assistants = {
+      getThreadsStatus: jest.fn(async () => [
+        { threadId: 't1', assistantId: 'a1', ...server },
+      ]),
+      markThreadRead: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AssistantsApi;
+    const button = renderHook(() => useThreadStatus(assistants, undefined));
+    await act(async () => {});
+    expect(button.result.current.statusOf('t1')).toBe('read');
+
+    // The turn starts on another replica: no signal reaches this tab.
+    server = { working: true, unread: false };
+    await act(async () => refreshThreadStatus(assistants));
+    expect(button.result.current.statusOf('t1')).toBe('working');
+
+    // It finishes, also unsignalled: the working poll catches it.
+    server = { working: false, unread: true };
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(button.result.current.statusOf('t1')).toBe('unread');
   });
 });

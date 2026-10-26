@@ -171,6 +171,17 @@ function start(
   };
 }
 
+/**
+ * This tab started a turn: refetch now. A turn's start signal comes from the
+ * replica that runs it, which may not be the one this browser listens to, so
+ * without this nothing here would learn it is working (and start the poll that
+ * catches its finish).
+ */
+export function refreshThreadStatus(api: AssistantsApi) {
+  const store = stores.get(api);
+  if (store && store.views > 0) void refresh(api, store);
+}
+
 export type ConvStatus = 'read' | 'working' | 'unread';
 
 /** Collapse working/unread flags into the single status (working wins). */
