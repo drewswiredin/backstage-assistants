@@ -115,6 +115,15 @@ const EDGE_BRIGHT = `inset 1px 0 0 var(${GLOW_VAR})`;
 const EDGE_DIM = `inset 1px 0 0 transparent`;
 
 /**
+ * A glow off the strip's edge onto the page, `strength` percent of the edge
+ * color; `reach` scales how far it spreads.
+ */
+const glow = (strength: number, reach: number) =>
+  `-${reach}px 0 ${
+    reach * 1.6
+  }px -6px color-mix(in srgb, var(${GLOW_VAR}) ${strength}%, transparent)`;
+
+/**
  * MUI dialogs and drawers keep focus inside themselves by pulling it back;
  * off, so the composer beside an open one can be typed in. Their backdrop
  * click and Escape still close them.
@@ -169,8 +178,23 @@ const useStyles = makeStyles(theme => ({
     alignSelf: 'flex-start',
     height: '100vh',
     overflow: 'hidden',
-    transition: TRANSITION,
+    transition: `${TRANSITION}, ${theme.transitions.create('box-shadow')}`,
     zIndex: theme.zIndex.appBar - 1,
+    // While collapsed, the strip glows onto the page: a slow pulse while the
+    // conversation is working, held once its reply is unread. Hover changes
+    // only the strip's edge. On the column, which doesn't clip its own
+    // shadow; the negative spread keeps it to the left side.
+    '&:has([data-assistants-strip][data-status="working"])': {
+      animation: '$glowPulse 2.4s ease-in-out infinite',
+    },
+    '&:has([data-assistants-strip][data-status="unread"])': {
+      boxShadow: glow(80, 10),
+    },
+  },
+  // A slow, even swell.
+  '@keyframes glowPulse': {
+    '0%, 100%': { boxShadow: glow(20, 5) },
+    '50%': { boxShadow: glow(65, 8) },
   },
   // Pinned to the column's right edge at its full width, so as the column
   // narrows the panel slides out of view instead of reflowing.
@@ -219,25 +243,16 @@ const useStyles = makeStyles(theme => ({
     paddingBottom: theme.spacing(3),
     backgroundColor: theme.palette.background.paper,
     // The left edge in the assistant's color, lit like an active composer:
-    // a solid line, doubled (bright) on hover. Inside the strip, so an
-    // overlay that stops at the column never covers it. Like the status
-    // dots, it pulses while the conversation is working and stays bright
-    // while it is unread.
+    // a solid line, doubled on hover. Inside the strip, so an overlay that
+    // stops at the column never covers it. Working and unread add a glow
+    // (see aside), carrying the conversation's status as the dot does.
     borderLeft: `1px solid var(${GLOW_VAR})`,
     boxShadow: EDGE_DIM,
     transition: theme.transitions.create('box-shadow'),
     cursor: 'pointer',
-    '&:hover, &[data-status="unread"]': {
+    '&:hover': {
       boxShadow: EDGE_BRIGHT,
     },
-    '&[data-status="working"]': {
-      animation: '$edgePulse 2.4s ease-in-out infinite',
-    },
-  },
-  // A slow, even swell between the resting and the bright edge.
-  '@keyframes edgePulse': {
-    '0%, 100%': { boxShadow: EDGE_DIM },
-    '50%': { boxShadow: EDGE_BRIGHT },
   },
   stripIcon: {
     display: 'inline-flex',

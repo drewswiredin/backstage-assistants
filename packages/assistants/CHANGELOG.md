@@ -7,7 +7,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- The collapsed panel's strip has a left edge in the assistant's color, so it stays distinct beside a drawer of the same shade. It pulses while the assistant is working and stays bright while a reply is unread, matching the dot on its icon.
+- The collapsed panel's strip has a left edge in the assistant's color, so it stays distinct beside a drawer of the same shade. It glows onto the page in a slow pulse while the assistant is working and holds the glow while a reply is unread, matching the dot on its icon; hovering thickens the edge.
 
 ### Fixed
 
