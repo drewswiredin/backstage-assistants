@@ -6,8 +6,12 @@ Images load from
 
 GitHub plays only videos uploaded through its web editor, not ones committed to
 the repo, so each video in `docs/media/` is also uploaded as a
-`https://github.com/user-attachments/assets/<id>` attachment (drag it into a
-comment box and copy the URL it inserts). The project README puts that URL on a
+`https://github.com/user-attachments/assets/<id>` attachment: drag it into a
+comment box and copy the URL it inserts. An attachment stays private to the
+uploader until posted content uses it, and a README pushed with git doesn't
+count, so the URLs live in the closed issue
+[#8](https://github.com/drewswiredin/backstage-assistants/issues/8). Add a new
+video's URL there too. The project README puts that URL on a
 line of its own, which GitHub renders as a player. npm doesn't play video, so
 the frontend README shows the still and links it to the attachment.
 
