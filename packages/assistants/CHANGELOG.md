@@ -15,6 +15,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Clicking or typing in the panel no longer closes an open Backstage dialog or drawer, and the panel no longer collapses on clicks inside a Backstage UI dialog.
 - The panel no longer shows an error page when you change the model after its remembered conversation was deleted elsewhere: it starts blank without the old conversation, and a model or effort choice that can't be saved no longer surfaces as an unhandled error on any surface.
 - A conversation started from the homepage composer opens in the panel (or on the Assistants page) with its reply streaming, instead of an empty chat. The composer hands it over once the server reports the turn running, so a backend replica that starts the turn late no longer loses the race.
+- At its narrowest, the panel header keeps all its buttons in view: the assistant name shortens with an ellipsis instead, and hovering it shows the full name.
 
 ## 0.22.2 - 2026-10-23
 

@@ -168,10 +168,12 @@ const useStyles = makeStyles(theme => ({
   },
   // The assistant name as a menu trigger when there is more than one.
   // A fixed-width picker (a wide header no longer floats the arrow to the
-  // far edge); a long name is cut with an ellipsis, and the menu matches.
+  // far edge) that gives way to the header buttons in a narrow panel; a long
+  // name is cut with an ellipsis, and the menu matches.
   picker: {
-    flex: '0 0 auto',
+    flex: '0 1 auto',
     width: PICKER_WIDTH,
+    minWidth: 0,
     maxWidth: '100%',
     display: 'flex',
     alignItems: 'center',
@@ -182,9 +184,15 @@ const useStyles = makeStyles(theme => ({
     '&:hover': {
       backgroundColor: theme.palette.action.hover,
     },
+    '& > svg': {
+      flexShrink: 0,
+    },
   },
   headerSpacer: {
     flex: 1,
+  },
+  headerButton: {
+    flexShrink: 0,
   },
   /** Anchor for a history row's working/unread dot. */
   historyDot: {
@@ -746,18 +754,20 @@ function EmbeddedChrome({
       <div className={`${classes.header} ${bare ? classes.hidden : ''}`}>
         {canPick ? (
           <>
-            <ButtonBase
-              className={classes.picker}
-              onClick={e => setPickerAnchor(e.currentTarget)}
-              aria-haspopup="menu"
-              aria-label={`Assistant: ${assistant.title}. Choose another`}
-            >
-              <AssistantAvatar color={assistant.color} size={24} />
-              <Typography variant="subtitle2" className={classes.title}>
-                {assistant.title}
-              </Typography>
-              <ArrowDropDownIcon fontSize="small" color="action" />
-            </ButtonBase>
+            <Tooltip title={assistant.title} enterDelay={500}>
+              <ButtonBase
+                className={classes.picker}
+                onClick={e => setPickerAnchor(e.currentTarget)}
+                aria-haspopup="menu"
+                aria-label={`Assistant: ${assistant.title}. Choose another`}
+              >
+                <AssistantAvatar color={assistant.color} size={24} />
+                <Typography variant="subtitle2" className={classes.title}>
+                  {assistant.title}
+                </Typography>
+                <ArrowDropDownIcon fontSize="small" color="action" />
+              </ButtonBase>
+            </Tooltip>
             <span className={classes.headerSpacer} />
             <Menu
               anchorEl={pickerAnchor}
@@ -797,15 +807,21 @@ function EmbeddedChrome({
         ) : (
           <>
             <AssistantAvatar color={assistant.color} size={24} />
-            <Typography variant="subtitle2" className={classes.title}>
-              {assistant.title}
-            </Typography>
-            <span className={classes.headerSpacer} />
+            <Tooltip title={assistant.title} enterDelay={500}>
+              <Typography variant="subtitle2" className={classes.title}>
+                {assistant.title}
+              </Typography>
+            </Tooltip>
           </>
         )}
         {!composerOnly && remoteId && (
           <Tooltip title="New chat">
-            <IconButton size="small" onClick={onNew} aria-label="New chat">
+            <IconButton
+              size="small"
+              className={classes.headerButton}
+              onClick={onNew}
+              aria-label="New chat"
+            >
               <AddIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -814,6 +830,7 @@ function EmbeddedChrome({
           <Tooltip title="Earlier conversations">
             <IconButton
               size="small"
+              className={classes.headerButton}
               onClick={e => setHistoryAnchor(e.currentTarget)}
               aria-label="Earlier conversations"
               aria-haspopup="menu"
@@ -865,6 +882,7 @@ function EmbeddedChrome({
             <Tooltip title="Open in Assistants">
               <IconButton
                 size="small"
+                className={classes.headerButton}
                 onClick={() => onOpenFull(remoteId, assistant.id)}
                 aria-label="Open in Assistants"
               >
@@ -881,6 +899,7 @@ function EmbeddedChrome({
               >
                 <IconButton
                   size="small"
+                  className={classes.headerButton}
                   onClick={pin.toggle}
                   aria-label={pin.pinned ? 'Unpin' : 'Pin'}
                   aria-pressed={pin.pinned}
@@ -894,7 +913,12 @@ function EmbeddedChrome({
               </Tooltip>
             )}
             <Tooltip title="Close. Your chat is kept.">
-              <IconButton size="small" onClick={onClose} aria-label="Close">
+              <IconButton
+                size="small"
+                className={classes.headerButton}
+                onClick={onClose}
+                aria-label="Close"
+              >
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Tooltip>
