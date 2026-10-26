@@ -42,17 +42,6 @@ spec:
             catalogFilter:
               kind: System
             defaultKind: System
-    - title: Choose a location
-      required:
-        - repoUrl
-      properties:
-        repoUrl:
-          title: Repository Location
-          type: string
-          ui:field: RepoUrlPicker
-          ui:options:
-            allowedHosts:
-              - github.com
 
   # These steps are executed in the scaffolder backend, using data that we gathered
   # via the parameters above.
@@ -76,7 +65,9 @@ spec:
       action: publish:github
       input:
         description: This is ${{ parameters.name }}
-        repoUrl: ${{ parameters.repoUrl }}
+        # The repository takes the component's name, under the maintainer's
+        # GitHub account.
+        repoUrl: github.com?owner=drewswiredin&repo=${{ parameters.name }}
         defaultBranch: 'main'
 
     # The final step is to register our new component in the catalog.
