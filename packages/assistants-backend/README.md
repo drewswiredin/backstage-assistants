@@ -257,6 +257,7 @@ and near spelling, comes from the
 >     pluginSources:
 >       - catalog
 >       - scaffolder
+>       - search # the `query` keyword search
 >       - assistants # needed for builtinActions / this plugin's tools
 > ```
 
@@ -691,6 +692,66 @@ for every assistant, so a prompt only needs the assistant's role; where the two
 differ, the assistant's prompt takes precedence. The editor shows them
 read-only under the prompt field. The text is `PLATFORM_INSTRUCTIONS` in
 `@drewswiredin/backstage-plugin-assistants-common`.
+
+## Recommended starter setup
+
+A setup that gives assistants a good catalog, docs, and scaffolding experience
+from the first conversation.
+
+**Backend plugins and modules:**
+
+| Package                                                                          | Gives assistants                                                                                                                                                     |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@backstage/plugin-search-backend` with the catalog and TechDocs collators       | The index behind the built-in `search-catalog` and `search-techdocs`, and its own `query` (keyword search across both)                                               |
+| `@backstage/plugin-techdocs-backend`                                             | The pages the built-in `read-techdocs` reads, and its own `get-techdocs-metadata`                                                                                    |
+| `@backstage/plugin-auth-backend`                                                 | `who-am-i`: the signed-in user and their groups                                                                                                                      |
+| `@backstage/plugin-catalog-backend`                                              | `get-catalog-entity`, `query-catalog-entities`, `get-catalog-model-description`, `validate-entity`, `register-entity`, `unregister-entity`, `refresh-catalog-entity` |
+| `@backstage/plugin-scaffolder-backend`                                           | `execute-template`, `dry-run-template`, `list-scaffolder-tasks`, `get-scaffolder-task-logs`, `list-scaffolder-actions`                                               |
+| [Semantic search module](../assistants-backend-module-semantic-search)           | `search-knowledge`: search by meaning, the best first search for questions in the user's words                                                                       |
+| `@backstage/plugin-signals-backend` (and `@backstage/plugin-signals` in the app) | Live working and unread status instead of polling                                                                                                                    |
+
+Allow each plugin whose actions you use in `backend.actions.pluginSources`:
+
+```yaml
+backend:
+  actions:
+    pluginSources:
+      - auth # who-am-i
+      - catalog
+      - scaffolder
+      - search
+      - techdocs
+      - assistants
+assistants:
+  builtinActions: true
+  requireApproval:
+    - register-entity
+    - unregister-entity
+    - execute-template
+```
+
+**Starter assistants.** Pair each with its
+[example prompt](#example-system-prompts):
+
+| Assistant                        | Tools                                                                                                                                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| General (read-only, open to all) | `who-am-i`, `get-catalog-model-description`, `search-knowledge`, `query`, `search-catalog`, `search-techdocs`, `read-techdocs`, `get-catalog-entity`, `query-catalog-entities`                                                     |
+| DevOps (platform engineers)      | Everything above, plus `validate-entity`, `register-entity`, `unregister-entity`, `refresh-catalog-entity`, `execute-template`, `dry-run-template`, `list-scaffolder-tasks`, `get-scaffolder-task-logs`, `list-scaffolder-actions` |
+
+The [built-in client tools](#built-in-client-tools) (forms, the current page,
+the portal map) need no configuration.
+
+**Optional extras.** Red Hat Developer Hub's MCP tool plugins, in the
+[`rhdh-plugins` repository](https://github.com/redhat-developer/rhdh-plugins/tree/main/workspaces/mcp-integrations/plugins),
+register more actions any assistant can use, installed as backend plugins per
+each plugin's README:
+
+- `techdocs-mcp-extras`: `fetch-techdocs` (TechDocs-enabled entities and
+  their build metadata), `retrieve-techdocs-content` (an entity's docs by
+  entity and page, without a search result first), and
+  `analyze-techdocs-coverage`.
+- `software-catalog-mcp-extras`, `scaffolder-mcp-extras`, and
+  `kubernetes-mcp-extras`: more catalog, scaffolder, and Kubernetes actions.
 
 ## Run a scaffolder template from the conversation
 
