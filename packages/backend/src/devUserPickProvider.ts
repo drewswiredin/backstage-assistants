@@ -45,9 +45,12 @@ export const DEV_USERS: Record<string, string[]> = {
 
 const HEADER = 'x-dev-user-ref';
 
+/** Every dev user shows the maintainer's GitHub avatar (chat, settings). */
+const PICTURE = 'https://github.com/drewswiredin.png';
+
 const devUserPickAuthenticator = createProxyAuthenticator({
   defaultProfileTransform: async (result: { userRef: string }) => ({
-    profile: { displayName: result.userRef.split('/').pop() },
+    profile: { displayName: result.userRef.split('/').pop(), picture: PICTURE },
   }),
   // TContext is a boolean "disabled" flag, mirroring the guest authenticator.
   initialize() {
