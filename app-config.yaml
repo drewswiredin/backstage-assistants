@@ -178,7 +178,7 @@ assistants:
   # Assistant DEFINITIONS (prompt, tools, models, access) are created and edited
   # in the in-app admin editor and stored in the plugin database — NOT here. This
   # block carries only the platform / safety surface.
-  defaultModel: openrouter:google/gemini-2.5-flash # provider:model; must exist in a provider below
+  defaultModel: openrouter:anthropic/claude-sonnet-5.5 # provider:model; must exist in a provider below
   maxSteps: 8 # max tool-call steps per turn (default 10)
   builtinActions: true # register the built-in catalog/TechDocs read-only actions
 
@@ -198,9 +198,12 @@ assistants:
       apiKey: ${OPENROUTER_API_KEY}
       baseUrl: https://openrouter.ai/api/v1
       models: # object list: required `name`, optional `contextWindow` (drives the composer gauge)
-        - name: google/gemini-2.5-flash
-          contextWindow: 1048576
+        - name: anthropic/claude-sonnet-5.5
+          contextWindow: 1000000
           reasoning: true # offers the effort picker (low/medium/high/max)
+        - name: openai/gpt-6.1-sol
+          contextWindow: 1050000
+          reasoning: true
         # Frontier models.
         - name: anthropic/claude-opus-5.5
           contextWindow: 1000000
