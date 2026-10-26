@@ -8,6 +8,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The README's demo stills open a video that plays; they linked to a GitHub page that can't show the video.
+- The README's setting for turning off `read_current_page` or `describe_portal` names the extension `assistant-client-tool:assistants/<name>`; the documented `client-tool:` key matched nothing. The editor's group is named "Browser tools", and a client tool's `timeoutMs` is capped at 120 s.
 
 ## 0.23.1 - 2026-10-26
 
@@ -96,7 +97,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `describe_portal`, a built-in client tool: what this Backstage instance offers (its plugins, its pages with their paths, the tabs on a catalog entity's page, and the client tools the browser can run), read from the app tree every new-frontend-system app builds, with or without the visualizer plugin. "What's in Backstage" and "where do I find X" get an answer with links. Disable it app-wide with `client-tool:assistants/describe-portal: false`. Requires common 0.15.1.
+- `describe_portal`, a built-in client tool: what this Backstage instance offers (its plugins, its pages with their paths, the tabs on a catalog entity's page, and the client tools the browser can run), read from the app tree every new-frontend-system app builds, with or without the visualizer plugin. "What's in Backstage" and "where do I find X" get an answer with links. Disable it app-wide with `assistant-client-tool:assistants/describe-portal: false`. Requires common 0.15.1.
 
 ### Changed
 
@@ -119,7 +120,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `read_current_page`, a built-in client tool: the rendered page as an outline (open dialogs first, then the content; headings, text, buttons, links, tabs, form fields, tables, alerts, and the first lines of long logs, with `find` for the lines around a term), so the assistant can answer "what does this mean" on any page. Disable it app-wide with `client-tool:assistants/read-current-page: false`.
+- `read_current_page`, a built-in client tool: the rendered page as an outline (open dialogs first, then the content; headings, text, buttons, links, tabs, form fields, tables, alerts, and the first lines of long logs, with `find` for the lines around a term), so the assistant can answer "what does this mean" on any page. Disable it app-wide with `assistant-client-tool:assistants/read-current-page: false`.
 - The panel sends the page it sits beside with every turn (path, title, catalog entity ref), so the assistant knows where the user is before it reads anything. Requires backend 0.20.0 for the note; an older backend ignores the field.
 
 ### Fixed

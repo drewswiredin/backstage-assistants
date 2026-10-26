@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- README corrections: per-user MCP servers in the overview; what a missing `pluginSources` entry removes; built-in client tools skip the allowlist and count toward the 30-per-request cap; the full list of tables to back up; the approval audit covers every gated tool; the elicitation and unknown-tool log lines; `/preview` applies the access policy; MCP servers also receive elicitation answers.
+
 ## 0.22.3 - 2026-10-26
 
 ### Changed

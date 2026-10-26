@@ -144,7 +144,8 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   https://backstage.example.com/api/search/.backstage/scheduler/v1/tasks/search_index_jira/trigger
 ```
 
-The task id is `search_index_<type>`; the backend logs `Knowledge index
+The task id is `search_index_<type>`, lowercased, with the type's first
+hyphen turned into an underscore (`search_index_software_catalog`); the backend logs `Knowledge index
 refreshed` with the type and counts when the copy finishes.
 
 ## Give an assistant the tool
@@ -230,7 +231,8 @@ once. The ranker then picks the results: by default best first, with at most
 
 Each result carries its title, location, type, excerpt, the entity ref for
 catalog and TechDocs results, and `metadata`: the short fields its collator
-attached (strings up to 200 characters, numbers, booleans), such as a
+attached (strings and comma-joined string lists up to 200 characters,
+numbers, booleans; at most 16), such as a
 ticket's status or a page's last update.
 
 ## Custom ranking
@@ -275,15 +277,15 @@ cannot read; results it returns that were not candidates are dropped.
 
 ## Reference
 
-| Key                                                  | Default    | Meaning                                                                       |
-| ---------------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
-| `assistants.semanticSearch.embeddingModel`           | (required) | `<providerId>:<model>` from `assistants.providers`.                           |
-| `assistants.semanticSearch.maxResults`               | `8`        | Results per answer unless the model asks for a number (it may ask for 20).    |
-| `assistants.semanticSearch.types.<type>.weight`      | `1`        | Multiplies the type's fused score; `0` never returns it.                      |
-| `assistants.semanticSearch.types.<type>.default`     | `true`     | Searched when the model names no types; `false` makes the type opt-in.        |
-| `assistants.semanticSearch.types.<type>.maxResults`  |            | At most this many of the type's results while other types can fill the slots. |
-| `assistants.semanticSearch.types.<type>.enabled`     | `true`     | `false` stops copying the type and deletes its chunks on its next run.        |
-| `assistants.semanticSearch.types.<type>.description` |            | What the source holds, shown to the model in the tool description.            |
+| Key                                                  | Default    | Meaning                                                                                      |
+| ---------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------- |
+| `assistants.semanticSearch.embeddingModel`           | (required) | `<providerId>:<model>` from `assistants.providers`.                                          |
+| `assistants.semanticSearch.maxResults`               | `8`        | Results per answer unless the model asks for a number (up to 20, or up to this when higher). |
+| `assistants.semanticSearch.types.<type>.weight`      | `1`        | Multiplies the type's fused score; `0` never returns it.                                     |
+| `assistants.semanticSearch.types.<type>.default`     | `true`     | Searched when the model names no types; `false` makes the type opt-in.                       |
+| `assistants.semanticSearch.types.<type>.maxResults`  |            | At most this many of the type's results while other types can fill the slots.                |
+| `assistants.semanticSearch.types.<type>.enabled`     | `true`     | `false` stops copying the type and deletes its chunks on its next run.                       |
+| `assistants.semanticSearch.types.<type>.description` |            | What the source holds, shown to the model in the tool description.                           |
 
 The index refreshes when search does; set each collator's schedule in its own
 config.

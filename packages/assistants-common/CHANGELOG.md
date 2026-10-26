@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- The README lists the per-user MCP server, OAuth, approval preview, and elicitation exports.
+
 ## 0.18.0 - 2026-10-23
 
 ### Changed

@@ -12,9 +12,10 @@ of your Backstage app, or from a composer on the home page. Assistants answer
 from the catalog and TechDocs through the tools you give them, can read the page
 the user is looking at, and can run Backstage actions (look up entities, search
 docs, run a scaffolder template) with the permissions of the person asking.
-They can also call MCP servers, which run under the credential you configure
-for each server. Platform admins create assistants in-app with a prompt,
-models, tools, and audience, and connect any model provider in app-config.
+They can also call MCP servers, either under a credential you configure for
+the server or as each user with their own sign-in. Platform admins create
+assistants in-app with a prompt, models, tools, and audience, and connect any
+model provider in app-config.
 
 > Requires the new frontend system (`createApp` from
 > `@backstage/frontend-defaults`) on Backstage 1.56 or later, and Node 22.12 or
@@ -51,17 +52,23 @@ https://github.com/user-attachments/assets/15649e1a-a80c-44c1-810e-fbe44fd18478
 - **Backstage actions as the user.** Let an assistant act on Backstage: look up
   entities, search docs, or run a scaffolder template, as the user, with their
   permissions.
-- **MCP servers.** Give an assistant tools outside Backstage. Each server runs
-  under the one credential you configure for it, shared by everyone who uses
-  the assistant.
+- **MCP servers.** Give an assistant tools outside Backstage. A server runs
+  either under a credential you configure for it, shared by everyone who uses
+  the assistant, or as each user: with the token from their Backstage sign-in
+  (GitHub, Microsoft, and the other auth providers) or through the server's own
+  OAuth, so the remote system allows only what that user may do. A user
+  connects from a chip beside the model picker.
 - **Tools from your own plugins.** A frontend plugin can contribute tools
   that run in the browser as the user, with the user's own credentials, so an
   assistant can reach a system the portal already talks to as them (a
   Kubernetes cluster, a repository host behind their OAuth session). A tool
   that writes asks before every call.
 - **Approval gate.** Require an Allow in the conversation before the actions
-  you choose run (Always allow covers the rest of that conversation); nothing
-  is gated by default and nothing runs behind the user's back.
+  you choose run. Always allow covers the rest of that conversation, except
+  for a per-user MCP server's tools (unless the server allows it) and browser
+  tools, which ask on every call. Nothing you configure is gated by default,
+  a browser tool that writes always asks, and nothing runs behind the user's
+  back.
 - **Conversations that keep going.** Keep several conversations going across
   several assistants; leave the page mid-reply and come back to the finished
   answer.

@@ -2,7 +2,8 @@
 
 Backend for AI Assistants for Backstage. It serves assistant metadata, streams
 replies, and runs Backstage actions as tools with the calling user's
-credentials. Assistant definitions live in the plugin database and are edited
+credentials and MCP server tools under a configured credential or the user's
+own token. Assistant definitions live in the plugin database and are edited
 in-app; `app-config.yaml` holds providers, MCP servers, the approval gate, and
 runtime limits.
 
@@ -60,7 +61,8 @@ provider with one model are configured; the exact messages are under
 
 All plugin options live under `assistants` in `app-config.yaml`. The
 `backend.actions.pluginSources` entry exposes this plugin's tools to
-assistants; without it an assistant's tools resolve to an empty list.
+assistants; without it the built-in tools and `search-knowledge` are not
+offered.
 
 ```yaml
 assistants:
@@ -249,7 +251,8 @@ and near spelling, comes from the
 > **Required:** Backstage's actions service only exposes actions from the plugin
 > sources you allow. Add `assistants` (and any other source whose actions you
 > use, e.g. `catalog`, `scaffolder`) to `backend.actions.pluginSources`;
-> otherwise an assistant's tools resolve to an empty list:
+> otherwise those actions are not offered (MCP and client tools are
+> unaffected):
 >
 > ```yaml
 > backend:
@@ -648,8 +651,9 @@ plugins, its pages with their paths, the tabs on a catalog entity's page, and
 the client tools the browser can run, read from the frontend's app tree. It
 answers "what is in Backstage" and "where do I find X" with links.
 
-An app turns either tool off in its frontend config; nothing is configured
-here.
+An app can turn off `read_current_page` or `describe_portal` in its frontend
+config; `render_form` and `download_file` are always on. Nothing is
+configured here.
 
 ## Client tools: run in the browser as the user
 
@@ -667,11 +671,12 @@ never exposed over MCP.
 
 Nothing is configured here. Give an assistant a client tool by adding its
 `<namespace>__<tool>` name to the assistant's tools in the editor, which
-offers every tool registered in the app; an assistant offers only the client
-tools it allows, whatever the browser declares. The backend also drops a
+offers every tool registered in the app; an assistant offers the built-in
+client tools plus only the contributed ones it allows, whatever the browser
+declares. The backend also drops a
 declaration whose name is not `<namespace>__<tool>`, collides with a server
 tool, or exceeds 4000 description characters or 8 KB of schema, and offers at
-most 30 per request. Client tool results are capped to `toolResultMaxChars`
+most 30 per request, built-ins included. Client tool results are capped to `toolResultMaxChars`
 like every other tool result.
 
 A client tool that is not read-only, or is destructive, asks the user for
@@ -916,10 +921,11 @@ status every 5 seconds, so indicators clear without that delivery.
 
 Migrations are forward-only and run at startup. Upgrade the backend before or
 with the database; a backend older than the database's newest migration fails
-at startup with knex's "migration directory is corrupt". Back up the four
-durable tables (`assistants`, `assistants_meta`, `threads`, `messages`)
-together before upgrading; `stream_chunks` holds only in-flight replies and
-needs no backup.
+at startup with knex's "migration directory is corrupt". Back up the durable
+tables together before upgrading: `assistants`, `assistants_meta`, `threads`,
+`messages`, and, with MCP servers, `mcp_tool_cache`, `mcp_oauth_tokens`, and
+`mcp_oauth_clients`. `stream_chunks`, `mcp_oauth_state`, and
+`mcp_elicitations` hold only in-flight state and need no backup.
 
 ### Logs
 
@@ -945,21 +951,26 @@ designated: the oldest assistant open to every signed-in user`, or the
   or over a size limit), and `auto-title failed` (the conversation keeps its
   current title).
 - At info, per turn with a gate: `Approval gate active for assistant '<id>'`.
-- At info, per gated MCP call and per argument-rule rejection:
+- At info, per approval decision on any gated tool (a Backstage action logs
+  `server: backstage`), per gated MCP call's outcome, and per argument-rule
+  rejection:
   `assistants.tool.audit` with `user`, `assistantId`, `threadId`, `server`,
   `tool`, `decision`, and `target`.
-- `MCP server '<id>' asked for input: <action> (<reason>)` when a question is
-  declined or cancelled before it reaches the user.
+- `MCP server '<id>' asked for input: refused (<reason>)` when a question
+  can't be shown (no call to tie it to, a URL request, a browser without
+  forms, or more than 3 in one call) and the server gets an error back.
+- `MCP server '<id>' does not list tool(s) named in its config: ...` (any
+  server: a `requireApproval`, `argumentRules`, or `approvalPreview` key, or a
+  preview's `base.tool`, that matches no tool; a typo there leaves a write
+  unguarded).
 - Servers that run their own OAuth: `MCP server '<id>' connected` and
   `... disconnected` (with `user`), `MCP server '<id>' sign-in failed for <user>: ...`,
   `MCP server '<id>' token refresh failed for <user>: ...`, and
   `MCP server '<id>' sign-in expired; the user must connect again`. No token,
   code, or verifier is logged.
 - Per-user servers: `MCP server '<id>' connect failed for <user>: ...` (the
-  user's token was rejected or the server is down; the model is told),
-  `MCP server '<id>' does not list tool(s) named in its config: ...` (a
-  `requireApproval`, `argumentRules`, or `approvalPreview` key that matches no
-  tool: a typo there leaves a write unguarded), and at startup
+  user's token was rejected or the server is down; the model is told), and
+  at startup
   `MCP server '<id>' is per-user over stdio`.
 - A provider failure reaches the conversation as `The assistant couldn't finish
 this turn: <reason>` and logs `chat stream error surfaced to client`.
@@ -995,8 +1006,8 @@ provider the platform instructions and the assistant's system prompt, the full c
 tools called in that turn: catalog entities, TechDocs pages, MCP results.
 Auto-title makes one extra model call on a conversation's first turn. The
 caller's identity (user entity ref, groups, credentials) is not sent to the
-provider. MCP servers receive only the tool arguments the model produces,
-under the server's configured static credential or, for a per-user server, the
+provider. MCP servers receive only the tool arguments the model produces
+and the user's answers to their own questions (elicitation), under the server's configured static credential or, for a per-user server, the
 user's own token. A server that runs its own OAuth also gets, through its
 authorization server, the sign-in requests, code exchanges, and refreshes.
 
@@ -1039,7 +1050,8 @@ with the user's own credential for that system, so it can do only what the
 user can; one that writes always asks first.
 
 The browser declares client tools on each `/chat` request and the backend
-offers only the ones in the assistant's allowlist, so a user cannot attach
+offers the built-in client tools plus only the contributed ones in the
+assistant's allowlist, so a user cannot attach
 tools an admin did not assign. A forged declaration could only make the model
 call code in that user's own browser with that user's own credentials.
 
@@ -1111,17 +1123,18 @@ Backstage's own missing-config error naming the key.
 - `assistants.mcp.servers.<id>.userCredentials: a stdio server takes the token in an environment variable; set 'env'`.
 - `assistants.mcp.servers.<id>.userCredentials: provider 'oauth' needs a remote (http or sse) server`,
   `... clientSecret needs clientId`, or `... set clientId or clientMetadataDocument, not both`.
-- `assistants.mcp.oauth.encryptionKey is required: ...`, or `... must be 32 bytes, base64`.
+- `assistants.mcp.oauth.encryptionKey is required: ...`, or `... must be 32 bytes, base64` (also
+  `assistants.mcp.oauth.previousEncryptionKeys[<n>] must be 32 bytes, base64`).
 - `assistants.mcp.elicitationTimeoutMs must be a positive number of milliseconds`.
 - `assistants.mcp.servers.<id>.argumentRules.<tool>.<argument>.pattern is not a valid regular expression: ...`,
-  or `... needs 'pattern' or 'equals'`.
+  `... needs 'pattern' or 'equals'`, or `... .equals must be a string, number, or boolean`.
 - `assistants.mcp.servers.<id>.approvalPreview.<tool>.type must be 'file' or 'files'`, or
   `....fields.<field> is required for type '<type>'`.
 
 ### HTTP routes
 
-All routes are under `/api/assistants`. `/status`, `/chat`, and the thread
-list, create, and status routes also apply the per-assistant access policy;
+All routes are under `/api/assistants`. `/status`, `/chat`, `/preview`, and the
+thread list, create, and status routes also apply the per-assistant access policy;
 every conversation route is scoped to the owning user.
 
 | Route                                      | Permission                         | Purpose                                                                                                     |

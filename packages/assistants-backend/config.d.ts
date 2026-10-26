@@ -75,8 +75,9 @@ export interface Config {
 
     /**
      * External MCP (Model Context Protocol) servers whose tools are exposed to
-     * assistants. Each server is connected with a static credential (the
-     * configured `headers`) — i.e. one shared identity for all users.
+     * assistants. A server is connected either with a static credential (the
+     * configured `headers` or `env`), one shared identity for all users, or,
+     * with `userCredentials`, as each user with their own token.
      * Assistants opt in by listing namespaced `<serverId>__<tool>`
      * entries in their `allowedTools`.
      */

@@ -62,6 +62,28 @@ user's browser; the blueprint itself is in the frontend package):
   4000-character description, 8192-character schema), and
   `isClientToolName`.
 
+Per-user MCP servers (a server the browser calls with the user's own
+token):
+
+- `UserCredentialSpec` (on `AssistantSummary.userCredentials`): the sign-in a
+  server needs, and `USER_CREDENTIALS_HEADER` (`x-assistants-credentials`),
+  the header the browser sends the tokens in.
+- `McpOAuthConnection`, `McpOAuthStatusResponse`, `McpOAuthStartResponse`, and
+  `MCP_OAUTH_MESSAGE_TYPE`: the Connect flow for a server that runs its own
+  OAuth.
+- `StatusResponse.approveEachCall`: servers whose gated tools take no Always
+  allow.
+- `ApprovalPreview`, `ApprovalPreviewRequest`, `ApprovalPreviewResponse`,
+  `StatusResponse.approvalPreviews`, and `resolvePreviewField`: the diff an
+  approval card shows for a write.
+
+Elicitation (an MCP server asking the user for input mid-call):
+
+- `ElicitationPrompt`, `ElicitationStatus`, `ElicitationField`,
+  `ElicitationOption`, and `ElicitationResponseRequest`.
+- `parseElicitationSchema`, `validateElicitationContent`, and
+  `isSensitiveElicitationField`: the shared schema parsing and validation.
+
 Platform instructions:
 
 - `PLATFORM_INSTRUCTIONS`: the fixed text the backend sends before every

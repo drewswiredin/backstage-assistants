@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- README corrections: the refresh task id for a hyphenated type (`search_index_software_catalog`), metadata keeps short string lists, and the model may ask for up to `maxResults` when it is above 20.
+
 ## 0.3.1 - 2026-10-22
 
 ### Fixed

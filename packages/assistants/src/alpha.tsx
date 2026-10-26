@@ -85,7 +85,7 @@ const downloadFileClientTool = AssistantClientToolBlueprint.make({
 /**
  * `read_current_page`: the rendered page as an outline, so the model can see
  * what the user is looking at. An app that does not want pages read turns it
- * off: `client-tool:assistants/read-current-page` with `disabled: true`.
+ * off: `assistant-client-tool:assistants/read-current-page` with `disabled: true`.
  */
 const readCurrentPageClientTool = AssistantClientToolBlueprint.make({
   name: 'read-current-page',
@@ -95,7 +95,8 @@ const readCurrentPageClientTool = AssistantClientToolBlueprint.make({
 /**
  * `describe_portal`: what this Backstage instance offers (plugins, pages,
  * entity tabs, client tools), read from the app tree. An app that does not
- * want it disables `client-tool:assistants/describe-portal`.
+ * want it disables
+ * `assistant-client-tool:assistants/describe-portal`.
  */
 const describePortalClientTool = AssistantClientToolBlueprint.make({
   name: 'describe-portal',

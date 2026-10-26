@@ -154,7 +154,7 @@ the conversation when it runs. To turn it off for the whole app:
 ```yaml
 app:
   extensions:
-    - client-tool:assistants/read-current-page: false
+    - assistant-client-tool:assistants/read-current-page: false
 ```
 
 The assistant also knows what this Backstage instance offers through the
@@ -163,7 +163,8 @@ path, and the tabs on a catalog entity's page (Kubernetes, CI, API
 definitions, and so on), read from the app tree every new-frontend-system app
 builds. So "what's in Backstage" and "where do I find our API docs" get an
 answer, with links, from any page, and without the visualizer plugin. Turn it
-off the same way, with `client-tool:assistants/describe-portal: false`.
+off the same way, with
+`assistant-client-tool:assistants/describe-portal: false`.
 
 <!-- screenshot: panel-page-context.png — the panel answering a question about the page beside it, with the read_current_page chip -->
 
@@ -492,7 +493,7 @@ export const assistantToolsModule = createFrontendModule({
 ```
 
 Add the module to the app's `features`, then give an assistant the tool by
-name in the editor's Tools section, under "Backstage client tools". The contract:
+name in the editor's Tools section, under "Browser tools". The contract:
 
 - `name` is `<namespace>__<tool>`; the namespace keeps a plugin's tools apart
   from Backstage actions and MCP servers. `description` (at most 4000
@@ -511,7 +512,8 @@ name in the editor's Tools section, under "Backstage client tools". The contract
 - `execute(input, { apis, credential, signal })` returns a JSON-serializable
   result. `apis` is the app's API holder, so a tool can call any frontend API
   (`catalogApiRef`, a plugin's own API) rather than fetch directly. A thrown
-  error, a timeout (`timeoutMs`, default 30 s), a declined approval, or a
+  error, a timeout (`timeoutMs`, default 30 s, at
+  most 120 s), a declined approval, or a
   dismissed Connect each become an `{ _error: true, code, message }` result
   the model explains.
 - `render` is optional for a tool with `execute` (the call otherwise shows
