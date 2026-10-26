@@ -3,7 +3,7 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend-module-semantic-search`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.3.2 - 2026-10-26
 
 ### Fixed
 
