@@ -7,15 +7,14 @@ each still links to its video at
 `https://github.com/drewswiredin/backstage-assistants/blob/main/docs/media/<file>`,
 because npm doesn't play video.
 
-| File                                                   | Used by                                                                                                                                                      |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `icon.svg`                                             | the source of `icon.png`: Remix Icon `robot-2-line` (Apache-2.0) in Backstage teal                                                                           |
-| `icon.png`                                             | 256x256 render of `icon.svg`; the backstage.io directory entry's icon, copied to `microsite/static/img/assistants-logo.png` per `docs/marketplace/README.md` |
-| `explain-system.png`                                   | project and frontend READMEs: still of `explain-system.mp4`, the panel's answer with an architecture diagram                                                 |
-| `create-project.png`                                   | project and frontend READMEs: still of `create-project.mp4`, a scaffolder form with the owner picker open                                                    |
-| `ui-tour.png`                                          | project README: still of `ui-tour.mp4`, the homepage composers beside the open panel                                                                         |
-| `home-composer.png`                                    | frontend README: the homepage composer's four looks, from `ui-tour.mp4`                                                                                      |
-| `chat.png`, `editor.png`, `home-composer-variants.png` | the frontend README published with 0.23.0, which links to them                                                                                               |
+| File                 | Used by                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `icon.svg`           | the source of `icon.png`: Remix Icon `robot-2-line` (Apache-2.0) in Backstage teal                                                                           |
+| `icon.png`           | 256x256 render of `icon.svg`; the backstage.io directory entry's icon, copied to `microsite/static/img/assistants-logo.png` per `docs/marketplace/README.md` |
+| `explain-system.png` | project and frontend READMEs: still of `explain-system.mp4`, the panel's answer with an architecture diagram                                                 |
+| `create-project.png` | project and frontend READMEs: still of `create-project.mp4`, a scaffolder form with the owner picker open                                                    |
+| `ui-tour.png`        | project README: still of `ui-tour.mp4`, the homepage composers beside the open panel                                                                         |
+| `home-composer.png`  | frontend README: the homepage composer's four looks, from `ui-tour.mp4`                                                                                      |
 
 | Video (`docs/media/`) | Shows                                                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
