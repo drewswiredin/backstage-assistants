@@ -15,7 +15,12 @@ import useAsync from 'react-use/lib/useAsync';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usePermission } from '@backstage/plugin-permission-react';
-import { makeStyles, useTheme } from '@material-ui/core/styles';
+import {
+  makeStyles,
+  ThemeProvider,
+  useTheme,
+  type Theme,
+} from '@material-ui/core/styles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { Fab, IconButton, LinearProgress, Tooltip } from '@material-ui/core';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
@@ -28,16 +33,20 @@ import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { rootRouteRef, threadRouteRef } from '../routes';
 import {
   PanelControlProvider,
+  PanelPinProvider,
   type PanelControl,
   type PanelHandoff,
+  type PanelPin,
 } from './panelControl';
 import {
   clampPanelWidth,
   loadPanelAssistant,
+  loadPanelPinned,
   loadPanelThread,
   loadPanelWidth,
   onPanelAssistantChange,
   savePanelAssistant,
+  savePanelPinned,
   savePanelThread,
   savePanelWidth,
 } from './panelStorage';
@@ -64,11 +73,48 @@ const INSIDE_SELECTOR = [
   '[data-assistants-panel]',
   '[data-assistants-strip]',
   '[role="presentation"]', // MUI modals: menus, popovers, dialogs
+  '[role="dialog"]', // Backstage UI (react-aria) dialogs
   '[role="tooltip"]',
   '.MuiPopper-root',
 ].join(', ');
 
+/** A Backstage dialog or drawer is open; it owns Escape. */
+const OVERLAY_SELECTOR = [
+  '.MuiDialog-root',
+  '.MuiDrawer-modal',
+  '[class*="bui-DialogOverlay"]',
+].join(', ');
+
+/** The panel column's width, which dialogs and drawers keep clear of. */
+const INSET_VAR = '--assistants-panel-inset';
+
+/**
+ * MUI dialogs and drawers keep focus inside themselves by pulling it back;
+ * off, so the composer beside an open one can be typed in. Their backdrop
+ * click and Escape still close them.
+ */
+export const withFreeFocus = (outer: Theme): Theme => ({
+  ...outer,
+  props: {
+    ...outer.props,
+    MuiModal: { ...outer.props?.MuiModal, disableEnforceFocus: true },
+  },
+});
+
 const useStyles = makeStyles(theme => ({
+  // Dialogs and drawers open beside the panel column, never over it, so the
+  // panel and the strip stay usable while one is open.
+  '@global': {
+    // Full-viewport roots (and their backdrops) end at the panel column.
+    '.MuiDialog-root, .MuiDrawer-modal, [class*="bui-DialogOverlay"]': {
+      right: `var(${INSET_VAR}, 0px) !important`,
+      width: 'auto !important',
+    },
+    // A right-hand drawer keeps its own width and sits left of the column.
+    '.MuiDrawer-paperAnchorRight': {
+      right: `var(${INSET_VAR}, 0px) !important`,
+    },
+  },
   // The app layout and the panel side by side. The page column shrinks as
   // the panel column grows, so the panel never covers content.
   shell: {
@@ -149,11 +195,12 @@ const useStyles = makeStyles(theme => ({
   stripChevron: {
     color: theme.palette.text.secondary,
   },
+  // Above dialogs and drawers, so the panel can always be opened.
   fab: {
     position: 'fixed',
     right: theme.spacing(3),
     bottom: theme.spacing(3),
-    zIndex: theme.zIndex.appBar - 1,
+    zIndex: theme.zIndex.modal + 1,
   },
 }));
 
@@ -161,10 +208,11 @@ const useStyles = makeStyles(theme => ({
  * The app root wrapper that adds the floating button and the side panel.
  *
  * Closed shows the button only. Open slides the panel out beside the page
- * (the page column shrinks) and hides the button. Hide (the chevron, Escape,
- * or a click on the page) collapses the panel to a strip at the right edge
- * with the conversation kept; Close (the x) removes the strip and brings the
- * button back. Either way the conversation is remembered: only "+" and
+ * (the page column shrinks) and hides the button. Unpinned, a click on the
+ * page or Escape collapses the panel to a strip at the right edge with the
+ * conversation kept; pinned, it stays open while you work on the page.
+ * Ctrl+/ toggles open and collapsed either way. Close (the x) removes the
+ * strip and brings the button back. Either way the conversation is remembered: only "+" and
  * "Open in Assistants" forget it.
  *
  * On the Assistants page itself, for a user without `assistant.use`, and
@@ -190,6 +238,17 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   const hasAssistants = (status.value?.assistants.length ?? 0) > 0;
 
   const [mode, setMode] = useState<PanelMode>('closed');
+  const [pinned, setPinned] = useState(loadPanelPinned);
+  const pin = useMemo<PanelPin>(
+    () => ({
+      pinned,
+      toggle: () => {
+        savePanelPinned(!pinned);
+        setPinned(!pinned);
+      },
+    }),
+    [pinned],
+  );
   const [width, setWidth] = useState(() => loadPanelWidth(window.innerWidth));
   const [dragging, setDragging] = useState(false);
   // The remembered conversation, and a session counter that remounts the
@@ -224,28 +283,27 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Ctrl+/ (⌘/ on macOS) toggles; Escape hides.
+  // Ctrl+/ (⌘/ on macOS) toggles; Escape hides unless pinned.
   useEffect(() => {
     if (!active) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
         toggle();
-      } else if (e.key === 'Escape' && mode === 'open') {
-        // A Backstage dialog on top owns Escape.
-        if (document.querySelector('.MuiDialog-root')) return;
+      } else if (e.key === 'Escape' && mode === 'open' && !pinned) {
+        if (document.querySelector(OVERLAY_SELECTOR)) return;
         hide();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, toggle, hide, mode]);
+  }, [active, toggle, hide, mode, pinned]);
 
-  // A click on the page beside the open panel hides it (the conversation is
-  // kept). Clicks inside the panel, its menus, tooltips, and any dialog do
-  // not count.
+  // A click on the page beside the open panel hides it unless pinned (the
+  // conversation is kept). Clicks inside the panel, its menus, tooltips, and
+  // any dialog do not count.
   useEffect(() => {
-    if (mode !== 'open') return undefined;
+    if (mode !== 'open' || pinned) return undefined;
     const onDown = (e: MouseEvent) => {
       const target = e.target;
       if (!(target instanceof Element)) return;
@@ -254,7 +312,20 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [mode, hide]);
+  }, [mode, pinned, hide]);
+
+  // Dialogs and drawers keep clear of the panel column (see '@global').
+  useEffect(() => {
+    if (!active) return undefined;
+    let inset = 0;
+    if (mode === 'open' && !fullScreen) inset = width;
+    else if (mode === 'collapsed') inset = STRIP_WIDTH;
+    const root = document.documentElement;
+    root.style.setProperty(INSET_VAR, `${inset}px`);
+    return () => {
+      root.style.removeProperty(INSET_VAR);
+    };
+  }, [active, mode, width, fullScreen]);
 
   const rememberThread = useCallback((id: string) => {
     savePanelThread(id);
@@ -397,108 +468,117 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className={classes.shell}>
-      <div className={classes.main}>
-        <PanelControlProvider value={control}>{children}</PanelControlProvider>
-      </div>
-      <aside
-        className={classes.aside}
-        style={{
-          width: asideWidth,
-          transition: dragging ? 'none' : undefined,
-        }}
-        aria-label="Assistant panel"
-        aria-hidden={mode === 'closed'}
-        onTransitionEnd={e => {
-          if (e.target === e.currentTarget && e.propertyName === 'width') {
-            notifyResize();
-          }
-        }}
-      >
-        {/* Mounted while open or collapsed, and kept mounted while closed
+    <ThemeProvider theme={withFreeFocus}>
+      <div className={classes.shell}>
+        <div className={classes.main}>
+          <PanelControlProvider value={control}>
+            {children}
+          </PanelControlProvider>
+        </div>
+        <aside
+          className={classes.aside}
+          style={{
+            width: asideWidth,
+            transition: dragging ? 'none' : undefined,
+          }}
+          aria-label="Assistant panel"
+          aria-hidden={mode === 'closed'}
+          // A Backstage UI (react-aria) dialog doesn't close on clicks here,
+          // lets focus in, and doesn't hide the panel from assistive tech.
+          data-react-aria-top-layer="true"
+          onTransitionEnd={e => {
+            if (e.target === e.currentTarget && e.propertyName === 'width') {
+              notifyResize();
+            }
+          }}
+        >
+          {/* Mounted while open or collapsed, and kept mounted while closed
             if a conversation exists, so a stream keeps rendering and
             reopening shows it live. Blank and closed mounts nothing, so the
             surface's chunk loads on first open, not with the app. */}
-        {(mode !== 'closed' || remoteId !== undefined) && (
-          <div
-            className={classes.panel}
-            style={{ width: panelWidth }}
-            // Marks the panel for the page reader to skip.
-            data-assistants-panel="true"
-          >
-            {!fullScreen && (
-              // A focusable separator is interactive per ARIA (drag or arrow
-              // keys resize), which the a11y rules do not model.
-              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <div
-                className={classes.handle}
-                onMouseDown={onHandleDown}
-                onKeyDown={onHandleKey}
-                // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-                tabIndex={0}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize panel"
-                aria-valuenow={width}
-              />
-            )}
-            <div className={classes.content}>
-              <Suspense fallback={<LinearProgress />}>
-                <EmbeddedAssistant
-                  key={session}
-                  assistantId={pickedAssistant}
-                  threadId={remoteId}
-                  clientTools={clientTools}
-                  onThreadChange={rememberThread}
-                  onAssistantChange={pickAssistant}
-                  onThreadPick={pickThread}
-                  handoff={handoff}
-                  onHandoffSent={handoffSent}
-                  onOpenFull={openFull}
-                  onNew={forgetThread}
-                  onHide={hide}
-                  onClose={close}
-                  active={mode === 'open'}
+          {(mode !== 'closed' || remoteId !== undefined) && (
+            <div
+              className={classes.panel}
+              style={{ width: panelWidth }}
+              // Marks the panel for the page reader to skip.
+              data-assistants-panel="true"
+            >
+              {!fullScreen && (
+                // A focusable separator is interactive per ARIA (drag or arrow
+                // keys resize), which the a11y rules do not model.
+                // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+                <div
+                  className={classes.handle}
+                  onMouseDown={onHandleDown}
+                  onKeyDown={onHandleKey}
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+                  tabIndex={0}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize panel"
+                  aria-valuenow={width}
                 />
-              </Suspense>
+              )}
+              <div className={classes.content}>
+                <Suspense fallback={<LinearProgress />}>
+                  <PanelPinProvider value={pin}>
+                    <EmbeddedAssistant
+                      key={session}
+                      assistantId={pickedAssistant}
+                      threadId={remoteId}
+                      clientTools={clientTools}
+                      onThreadChange={rememberThread}
+                      onAssistantChange={pickAssistant}
+                      onThreadPick={pickThread}
+                      handoff={handoff}
+                      onHandoffSent={handoffSent}
+                      onOpenFull={openFull}
+                      onNew={forgetThread}
+                      onClose={close}
+                      active={mode === 'open'}
+                    />
+                  </PanelPinProvider>
+                </Suspense>
+              </div>
             </div>
-          </div>
+          )}
+          {mode === 'collapsed' && (
+            // The whole strip is one control: anything on it shows the panel.
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+            <div
+              className={classes.strip}
+              data-assistants-strip="true"
+              onClick={open}
+            >
+              <Tooltip title="Show assistant (Ctrl+/)" placement="left">
+                <IconButton
+                  size="small"
+                  className={classes.stripChevron}
+                  aria-label="Show assistant"
+                >
+                  <ChevronLeftIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <span className={classes.stripIcon}>{icon}</span>
+            </div>
+          )}
+        </aside>
+        {mode === 'closed' && (
+          <Tooltip title="Ask an assistant (Ctrl+/)" placement="left">
+            <Fab
+              color="primary"
+              size="medium"
+              aria-label="Ask an assistant"
+              className={classes.fab}
+              onClick={open}
+              data-react-aria-top-layer="true"
+            >
+              {icon}
+            </Fab>
+          </Tooltip>
         )}
-        {mode === 'collapsed' && (
-          // The whole strip is one control: anything on it shows the panel.
-          // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-          <div
-            className={classes.strip}
-            data-assistants-strip="true"
-            onClick={open}
-          >
-            <Tooltip title="Show assistant (Ctrl+/)" placement="left">
-              <IconButton
-                size="small"
-                className={classes.stripChevron}
-                aria-label="Show assistant"
-              >
-                <ChevronLeftIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <span className={classes.stripIcon}>{icon}</span>
-          </div>
-        )}
-      </aside>
-      {mode === 'closed' && (
-        <Tooltip title="Ask an assistant (Ctrl+/)" placement="left">
-          <Fab
-            color="primary"
-            size="medium"
-            aria-label="Ask an assistant"
-            className={classes.fab}
-            onClick={open}
-          >
-            {icon}
-          </Fab>
-        </Tooltip>
-      )}
-    </div>
+      </div>
+    </ThemeProvider>
   );
 }
 

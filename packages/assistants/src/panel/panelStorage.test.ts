@@ -2,12 +2,14 @@ import {
   clampPanelWidth,
   DEFAULT_PANEL_WIDTH,
   loadPanelAssistant,
+  loadPanelPinned,
   loadPanelThread,
   loadPanelWidth,
   MIN_PANEL_WIDTH,
   onPanelAssistantChange,
   resolvePanelAssistant,
   savePanelAssistant,
+  savePanelPinned,
   savePanelThread,
   savePanelWidth,
 } from './panelStorage';
@@ -65,5 +67,13 @@ describe('panelStorage', () => {
     savePanelAssistant('c');
     expect(seen).toEqual(['b']);
     expect(loadPanelAssistant()).toBe('c');
+  });
+
+  it('starts unpinned and remembers the pin', () => {
+    expect(loadPanelPinned()).toBe(false);
+    savePanelPinned(true);
+    expect(loadPanelPinned()).toBe(true);
+    savePanelPinned(false);
+    expect(loadPanelPinned()).toBe(false);
   });
 });

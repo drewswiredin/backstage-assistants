@@ -1,6 +1,7 @@
 /**
  * What the panel remembers between page loads: the last quick chat (a server
- * thread id), the assistant the user picked, and the panel width. All live in
+ * thread id), the assistant the user picked, the panel width, and whether
+ * it is pinned. All live in
  * this browser's localStorage. A missing or unusable store just means a blank
  * panel on the default assistant at the default width.
  */
@@ -8,6 +9,7 @@
 const THREAD_KEY = 'assistants-panel-thread';
 const WIDTH_KEY = 'assistants-panel-width';
 const ASSISTANT_KEY = 'assistants-panel-assistant';
+const PINNED_KEY = 'assistants-panel-pinned';
 
 export const DEFAULT_PANEL_WIDTH = 420;
 export const MIN_PANEL_WIDTH = 320;
@@ -99,4 +101,13 @@ export function loadPanelWidth(viewportWidth: number): number {
 
 export function savePanelWidth(width: number) {
   write(WIDTH_KEY, String(Math.round(width)));
+}
+
+/** A pinned panel stays open on clicks beside it. */
+export function loadPanelPinned(): boolean {
+  return read(PINNED_KEY) === 'true';
+}
+
+export function savePanelPinned(pinned: boolean) {
+  write(PINNED_KEY, pinned ? 'true' : undefined);
 }

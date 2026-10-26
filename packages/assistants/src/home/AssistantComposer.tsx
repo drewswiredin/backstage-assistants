@@ -133,7 +133,6 @@ export function AssistantComposer({
         onThreadPick={noop}
         onOpenFull={noop}
         onNew={noop}
-        onHide={noop}
         onClose={noop}
       />
     </div>

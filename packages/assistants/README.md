@@ -127,9 +127,14 @@ default. The history button in the header lists that assistant's earlier
 conversations; picking one continues it in the panel. The model and reasoning
 effort pickers sit in the composer, as on the page.
 
-`Ctrl+/` (`⌘/` on macOS) toggles the panel. Hide (the chevron, `Esc`, or a
-click on the page) collapses it to a strip at the right edge with the
-conversation kept; Close (the x) removes the strip and brings the button back.
+`Ctrl+/` (`⌘/` on macOS) toggles the panel. A click on the page or `Esc`
+collapses it to a strip at the right edge with the conversation kept, unless
+it is pinned: the pin in the header keeps it open while you work on the page,
+for example to follow steps it gave you, and is remembered in this browser.
+Close (the x) removes the strip and brings the button back. Backstage dialogs
+and drawers, such as the entity inspector or a Kubernetes pod, open beside the
+panel instead of over it, and clicking or typing in the panel leaves them
+open.
 Dragging the left edge resizes the panel, and below tablet width it fills the
 screen. The panel remembers your last quick conversation in this browser; only
 "+" and "Open in Assistants" start fresh. Tools, approvals, forms, and

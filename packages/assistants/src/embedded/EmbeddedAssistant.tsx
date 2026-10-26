@@ -34,9 +34,9 @@ import AddIcon from '@material-ui/icons/Add';
 import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
 import CheckIcon from '@material-ui/icons/Check';
 import HistoryIcon from '@material-ui/icons/History';
-import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import CloseIcon from '@material-ui/icons/Close';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
+import { RiPushpinFill, RiPushpinLine } from '@remixicon/react';
 import {
   AssistantRuntimeProvider,
   useRemoteThreadListRuntime,
@@ -71,7 +71,7 @@ import { makeRuntimeHook } from '../collapsible/useAssistantRuntime';
 import { StatusDot } from '../collapsible/StatusDot';
 import { useThreadStatus } from '../collapsible/useThreadStatus';
 import { resolvePanelAssistant } from '../panel/panelStorage';
-import type { PanelHandoff } from '../panel/panelControl';
+import { usePanelPin, type PanelHandoff } from '../panel/panelControl';
 import { derivePageContext } from '../pageContext/pageContext';
 
 /**
@@ -128,8 +128,6 @@ export interface EmbeddedAssistantProps {
   onOpenFull: (remoteId: string | undefined, assistantId: string) => void;
   /** "+": start a fresh conversation (the host remounts this component). */
   onNew: () => void;
-  /** Hide: the host collapses the surface; the conversation is kept. */
-  onHide: () => void;
   /** Close: the host removes the surface; the conversation is still remembered. */
   onClose: () => void;
 }
@@ -350,7 +348,6 @@ function EmbeddedChat({
   onThreadChange,
   onOpenFull,
   onNew,
-  onHide,
   onClose,
   onAssistantChange,
   onThreadPick,
@@ -396,7 +393,6 @@ function EmbeddedChat({
       onThreadChange={onThreadChange}
       onOpenFull={onOpenFull}
       onNew={onNew}
-      onHide={onHide}
       onClose={onClose}
       onAssistantChange={onAssistantChange}
       onThreadPick={onThreadPick}
@@ -417,7 +413,6 @@ function EmbeddedRuntime({
   onThreadChange,
   onOpenFull,
   onNew,
-  onHide,
   onClose,
   onAssistantChange,
   onThreadPick,
@@ -434,7 +429,6 @@ function EmbeddedRuntime({
   onThreadChange: (remoteId: string) => void;
   onOpenFull: (remoteId: string | undefined, assistantId: string) => void;
   onNew: () => void;
-  onHide: () => void;
   onClose: () => void;
   onAssistantChange: (assistantId: string) => void;
   onThreadPick: (remoteId: string) => void;
@@ -525,7 +519,6 @@ function EmbeddedRuntime({
         onThreadChange={onThreadChange}
         onOpenFull={onOpenFull}
         onNew={onNew}
-        onHide={onHide}
         onClose={onClose}
         onAssistantChange={onAssistantChange}
         onThreadPick={onThreadPick}
@@ -550,7 +543,6 @@ function EmbeddedChrome({
   onThreadChange,
   onOpenFull,
   onNew,
-  onHide,
   onClose,
   onAssistantChange,
   onThreadPick,
@@ -570,7 +562,6 @@ function EmbeddedChrome({
   onThreadChange: (remoteId: string) => void;
   onOpenFull: (remoteId: string | undefined, assistantId: string) => void;
   onNew: () => void;
-  onHide: () => void;
   onClose: () => void;
   onAssistantChange: (assistantId: string) => void;
   onThreadPick: (remoteId: string) => void;
@@ -581,6 +572,7 @@ function EmbeddedChrome({
 }) {
   const classes = useStyles();
   const bare = useContext(BareContext);
+  const pin = usePanelPin();
   // The assistant picker, offered only when there is a choice.
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
   const canPick = status.assistants.length > 1;
@@ -839,12 +831,29 @@ function EmbeddedChrome({
                 <OpenInNewIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Hide (Esc). Your chat is kept.">
-              <IconButton size="small" onClick={onHide} aria-label="Hide">
-                <ChevronRightIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Close the panel. Your chat is kept.">
+            {pin && (
+              <Tooltip
+                title={
+                  pin.pinned
+                    ? 'Unpin: clicking the page hides the panel'
+                    : 'Pin: keep the panel open while you work on the page'
+                }
+              >
+                <IconButton
+                  size="small"
+                  onClick={pin.toggle}
+                  aria-label={pin.pinned ? 'Unpin' : 'Pin'}
+                  aria-pressed={pin.pinned}
+                >
+                  {pin.pinned ? (
+                    <RiPushpinFill size={18} />
+                  ) : (
+                    <RiPushpinLine size={18} />
+                  )}
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="Close. Your chat is kept.">
               <IconButton size="small" onClick={onClose} aria-label="Close">
                 <CloseIcon fontSize="small" />
               </IconButton>

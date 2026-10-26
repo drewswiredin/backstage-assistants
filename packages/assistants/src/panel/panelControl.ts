@@ -48,3 +48,17 @@ export const PanelControlProvider = PanelControlContext.Provider;
 export function usePanelControl(): PanelControl | undefined {
   return useContext(PanelControlContext);
 }
+
+/** The panel's pin, for the surface header. Undefined outside the panel. */
+export interface PanelPin {
+  pinned: boolean;
+  toggle(): void;
+}
+
+const PanelPinContext = createContext<PanelPin | undefined>(undefined);
+
+export const PanelPinProvider = PanelPinContext.Provider;
+
+export function usePanelPin(): PanelPin | undefined {
+  return useContext(PanelPinContext);
+}
