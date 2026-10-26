@@ -1,0 +1,7 @@
+site_name: Petstore
+site_description: The example service behind the Petstore, Streetlights, and Hello World APIs.
+nav:
+  - Overview: index.md
+  - Working with the APIs: apis.md
+plugins:
+  - techdocs-core

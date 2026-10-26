@@ -1,0 +1,7 @@
+site_name: Playback SDK
+site_description: The audio and video playback library every ACME client embeds.
+nav:
+  - Overview: index.md
+  - Integration guide: integration.md
+plugins:
+  - techdocs-core

@@ -1,0 +1,8 @@
+site_name: Audio Playback
+site_description: 'How ACME plays audio: the playback SDK, ordering, and shuffle.'
+nav:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Onboarding: onboarding.md
+plugins:
+  - techdocs-core

@@ -6,6 +6,8 @@ metadata:
   tags:
     - java
     - playback
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/playback-order
 spec:
   type: service
   lifecycle: production

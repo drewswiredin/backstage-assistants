@@ -1,0 +1,7 @@
+site_name: Wayback Archive
+site_description: The archive of the wayback machine, and its public API.
+nav:
+  - Overview: index.md
+  - FAQ: faq.md
+plugins:
+  - techdocs-core

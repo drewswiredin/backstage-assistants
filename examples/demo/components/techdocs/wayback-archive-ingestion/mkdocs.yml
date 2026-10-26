@@ -1,0 +1,7 @@
+site_name: Wayback Archive Ingestion
+site_description: Crawls pages and writes snapshots to the archive.
+nav:
+  - Overview: index.md
+  - Runbook: runbook.md
+plugins:
+  - techdocs-core

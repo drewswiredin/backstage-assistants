@@ -3,6 +3,8 @@ kind: Component
 metadata:
   name: wayback-archive
   description: Archive of the wayback machine
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/wayback-archive
 spec:
   type: service
   lifecycle: production

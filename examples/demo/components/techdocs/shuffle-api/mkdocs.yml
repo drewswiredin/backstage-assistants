@@ -1,0 +1,7 @@
+site_name: Shuffle API
+site_description: Shuffled orderings that feel random to people.
+nav:
+  - Overview: index.md
+  - Operations: operations.md
+plugins:
+  - techdocs-core

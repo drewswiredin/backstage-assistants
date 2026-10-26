@@ -3,6 +3,8 @@ kind: Component
 metadata:
   name: wayback-search
   description: Search of the wayback machine
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/wayback-search
 spec:
   type: service
   lifecycle: production

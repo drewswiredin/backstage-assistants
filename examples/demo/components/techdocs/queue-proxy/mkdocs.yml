@@ -1,0 +1,7 @@
+site_name: Queue Proxy
+site_description: 'The podcast web front end: queue episodes and resume where you left off.'
+nav:
+  - Overview: index.md
+  - Development: development.md
+plugins:
+  - techdocs-core

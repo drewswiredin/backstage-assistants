@@ -6,6 +6,8 @@ metadata:
   tags:
     - go
     - website
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/queue-proxy
 spec:
   type: website
   lifecycle: production

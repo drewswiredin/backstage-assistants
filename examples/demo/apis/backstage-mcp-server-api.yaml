@@ -6,10 +6,14 @@ metadata:
   tags:
     - mcp
     - ai
+  links:
+    - url: http://localhost:7007/api/mcp-actions/v1
+      title: Streamable HTTP endpoint
 spec:
   type: mcp-server
   lifecycle: experimental
   owner: team-a
-  remotes:
-    - type: streamable-http
-      url: http://localhost:7007/api/mcp/v1
+  definition: |
+    MCP server (Streamable HTTP) at /api/mcp-actions/v1 on the Backstage
+    backend. It lists the actions registered with the actions registry, such
+    as catalog queries and template execution, as MCP tools.

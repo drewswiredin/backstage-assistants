@@ -1,0 +1,7 @@
+site_name: Searcher
+site_description: Catalog search for tracks, albums, artists, and podcasts.
+nav:
+  - Overview: index.md
+  - Operations: operations.md
+plugins:
+  - techdocs-core

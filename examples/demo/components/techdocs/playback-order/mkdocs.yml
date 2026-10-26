@@ -1,0 +1,7 @@
+site_name: Playback Order
+site_description: Decides what plays next for each listening session.
+nav:
+  - Overview: index.md
+  - Runbook: runbook.md
+plugins:
+  - techdocs-core

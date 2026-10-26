@@ -5,6 +5,8 @@ metadata:
   description: Searcher
   tags:
     - go
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/searcher
 spec:
   type: service
   lifecycle: production

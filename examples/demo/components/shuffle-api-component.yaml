@@ -8,6 +8,8 @@ metadata:
     category: music
   tags:
     - go
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/shuffle-api
 spec:
   type: service
   lifecycle: production

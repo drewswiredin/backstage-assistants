@@ -1,0 +1,7 @@
+site_name: Artist Lookup
+site_description: Resolves artists by id, name, or external identifier.
+nav:
+  - Overview: index.md
+  - Runbook: runbook.md
+plugins:
+  - techdocs-core

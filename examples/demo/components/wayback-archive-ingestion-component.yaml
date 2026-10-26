@@ -3,6 +3,8 @@ kind: Component
 metadata:
   name: wayback-archive-ingestion
   description: Ingestion subsystem of the Wayback Archive
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/wayback-archive-ingestion
 spec:
   type: service
   lifecycle: production

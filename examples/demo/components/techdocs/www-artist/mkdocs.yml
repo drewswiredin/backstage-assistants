@@ -1,0 +1,7 @@
+site_name: Artist Website
+site_description: 'The artist-facing site: profile, insights, and releases.'
+nav:
+  - Overview: index.md
+  - Support playbook: support.md
+plugins:
+  - techdocs-core

@@ -1,0 +1,7 @@
+site_name: Wayback Search
+site_description: Full-text search over the wayback archive.
+nav:
+  - Overview: index.md
+  - Operations: operations.md
+plugins:
+  - techdocs-core

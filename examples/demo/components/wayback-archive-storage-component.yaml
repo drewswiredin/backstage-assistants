@@ -3,6 +3,8 @@ kind: Component
 metadata:
   name: wayback-archive-storage
   description: Storage subsystem of the Wayback Archive
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/wayback-archive-storage
 spec:
   type: service
   lifecycle: production

@@ -3,6 +3,8 @@ kind: System
 metadata:
   name: podcast
   description: Podcast playback
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/podcast
 spec:
   owner: team-b
   domain: playback

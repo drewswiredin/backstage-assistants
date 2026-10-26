@@ -3,6 +3,8 @@ kind: System
 metadata:
   name: audio-playback
   description: Audio playback system
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/audio-playback
 spec:
   owner: team-c
   domain: playback

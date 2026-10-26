@@ -1,0 +1,8 @@
+site_name: Podcast
+site_description: 'Podcast playback: the podcast API and the queue proxy.'
+nav:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Onboarding: onboarding.md
+plugins:
+  - techdocs-core

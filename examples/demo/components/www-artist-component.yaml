@@ -4,6 +4,7 @@ metadata:
   name: www-artist
   description: Artist main website
   annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/www-artist
     backstage.io/source-template: template:default/react-ssr-template
 spec:
   type: website

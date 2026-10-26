@@ -1,0 +1,7 @@
+site_name: Wayback Archive Storage
+site_description: Stores snapshots and serves them by URL and time.
+nav:
+  - Overview: index.md
+  - Operations: operations.md
+plugins:
+  - techdocs-core

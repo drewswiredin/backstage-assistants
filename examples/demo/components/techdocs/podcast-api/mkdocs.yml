@@ -1,0 +1,7 @@
+site_name: Podcast API
+site_description: Shows, episodes, and listening progress.
+nav:
+  - Overview: index.md
+  - Runbook: runbook.md
+plugins:
+  - techdocs-core

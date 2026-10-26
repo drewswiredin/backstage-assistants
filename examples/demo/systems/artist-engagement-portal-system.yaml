@@ -5,6 +5,8 @@ metadata:
   description: Everything related to artists
   tags:
     - portal
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/artist-engagement-portal
 spec:
   owner: team-a
   domain: artists

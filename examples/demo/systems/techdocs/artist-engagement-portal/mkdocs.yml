@@ -1,0 +1,10 @@
+site_name: Artist Engagement Portal
+site_description: >-
+  Tools for artists: their public page, insights, and the lookup service behind
+  them.
+nav:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Onboarding: onboarding.md
+plugins:
+  - techdocs-core

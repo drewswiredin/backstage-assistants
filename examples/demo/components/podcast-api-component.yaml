@@ -5,6 +5,8 @@ metadata:
   description: Podcast API
   tags:
     - java
+  annotations:
+    backstage.io/techdocs-ref: dir:./techdocs/podcast-api
 spec:
   type: service
   lifecycle: experimental
