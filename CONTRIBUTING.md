@@ -19,11 +19,17 @@ The dev backend runs on in-memory SQLite; [its README](packages/backend/README.m
 covers the dev users and pointing it at Postgres, which the semantic search
 module needs.
 
+`yarn start:env` runs the dev app the way a real deployment does: Postgres with
+pgvector and pg_trgm, Elasticsearch, and two backend replicas behind a load
+balancer, with the knowledge index on. It needs Docker; see
+[local-env/README.md](local-env/README.md).
+
 ## Commands
 
 | Command                              | What it does                                        |
 | ------------------------------------ | --------------------------------------------------- |
 | `yarn start`                         | Dev app (frontend + backend) with `.env` loaded     |
+| `yarn start:env`                     | Dev app in the local environment (`local-env/`)     |
 | `yarn tsc`                           | Typecheck the whole repo                            |
 | `yarn lint:all`                      | Lint every package                                  |
 | `yarn prettier:check`                | Formatting check                                    |

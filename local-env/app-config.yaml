@@ -1,0 +1,24 @@
+# Overlay for the local environment (compose.yaml), loaded last by start.sh.
+backend:
+  database:
+    client: pg
+    connection:
+      host: 127.0.0.1
+      port: 5434
+      user: postgres
+      password: postgres
+
+search:
+  elasticsearch:
+    node: http://localhost:9200
+
+assistants:
+  providers:
+    # Local embeddings for the knowledge index. Ollama ignores the key.
+    ollama:
+      type: openai-compatible
+      baseUrl: http://localhost:11434/v1
+      apiKey: ollama
+      models: []
+  semanticSearch:
+    embeddingModel: ollama:nomic-embed-text

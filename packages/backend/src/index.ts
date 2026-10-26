@@ -7,6 +7,10 @@
  */
 
 import { createBackend } from '@backstage/backend-defaults';
+import {
+  coreServices,
+  createBackendFeatureLoader,
+} from '@backstage/backend-plugin-api';
 
 const backend = createBackend();
 
@@ -52,9 +56,20 @@ backend.add(import('./permissionPolicy'));
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
 
-// search engine
+// search engine: Elasticsearch when `search.elasticsearch` is configured (the
+// local environment, local-env/), else Postgres. Only one may register.
 // See https://backstage.io/docs/features/search/search-engines
-backend.add(import('@backstage/plugin-search-backend-module-pg'));
+backend.add(import('@backstage/plugin-search-backend-module-elasticsearch'));
+backend.add(
+  createBackendFeatureLoader({
+    deps: { config: coreServices.rootConfig },
+    loader({ config }) {
+      return config.has('search.elasticsearch')
+        ? []
+        : [import('@backstage/plugin-search-backend-module-pg')];
+    },
+  }),
+);
 
 // search collators
 backend.add(import('@backstage/plugin-search-backend-module-catalog'));

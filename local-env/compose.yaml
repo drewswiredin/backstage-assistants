@@ -1,0 +1,58 @@
+# The production-shaped local environment: Postgres with pgvector and pg_trgm,
+# Elasticsearch as the search engine, and a load balancer in front of two
+# backend replicas. See README.md.
+name: assistants-env
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5434:5432'
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/extensions.sql:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      retries: 20
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - '9200:9200'
+    volumes:
+      - elasticsearch:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs localhost:9200/_cluster/health || exit 1']
+      interval: 5s
+      retries: 40
+
+  # Round-robins :7007 across the replicas on :7008 and :7009 (host network,
+  # so it reaches the backends started on the host).
+  loadbalancer:
+    image: nginx:1.27-alpine
+    network_mode: host
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+  # Embeddings for the knowledge index. Optional: start it with
+  # `--profile ollama` when this machine has no Ollama on :11434.
+  ollama:
+    image: ollama/ollama
+    profiles: [ollama]
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  postgres:
+  elasticsearch:
+  ollama:
