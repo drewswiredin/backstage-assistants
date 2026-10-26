@@ -2,8 +2,10 @@
  * The model and reasoning-effort pickers, rendered inside the composer so
  * every surface (the page, the panel) offers them in the same place. The
  * host owns the state and the thread PATCH; this renders and reports.
+ * In a narrow composer (the panel near its minimum width) each picker shows
+ * an icon, with its value in a tooltip.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   FormControl,
@@ -15,6 +17,7 @@ import {
 } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import StarIcon from '@material-ui/icons/Star';
+import { RiSparkling2Line, RiSpeedUpLine } from '@remixicon/react';
 import {
   REASONING_LEVELS,
   type ModelId,
@@ -57,6 +60,11 @@ const useStyles = makeStyles(theme => ({
     '& .MuiSelect-icon': {
       color: theme.palette.text.secondary,
       right: theme.spacing(0.5),
+    },
+  },
+  compact: {
+    '& .MuiSelect-select': {
+      paddingLeft: theme.spacing(0.75),
     },
   },
   groupLabel: {
@@ -115,6 +123,24 @@ const REASONING_LABELS: Record<ReasoningLevel, string> = {
   max: 'Max',
 };
 
+/** Below this composer-row width, the pickers show icons instead of text. */
+const COMPACT_BELOW = 360;
+
+/** Whether the row holding `ref` (the composer's second row) is narrow. */
+function useCompactRow(ref: RefObject<HTMLElement>): boolean {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const row = ref.current?.parentElement;
+    if (!row || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() =>
+      setCompact(row.clientWidth < COMPACT_BELOW),
+    );
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [ref]);
+  return compact;
+}
+
 const MENU_PROPS = {
   anchorOrigin: { vertical: 'top', horizontal: 'left' },
   transformOrigin: { vertical: 'bottom', horizontal: 'left' },
@@ -145,6 +171,14 @@ export function ModelControls({
   onReasoningChange,
 }: ModelControlsProps) {
   const classes = useStyles();
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const compact = useCompactRow(rootRef);
+  const selectClass = compact
+    ? `${classes.select} ${classes.compact}`
+    : classes.select;
+  const effortLabel = reasoningLevel
+    ? `Effort: ${reasoningLevel}`
+    : 'Effort: default';
   const groups = useMemo<Array<[string, ModelId[]]>>(() => {
     const byVendor = new Map<string, ModelId[]>();
     for (const id of allowed) {
@@ -158,85 +192,98 @@ export function ModelControls({
   const reasons = pool.find(m => m.id === modelId)?.reasoning === true;
 
   return (
-    <span className={classes.root}>
-      <FormControl>
-        <Select
-          value={modelId}
-          onChange={e => onModelChange(e.target.value as ModelId)}
-          disableUnderline
-          className={classes.select}
-          inputProps={{ 'aria-label': 'Model' }}
-          renderValue={value => modelLabel(value as ModelId, pool)}
-          MenuProps={MENU_PROPS}
-        >
-          {groups.flatMap(([vendor, ids]) => [
-            <ListSubheader
-              key={`group-${vendor}`}
-              disableSticky
-              className={classes.groupLabel}
-            >
-              {vendor}
-            </ListSubheader>,
-            ...ids.map(id => (
-              <MenuItem key={id} value={id} className={classes.item}>
-                <ListItemIcon className={classes.itemCheck}>
-                  {id === modelId ? <CheckIcon fontSize="small" /> : null}
-                </ListItemIcon>
-                <span style={{ flexGrow: 1 }}>{modelLabel(id, pool)}</span>
-                {id === defaultModel && (
-                  <Tooltip title="Assistant default">
-                    <StarIcon
-                      className={classes.defaultStar}
-                      aria-label="Assistant default"
-                    />
-                  </Tooltip>
-                )}
-              </MenuItem>
-            )),
-          ])}
-        </Select>
-      </FormControl>
-      {/* Only for a reasoning model, so a non-reasoning model shows no dead
-          control. "Default" clears the choice and lets the provider decide. */}
-      {reasons && (
+    <span className={classes.root} ref={rootRef}>
+      <Tooltip
+        title={compact ? `Model: ${modelLabel(modelId, pool)}` : ''}
+        enterDelay={300}
+      >
         <FormControl>
           <Select
-            value={reasoningLevel ?? ''}
-            onChange={e => {
-              const next = e.target.value as ReasoningLevel | '';
-              onReasoningChange(next ? next : undefined);
-            }}
+            value={modelId}
+            onChange={e => onModelChange(e.target.value as ModelId)}
             disableUnderline
-            // Without displayEmpty, MUI skips renderValue for the empty (= no
-            // explicit level) value and the trigger renders as a bare caret.
-            displayEmpty
-            className={classes.select}
-            inputProps={{ 'aria-label': 'Reasoning effort' }}
+            className={selectClass}
+            inputProps={{ 'aria-label': 'Model' }}
             renderValue={value =>
-              value ? `Effort: ${value as ReasoningLevel}` : 'Effort: default'
+              compact ? (
+                <RiSparkling2Line size={16} />
+              ) : (
+                modelLabel(value as ModelId, pool)
+              )
             }
             MenuProps={MENU_PROPS}
           >
-            <MenuItem value="" className={classes.item}>
-              <ListItemIcon className={classes.itemCheck}>
-                {reasoningLevel === undefined ? (
-                  <CheckIcon fontSize="small" />
-                ) : null}
-              </ListItemIcon>
-              <span style={{ flexGrow: 1 }}>Default</span>
-            </MenuItem>
-            {REASONING_LEVELS.map(level => (
-              <MenuItem key={level} value={level} className={classes.item}>
+            {groups.flatMap(([vendor, ids]) => [
+              <ListSubheader
+                key={`group-${vendor}`}
+                disableSticky
+                className={classes.groupLabel}
+              >
+                {vendor}
+              </ListSubheader>,
+              ...ids.map(id => (
+                <MenuItem key={id} value={id} className={classes.item}>
+                  <ListItemIcon className={classes.itemCheck}>
+                    {id === modelId ? <CheckIcon fontSize="small" /> : null}
+                  </ListItemIcon>
+                  <span style={{ flexGrow: 1 }}>{modelLabel(id, pool)}</span>
+                  {id === defaultModel && (
+                    <Tooltip title="Assistant default">
+                      <StarIcon
+                        className={classes.defaultStar}
+                        aria-label="Assistant default"
+                      />
+                    </Tooltip>
+                  )}
+                </MenuItem>
+              )),
+            ])}
+          </Select>
+        </FormControl>
+      </Tooltip>
+      {/* Only for a reasoning model, so a non-reasoning model shows no dead
+          control. "Default" clears the choice and lets the provider decide. */}
+      {reasons && (
+        <Tooltip title={compact ? effortLabel : ''} enterDelay={300}>
+          <FormControl>
+            <Select
+              value={reasoningLevel ?? ''}
+              onChange={e => {
+                const next = e.target.value as ReasoningLevel | '';
+                onReasoningChange(next ? next : undefined);
+              }}
+              disableUnderline
+              // Without displayEmpty, MUI skips renderValue for the empty (= no
+              // explicit level) value and the trigger renders as a bare caret.
+              displayEmpty
+              className={selectClass}
+              inputProps={{ 'aria-label': 'Reasoning effort' }}
+              renderValue={() =>
+                compact ? <RiSpeedUpLine size={16} /> : effortLabel
+              }
+              MenuProps={MENU_PROPS}
+            >
+              <MenuItem value="" className={classes.item}>
                 <ListItemIcon className={classes.itemCheck}>
-                  {level === reasoningLevel ? (
+                  {reasoningLevel === undefined ? (
                     <CheckIcon fontSize="small" />
                   ) : null}
                 </ListItemIcon>
-                <span style={{ flexGrow: 1 }}>{REASONING_LABELS[level]}</span>
+                <span style={{ flexGrow: 1 }}>Default</span>
               </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              {REASONING_LEVELS.map(level => (
+                <MenuItem key={level} value={level} className={classes.item}>
+                  <ListItemIcon className={classes.itemCheck}>
+                    {level === reasoningLevel ? (
+                      <CheckIcon fontSize="small" />
+                    ) : null}
+                  </ListItemIcon>
+                  <span style={{ flexGrow: 1 }}>{REASONING_LABELS[level]}</span>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Tooltip>
       )}
     </span>
   );
