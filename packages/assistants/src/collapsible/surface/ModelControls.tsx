@@ -41,7 +41,7 @@ const useStyles = makeStyles(theme => ({
     '&:hover': {
       backgroundColor: theme.palette.action.hover,
     },
-    '& .MuiSelect-select': {
+    '& [class*="MuiSelect-select"]': {
       display: 'flex',
       alignItems: 'center',
       borderRadius: 999,
@@ -57,13 +57,13 @@ const useStyles = makeStyles(theme => ({
         borderRadius: 999,
       },
     },
-    '& .MuiSelect-icon': {
+    '& [class*="MuiSelect-icon"]': {
       color: theme.palette.text.secondary,
       right: theme.spacing(0.5),
     },
   },
   compact: {
-    '& .MuiSelect-select': {
+    '& [class*="MuiSelect-select"]': {
       paddingLeft: theme.spacing(0.75),
     },
   },

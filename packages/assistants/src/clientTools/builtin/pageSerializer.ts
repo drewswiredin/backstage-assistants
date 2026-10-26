@@ -58,8 +58,11 @@ const SKIP_SELECTOR = [
 const CHROME_SELECTOR =
   'nav, [role="navigation"], header[role="banner"], [role="banner"]';
 
-/** An open dialog or drawer, except the panel's own. */
-const OVERLAY_SELECTOR = '[role="dialog"], .MuiDrawer-paper';
+/**
+ * An open dialog or drawer, except the panel's own. MUI classes match as
+ * substrings: under a nested ThemeProvider they carry a suffix.
+ */
+const OVERLAY_SELECTOR = '[role="dialog"], [class*="MuiDrawer-paper"]';
 
 const BLOCK_TAGS = new Set([
   'div',

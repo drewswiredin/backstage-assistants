@@ -131,7 +131,10 @@ effort pickers sit in the composer, as on the page.
 collapses it to a strip at the right edge with the conversation kept, unless
 it is pinned: the pin in the header keeps it open while you work on the page,
 for example to follow steps it gave you, and is remembered in this browser.
-Close (the x) removes the strip and brings the button back. Backstage dialogs
+The strip's left edge is lit in the assistant's color; it pulses while the
+assistant is working and stays bright while a reply is unread, as the dot on
+its icon does. Close (the x) removes the strip and brings the button back.
+Backstage dialogs
 and drawers, such as the entity inspector or a Kubernetes pod, open beside the
 panel instead of over it, and clicking or typing in the panel leaves them
 open.

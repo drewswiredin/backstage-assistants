@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
@@ -29,7 +30,11 @@ import { assistantUsePermission } from '@drewswiredin/backstage-plugin-assistant
 import { assistantsApiRef, type AssistantsApi } from '../api';
 import { clientToolsApiRef } from '../clientTools/api';
 import { StatusDot } from '../collapsible/StatusDot';
-import { useThreadStatus } from '../collapsible/useThreadStatus';
+import { resolveAssistantColor } from '../collapsible/surface/AssistantAvatar';
+import {
+  useThreadStatus,
+  type ConvStatus,
+} from '../collapsible/useThreadStatus';
 import { rootRouteRef, threadRouteRef } from '../routes';
 import {
   PanelControlProvider,
@@ -78,15 +83,36 @@ const INSIDE_SELECTOR = [
   '.MuiPopper-root',
 ].join(', ');
 
-/** A Backstage dialog or drawer is open; it owns Escape. */
-const OVERLAY_SELECTOR = [
-  '.MuiDialog-root',
-  '.MuiDrawer-modal',
+/**
+ * A Backstage dialog or drawer root; while one is open it owns Escape. MUI
+ * classes match as substrings: under a nested ThemeProvider (the panel's own,
+ * see withFreeFocus) MUI suffixes them, as in `MuiDrawer-modal-12`.
+ */
+export const OVERLAY_SELECTOR = [
+  '[class*="MuiDialog-root"]',
+  '[class*="MuiDrawer-modal"]',
   '[class*="bui-DialogOverlay"]',
 ].join(', ');
 
-/** The panel column's width, which dialogs and drawers keep clear of. */
-const INSET_VAR = '--assistants-panel-inset';
+/**
+ * The panel column's left edge in viewport pixels, where dialogs and drawers
+ * end. Unset when nothing sits beside the page.
+ */
+const EDGE_VAR = '--assistants-panel-edge';
+
+/**
+ * A fixed element's `right` that ends it at the column's edge. Percentages
+ * resolve against the viewport's exact width; `window.innerWidth` is rounded,
+ * and a sub-pixel overlap hides the strip's 1px edge.
+ */
+const AT_EDGE = `calc(100% - var(${EDGE_VAR}, 100%)) !important`;
+
+/** The strip's edge color: the panel assistant's, as on its composer. */
+const GLOW_VAR = '--assistants-strip-glow';
+
+/** The strip's edge, doubled to 2px; and its resting 1px (no extra line). */
+const EDGE_BRIGHT = `inset 1px 0 0 var(${GLOW_VAR})`;
+const EDGE_DIM = `inset 1px 0 0 transparent`;
 
 /**
  * MUI dialogs and drawers keep focus inside themselves by pulling it back;
@@ -106,13 +132,20 @@ const useStyles = makeStyles(theme => ({
   // panel and the strip stay usable while one is open.
   '@global': {
     // Full-viewport roots (and their backdrops) end at the panel column.
-    '.MuiDialog-root, .MuiDrawer-modal, [class*="bui-DialogOverlay"]': {
-      right: `var(${INSET_VAR}, 0px) !important`,
+    [OVERLAY_SELECTOR]: {
+      right: AT_EDGE,
       width: 'auto !important',
     },
-    // A right-hand drawer keeps its own width and sits left of the column.
-    '.MuiDrawer-paperAnchorRight': {
-      right: `var(${INSET_VAR}, 0px) !important`,
+    // A drawer's paper is fixed to the viewport. Containing paint makes the
+    // root its box instead, so a right-hand drawer sits at the column's edge,
+    // sizes against the page beside it, and slides in from under the column
+    // rather than across it.
+    '[class*="MuiDrawer-modal"]': {
+      contain: 'paint',
+    },
+    // A persistent right-hand drawer has no root; it sits left of the column.
+    '[class*="MuiDrawer-docked"] > [class*="MuiDrawer-paperAnchorRight"]': {
+      right: AT_EDGE,
     },
   },
   // The app layout and the panel side by side. The page column shrinks as
@@ -185,8 +218,26 @@ const useStyles = makeStyles(theme => ({
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(3),
     backgroundColor: theme.palette.background.paper,
-    borderLeft: `1px solid ${theme.palette.divider}`,
+    // The left edge in the assistant's color, lit like an active composer:
+    // a solid line, doubled (bright) on hover. Inside the strip, so an
+    // overlay that stops at the column never covers it. Like the status
+    // dots, it pulses while the conversation is working and stays bright
+    // while it is unread.
+    borderLeft: `1px solid var(${GLOW_VAR})`,
+    boxShadow: EDGE_DIM,
+    transition: theme.transitions.create('box-shadow'),
     cursor: 'pointer',
+    '&:hover, &[data-status="unread"]': {
+      boxShadow: EDGE_BRIGHT,
+    },
+    '&[data-status="working"]': {
+      animation: '$edgePulse 2.4s ease-in-out infinite',
+    },
+  },
+  // A slow, even swell between the resting and the bright edge.
+  '@keyframes edgePulse': {
+    '0%, 100%': { boxShadow: EDGE_DIM },
+    '50%': { boxShadow: EDGE_BRIGHT },
   },
   stripIcon: {
     display: 'inline-flex',
@@ -262,6 +313,11 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   // A first message (with its model and effort) handed in by a page
   // component, the homepage composer, sent once the fresh surface is ready.
   const [handoff, setHandoff] = useState<PanelHandoff | undefined>();
+  const glowAssistant = pickedAssistant ?? status.value?.defaultAssistant;
+  const glowColor = resolveAssistantColor(
+    status.value?.assistants.find(a => a.id === glowAssistant)?.color,
+    theme.palette.type,
+  );
 
   const onAssistantsPage = (() => {
     const root = rootRoute?.();
@@ -315,17 +371,35 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   }, [mode, pinned, hide]);
 
   // Dialogs and drawers keep clear of the panel column (see '@global').
+  // Measured, not the column's width: the page's scrollbar can sit right of
+  // the column, and a modal's scroll lock swaps it for body padding, so the
+  // column stays put while the viewport's edge does not.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!active) return undefined;
-    let inset = 0;
-    if (mode === 'open' && !fullScreen) inset = width;
-    else if (mode === 'collapsed') inset = STRIP_WIDTH;
     const root = document.documentElement;
-    root.style.setProperty(INSET_VAR, `${inset}px`);
-    return () => {
-      root.style.removeProperty(INSET_VAR);
+    const aside = asideRef.current;
+    const beside = mode === 'collapsed' || (mode === 'open' && !fullScreen);
+    if (!active || !beside || !aside) return undefined;
+    const measure = () => {
+      root.style.setProperty(
+        EDGE_VAR,
+        `${aside.getBoundingClientRect().left}px`,
+      );
     };
-  }, [active, mode, width, fullScreen]);
+    measure();
+    // The column resizing (drag, open/collapse), and the page column
+    // resizing as the scrollbar comes and goes.
+    const observer = new ResizeObserver(measure);
+    observer.observe(aside);
+    if (mainRef.current) observer.observe(mainRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      root.style.removeProperty(EDGE_VAR);
+    };
+  }, [active, mode, fullScreen]);
 
   const rememberThread = useCallback((id: string) => {
     savePanelThread(id);
@@ -472,27 +546,57 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   else if (mode === 'collapsed') asideWidth = STRIP_WIDTH;
 
   const icon = remoteId ? (
-    <PanelStatusDot api={api} remoteId={remoteId}>
-      <RiRobot2Line />
-    </PanelStatusDot>
+    <PanelStatus api={api} remoteId={remoteId}>
+      {convStatus => (
+        <StatusDot status={convStatus}>
+          <RiRobot2Line />
+        </StatusDot>
+      )}
+    </PanelStatus>
   ) : (
     <RiRobot2Line />
+  );
+
+  const strip = (convStatus: ConvStatus) => (
+    // The whole strip is one control: anything on it shows the panel.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div
+      className={classes.strip}
+      data-assistants-strip="true"
+      data-status={convStatus}
+      onClick={open}
+    >
+      <Tooltip title="Show assistant (Ctrl+/)" placement="left">
+        <IconButton
+          size="small"
+          className={classes.stripChevron}
+          aria-label="Show assistant"
+        >
+          <ChevronLeftIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <span className={classes.stripIcon}>{icon}</span>
+    </div>
   );
 
   return (
     <ThemeProvider theme={withFreeFocus}>
       <div className={classes.shell}>
-        <div className={classes.main}>
+        <div className={classes.main} ref={mainRef}>
           <PanelControlProvider value={control}>
             {children}
           </PanelControlProvider>
         </div>
         <aside
+          ref={asideRef}
           className={classes.aside}
-          style={{
-            width: asideWidth,
-            transition: dragging ? 'none' : undefined,
-          }}
+          style={
+            {
+              width: asideWidth,
+              transition: dragging ? 'none' : undefined,
+              [GLOW_VAR]: glowColor,
+            } as CSSProperties
+          }
           aria-label="Assistant panel"
           aria-hidden={mode === 'closed'}
           // A Backstage UI (react-aria) dialog doesn't close on clicks here,
@@ -563,26 +667,14 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
               </div>
             </div>
           )}
-          {mode === 'collapsed' && (
-            // The whole strip is one control: anything on it shows the panel.
-            // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-            <div
-              className={classes.strip}
-              data-assistants-strip="true"
-              onClick={open}
-            >
-              <Tooltip title="Show assistant (Ctrl+/)" placement="left">
-                <IconButton
-                  size="small"
-                  className={classes.stripChevron}
-                  aria-label="Show assistant"
-                >
-                  <ChevronLeftIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <span className={classes.stripIcon}>{icon}</span>
-            </div>
-          )}
+          {mode === 'collapsed' &&
+            (remoteId ? (
+              <PanelStatus api={api} remoteId={remoteId}>
+                {strip}
+              </PanelStatus>
+            ) : (
+              strip('read')
+            ))}
         </aside>
         {mode === 'closed' && (
           <Tooltip title="Ask an assistant (Ctrl+/)" placement="left">
@@ -608,16 +700,17 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
  * strip. Mounted only while a conversation exists, so a blank panel costs no
  * status polling.
  */
-function PanelStatusDot({
+/** The panel conversation's status, as the dots show it. */
+function PanelStatus({
   api,
   remoteId,
   children,
 }: {
   api: AssistantsApi;
   remoteId: string;
-  children: ReactNode;
+  children: (status: ConvStatus) => ReactNode;
 }) {
   // Unfocused (the panel is not open), so unread shows until it is opened.
   const { statusOf } = useThreadStatus(api, undefined);
-  return <StatusDot status={statusOf(remoteId)}>{children}</StatusDot>;
+  return <>{children(statusOf(remoteId))}</>;
 }

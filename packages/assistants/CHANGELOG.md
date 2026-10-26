@@ -5,8 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- The collapsed panel's strip has a left edge in the assistant's color, so it stays distinct beside a drawer of the same shade. It pulses while the assistant is working and stays bright while a reply is unread, matching the dot on its icon.
+
 ### Fixed
 
+- Backstage dialogs and drawers, such as a Kubernetes pod or deployment, now open beside the panel and the collapsed strip instead of covering them. A right-hand drawer now slides in from the panel's edge and takes its width from the page beside the panel. The 0.23.0 rules never matched, because the panel's theme renames MUI's class names.
+- `read_current_page` now reads an open MUI drawer, such as a Kubernetes pod's details; the same class renaming hid it.
+- The model and effort pickers in every composer get the compact pill styling they were meant to have; the same class renaming kept it from applying.
 - With replicated backends, a conversation you send from no longer stays without its working dot (and then its unread dot) when the turn runs on a replica other than the one this browser receives signals from. The tab re-checks status as soon as its message is accepted, which starts the re-check that catches the reply.
 
 ## 0.23.2 - 2026-10-26
