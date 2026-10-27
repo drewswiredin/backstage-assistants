@@ -2,8 +2,10 @@
  * Serializes the rendered page into a compact outline a model can read: open
  * dialogs and drawers first (they are what the user is looking at), then the
  * page content; headings, text, buttons, links, tabs, form fields, tables,
- * alerts, and the first lines of long monospace regions. Nothing is read
- * from app state, so it works on any page without per-plugin code.
+ * alerts, the text labels of graphics, and the first lines of long monospace
+ * regions. The walk enters shadow roots, so TechDocs content comes through.
+ * Nothing is read from app state, so it works on any page without per-plugin
+ * code.
  *
  * Pure over a `Document`, with the visibility test injectable: the browser
  * uses layout, the unit tests a `hidden` attribute.
@@ -46,7 +48,6 @@ const SKIP_SELECTOR = [
   'style',
   'noscript',
   'template',
-  'svg',
   'iframe',
   '[aria-hidden="true"]',
 ].join(', ');
@@ -96,12 +97,35 @@ const BLOCK_TAGS = new Set([
 
 function layoutVisible(el: Element): boolean {
   if ((el as HTMLElement).hidden) return false;
-  const rects = el.getClientRects();
-  return rects.length > 0;
+  if (el.getClientRects().length > 0) return true;
+  // A `display: contents` wrapper has no box of its own but renders its
+  // children, such as the content column of an entity page's card layout.
+  return getComputedStyle(el).display === 'contents';
 }
 
 function text(s: string | null | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** The document or shadow root an element's ids and labels live in. */
+function scopeOf(el: Element): Document | ShadowRoot {
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root : el.ownerDocument;
+}
+
+/**
+ * The text of a graphic: its `<title>` and `<text>` labels, such as a
+ * catalog graph's node and edge names. Icons carry none.
+ */
+function graphicText(svg: Element): string {
+  const labels: string[] = [];
+  for (const t of Array.from(svg.querySelectorAll('title, text'))) {
+    // A `tspan` sits inside its `text`; a nested `text` is read with it.
+    if (t.parentElement?.closest('text')) continue;
+    const label = text(t.textContent);
+    if (label) labels.push(label);
+  }
+  return labels.join(', ');
 }
 
 function labelOf(el: Element): string {
@@ -111,13 +135,13 @@ function labelOf(el: Element): string {
   if (labelledBy) {
     const parts = labelledBy
       .split(/\s+/)
-      .map(id => text(el.ownerDocument.getElementById(id)?.textContent))
+      .map(id => text(scopeOf(el).getElementById(id)?.textContent))
       .filter(Boolean);
     if (parts.length) return parts.join(' ');
   }
   const id = el.getAttribute('id');
   if (id) {
-    const label = el.ownerDocument.querySelector(
+    const label = scopeOf(el).querySelector(
       `label[for="${
         typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id
       }"]`,
@@ -252,6 +276,11 @@ function walk(
   const tag = el.tagName.toLowerCase();
   const role = el.getAttribute('role');
 
+  if (tag === 'svg') {
+    const label = graphicText(el);
+    if (label) w.inline(`[graphic: ${label}]`);
+    return;
+  }
   if (/^h[1-6]$/.test(tag)) {
     w.line(`${'#'.repeat(Number(tag[1]))} ${text(el.textContent)}`);
     return;
@@ -309,15 +338,29 @@ function walk(
   if (tag === 'li') {
     w.break();
     w.inline('-');
-    for (const child of Array.from(el.childNodes)) walk(child, w, o, overlays);
+    for (const child of renderedChildren(el)) walk(child, w, o, overlays);
     w.break();
     return;
   }
 
   const block = BLOCK_TAGS.has(tag) || role === 'region' || role === 'group';
   if (block) w.break();
-  for (const child of Array.from(el.childNodes)) walk(child, w, o, overlays);
+  for (const child of renderedChildren(el)) walk(child, w, o, overlays);
   if (block) w.break();
+}
+
+/**
+ * The children an element renders: its shadow tree when it has one (the
+ * light children appear through its slots), a slot's assigned nodes, or its
+ * child nodes.
+ */
+function renderedChildren(el: Element): Node[] {
+  if (el.shadowRoot) return Array.from(el.shadowRoot.childNodes);
+  if (el instanceof HTMLSlotElement) {
+    const assigned = el.assignedNodes({ flatten: true });
+    if (assigned.length) return assigned;
+  }
+  return Array.from(el.childNodes);
 }
 
 /**

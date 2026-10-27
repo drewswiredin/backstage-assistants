@@ -708,7 +708,8 @@ form survives a page reload.
 
 `read_current_page` returns the page the user is looking at as an outline:
 open dialogs first, then the content's headings, text, buttons, links, tabs,
-form fields, tables, alerts, and the first lines of long logs, with `find` for
+form fields, tables, alerts, graph labels, TechDocs content, and the first
+lines of long logs, with `find` for
 the lines around a term, capped at 12,000 characters. It reads the rendered
 page, not app state, so it works on any page with no per-plugin code. When the
 frontend's panel sends a turn, `/chat` also carries `page` (the path, the title,

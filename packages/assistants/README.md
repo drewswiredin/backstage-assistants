@@ -149,8 +149,8 @@ itself and for users without `assistant.use`.
 The panel tells the assistant which page it sits beside (the path, the title,
 and the catalog entity when the page is one), and the assistant can read the
 page itself with the built-in `read_current_page` tool: headings, text,
-buttons, links, tabs, form fields, tables, alerts, any open dialog, and the
-lines of a log around a term. So "what does this mean" and "which button do I
+buttons, links, tabs, form fields, tables, alerts, graph labels, TechDocs
+content, any open dialog, and the lines of a log around a term. So "what does this mean" and "which button do I
 press" work on any page, with no per-plugin code. The tool shows as a chip in
 the conversation when it runs. To turn it off for the whole app:
 

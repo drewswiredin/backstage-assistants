@@ -18,7 +18,7 @@ export const readCurrentPageTool: AssistantClientTool<
   name: 'read_current_page',
   title: 'Read the current page',
   description:
-    'Read what the user is looking at in the portal right now: the page\'s headings, text, buttons, links, tabs, tables, form fields, and any open dialog or drawer, as an outline. Call it when the user asks about what is on their screen ("what does this mean", "which button do I press", "why is this failing"). Long logs and code come back cut to their first lines; pass `find` with a word or phrase to get the lines around each match instead.',
+    'Read what the user is looking at in the portal right now: the page\'s headings, text, buttons, links, tabs, tables, form fields, graph labels, documentation, and any open dialog or drawer, as an outline. Call it when the user asks about what is on their screen ("what does this mean", "which button do I press", "why is this failing"). Long logs and code come back cut to their first lines; pass `find` with a word or phrase to get the lines around each match instead.',
   inputSchema: {
     type: 'object',
     properties: {

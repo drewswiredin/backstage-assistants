@@ -3,6 +3,14 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- `read_current_page` now reads a catalog entity page's main column. The entity layout wraps it in a `display: contents` element, which has no box of its own, so the reader took it for hidden and returned only the About card; the API definition, Consumers, Providers, and Relations cards were missing, and `find` matched nothing in them.
+- `read_current_page` now reads TechDocs content, which renders inside a shadow root the reader never entered.
+- `read_current_page` now reads the labels of a graphic, such as the nodes and edges of the catalog's relations graph, as `[graphic: …]`; icons carry none and still read as nothing.
+
 ## 0.24.0 - 2026-10-26
 
 ### Added
