@@ -41,7 +41,8 @@ https://github.com/user-attachments/assets/15649e1a-a80c-44c1-810e-fbe44fd18478
   their own sign-in.
 - An [approval gate](docs/approvals.md) for the tools you choose.
 - A chat page, a [panel beside any page](docs/frontend.md#panel) that can read
-  that page, and a [homepage composer](docs/frontend.md#homepage).
+  that page and take the user to another with the conversation following, and
+  a [homepage composer](docs/frontend.md#homepage).
 - An in-app editor for assistants: prompt, models, tools, and audience.
 - OpenAI, Anthropic, Azure OpenAI, or any OpenAI-compatible
   [provider](docs/providers.md); SQLite, Postgres, or MySQL.

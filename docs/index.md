@@ -20,7 +20,8 @@ actions and MCP tools as the signed-in user. Admins build them in-app.
 - **Asks before it writes.** The tools you choose wait for an Allow in the
   conversation.
 - **Lives where people work.** A full chat page, a panel beside any page that
-  can read that page, and a composer on the home page.
+  can read that page and open another with the conversation following, and a
+  composer on the home page.
 - **Is managed in-app.** Admins create assistants with a prompt, models,
   tools, and an audience; changes are live on save.
 

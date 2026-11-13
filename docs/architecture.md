@@ -12,6 +12,7 @@
 | `@ai-sdk/openai`, `-anthropic`, `-azure`                             | Provider factories selected by the configured `type`; OpenAI-compatible gateways use the `openai` factory                                                                               |
 | `@backstage/backend-plugin-api/alpha` (Actions), `@ai-sdk/mcp`       | Backstage actions run as the user; MCP servers run as a configured credential or as the user with their own token; both become AI SDK tools                                             |
 | `@rjsf/core`, `-utils`, `-validator-ajv8`, `plugin-scaffolder-react` | Inline forms for `render_form`, rendering the host's scaffolder field extensions by name                                                                                                |
+| `@backstage/plugin-catalog-node`                                     | `catalogServiceRef`: the parent groups of the caller's groups, for `access.groups`                                                                                                      |
 | `@backstage/plugin-app-react`                                        | `AppRootWrapperBlueprint` for the panel, which wraps the app layout                                                                                                                     |
 | `@backstage/plugin-home-react` (optional peer)                       | `HomePageWidgetBlueprint` for the homepage composer, loaded only through the `./home` entry point                                                                                       |
 | `@backstage/backend-plugin-api`, `backend-openapi-utils`             | Plugin wiring, the typed OpenAPI router for `/status` and `/chat`, core services                                                                                                        |
@@ -40,7 +41,10 @@ flowchart LR
   PV["LLM providers\nbuilt in, or from modules"]
   PM["Provider modules\nmodelProviders.ts extension point"]
   HC["Held calls\nheldCalls.ts"]
+  CT[("Catalog\ncatalogServiceRef")]
   RT -->|"/chat /threads"| RO
+  RT -->|"portal__navigate: hands over the thread"| PN
+  RO -->|"parent groups for access.groups"| CT
   PN -->|"/chat with page, /threads/:id"| RO
   HO -->|"first /chat, then hands off"| PN
   ED -->|"/manage /capabilities"| RO
@@ -64,22 +68,23 @@ flowchart LR
   KI --> DB
 ```
 
-| Node              | Module path                                                                               | Owns                                                                                                       |
-| ----------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Browser runtime   | `packages/assistants/src/collapsible/`                                                    | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam                                     |
-| Panel             | `packages/assistants/src/panel/`, `embedded/`                                             | The app root wrapper: the floating button, the side panel beside the page, one conversation                |
-| Homepage composer | `packages/assistants/src/home.tsx`, `home/`                                               | `AssistantComposer` in four looks; starts the conversation and hands it to the panel                       |
-| Admin editor      | `packages/assistants/src/collapsible/admin/`                                              | The `assistant.manage` dialog and client-side delta-validation                                             |
-| Router            | `packages/assistants-backend/src/router.ts`, `manage.ts`                                  | Auth, permission and access checks, `/status`, `/chat`, `/threads`, `/manage`                              |
-| Tool assembly     | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts`                  | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping                  |
-| AI SDK loop       | `packages/assistants-backend/src/router.ts`                                               | `streamText`, the approval map, persistence on start and finish, signals                                   |
-| Stores            | `packages/assistants-backend/src/assistants.ts`, `threads.ts`                             | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                               |
-| MCP pool          | `packages/assistants-backend/src/mcp.ts`                                                  | One client per shared server and one per user of a per-user server, per process; the tool cache            |
-| MCP OAuth         | `packages/assistants-backend/src/mcpOAuth.ts`, `mcpOAuthRouter.ts`, `secretBox.ts`        | Sign-in to servers that run their own OAuth; the sealed token store; refresh                               |
-| Knowledge index   | `packages/assistants-backend-module-semantic-search/src/`                                 | The search decorator, the index copy, and the `search-knowledge` action                                    |
-| Database          | Backstage `backend.database`                                                              | The plugin tables, plus the three knowledge index tables on Postgres                                       |
-| LLM providers     | `packages/assistants-backend/src/config.ts`, `modelProviders.ts`                          | The AI SDK provider registry built from config                                                             |
-| Held calls        | `packages/assistants-backend/src/heldCalls.ts`, `assistants/src/collapsible/heldCalls.ts` | A provider loop's calls held for the user: the broker, call pairing, injected parts, the browser's answers |
+| Node              | Module path                                                                               | Owns                                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Browser runtime   | `packages/assistants/src/collapsible/`                                                    | One `useRemoteThreadListRuntime` per tab, the chrome, the surface seam; `portalNavigation.ts` carries out `portal__navigate` |
+| Panel             | `packages/assistants/src/panel/`, `embedded/`                                             | The app root wrapper: the floating button, the side panel beside the page, one conversation                                  |
+| Homepage composer | `packages/assistants/src/home.tsx`, `home/`                                               | `AssistantComposer` in four looks; starts the conversation and hands it to the panel                                         |
+| Admin editor      | `packages/assistants/src/collapsible/admin/`                                              | The `assistant.manage` dialog and client-side delta-validation                                                               |
+| Router            | `packages/assistants-backend/src/router.ts`, `manage.ts`, `groupAncestry.ts`              | Auth, permission and access checks (parent groups from the catalog), `/status`, `/chat`, `/threads`, `/manage`               |
+| Tool assembly     | `packages/assistants-backend/src/actions.ts`, `mcp.ts`, `clientTools.ts`                  | `allowedTools` and the request's client tool declarations to AI SDK tools; result capping                                    |
+| AI SDK loop       | `packages/assistants-backend/src/router.ts`                                               | `streamText`, the approval map, persistence on start and finish, signals                                                     |
+| Stores            | `packages/assistants-backend/src/assistants.ts`, `threads.ts`                             | `AssistantStore` with its snapshot; `ThreadService`, the only message writer                                                 |
+| MCP pool          | `packages/assistants-backend/src/mcp.ts`                                                  | One client per shared server and one per user of a per-user server, per process; the tool cache                              |
+| MCP OAuth         | `packages/assistants-backend/src/mcpOAuth.ts`, `mcpOAuthRouter.ts`, `secretBox.ts`        | Sign-in to servers that run their own OAuth; the sealed token store; refresh                                                 |
+| Knowledge index   | `packages/assistants-backend-module-semantic-search/src/`                                 | The search decorator, the index copy, and the `search-knowledge` action                                                      |
+| Database          | Backstage `backend.database`                                                              | The plugin tables, plus the three knowledge index tables on Postgres                                                         |
+| LLM providers     | `packages/assistants-backend/src/config.ts`, `modelProviders.ts`                          | The AI SDK provider registry built from config                                                                               |
+| Catalog           | Backstage `catalogServiceRef`                                                             | Group entities and their `childOf` relations, read with the plugin's service credentials                                     |
+| Held calls        | `packages/assistants-backend/src/heldCalls.ts`, `assistants/src/collapsible/heldCalls.ts` | A provider loop's calls held for the user: the broker, call pairing, injected parts, the browser's answers                   |
 
 ## Routes
 
@@ -134,7 +139,7 @@ sequenceDiagram
   B->>R: POST /chat
   R->>R: assistant.use check
   R->>D: read assistant row, unknown 400
-  R->>R: access policy? else 403
+  R->>R: access policy, parent groups from the catalog? else 403
   R->>D: thread owned? else 404
   R->>R: modelId in allowlist? else 400
   R->>R: assemble tools
@@ -263,6 +268,25 @@ The runtime's `execute` wrapper runs the steps in order and returns a `{ _error:
 
 `render_form`, `download_file`, `read_current_page`, and `describe_portal` are the plugin's own client tools, registered through the same blueprint. `render_form` has no `execute`: it renders through scaffolder's RJSF `Form` with the field registry from `formFieldsApiRef.loadFormFields()`, `ui:*` keys inside the schema are hoisted by `extractSchemaFromStep`, and submit returns `{ submitted: true, values }` while dismissal returns `{ submitted: false, cancelled: true }`. `download_file` renders a download chip from the call's input and its `execute` returns `{ delivered: true }`. `read_current_page` (`clientTools/builtin/pageSerializer.ts`) returns the rendered page as an outline: open dialogs and drawers first under a `[dialog: …]` line, then `main` (the body when there is none, with the chrome skipped), walking headings, text, `[button: …]`, `[link: …, current]`, `[tab: …, selected]`, `[input: label = value]`, tables as rows, alerts, `[graphic: …]` with an SVG's `<title>` and `<text>` labels (icons carry none), and monospace regions cut to their first 80 lines or, with `find`, 10 lines either side of each of the first 10 matches; capped at 12,000 characters with a marker. The walk enters shadow roots and follows slots, so TechDocs content comes through. The panel and the strip are skipped; visibility is a layout check, with a `display: contents` wrapper (the content column of the catalog's entity layout) counted as visible. `describe_portal` (`clientTools/builtin/portalDescription.ts`) reads `appTreeApiRef`, which the core app provides whether or not the visualizer plugin is installed, and returns the rendered (not disabled, not orphaned) nodes' plugins, the top-level pages (a `page:` node with no routed ancestor) with their full paths joined from every routed ancestor, the tabs under `page:catalog/entity` with `:param` path templates, the app title, and the registered client tool names; titles come from the node's `core.title` data, else the plugin title. None of the four is config-gated; an app disables `read_current_page` or `describe_portal` through its extension id. `portal__navigate` (`clientTools/builtin/portalNavigate.tsx`) is the plugin's own too, but an ordinary allowlisted client tool, available only when the app tree has `app-root-wrapper:app/assistants-panel`. Its `execute` only resolves the path against `window.location.origin` (one leading `/`, same origin, not `/api`, no `javascript:`, `data:`, or `vbscript:` raw or decoded, at most 2,000 characters, query and hash kept) and returns `{ navigated: true, path }` or `{ navigated: false, error }`; navigating there would unmount the Assistants page before its runtime sent the result. The runtime does it instead (`collapsible/portalNavigation.ts`): the innermost fetch wrapper finds an unhandled `portal__navigate` result in the latest step of the last message of a `/chat` POST and, once the response is OK (the server has persisted the result and records the turn running), calls the surface's handler once per tool call id per tab; for a provider that runs its own tool loop, `withHeldCalls` reports the accepted `/held-calls/:id` answer the same way. The Assistants page hands the thread and its assistant to the panel through `openPanel` (the mounted panel registers its `open` even while it renders the page alone) and then navigates; the panel just navigates and stays. A path under the Assistants route opens `threads/:threadId` instead, closing the panel when the panel asked. The panel mounts the thread and, finding it working, rejoins with `GET /chat/resume/:threadId`, so nothing is sent twice.
 
+```mermaid
+sequenceDiagram
+  participant L as AI SDK loop
+  participant P as Assistants page runtime
+  participant N as Panel
+  participant R as Router
+  L-->>P: portal__navigate call, stream ends
+  P->>P: execute: check the path
+  P->>R: POST /chat with the result, navigated and path
+  R-->>P: 200, result saved, turn running
+  P->>N: openPanel(assistantId, threadId)
+  P->>P: navigate(path), the page unmounts
+  N->>R: GET /threads/:id/messages
+  N->>R: GET /threads/status
+  R-->>N: working: true
+  N->>R: GET /chat/resume/:threadId
+  R-->>N: the rest of the turn
+```
+
 `sendAutomaticallyWhen` flushes the turn once every tool part in the latest step is settled and at least one is client-driven: a client tool's output, unless it records that the user stopped the turn, or an answered approval. A server tool truncated at `maxSteps` is never auto-resumed.
 
 ### Providers that run their own tool loop
@@ -333,6 +357,7 @@ A low-privilege user chatting with an assistant wired to a powerful shared MCP s
 | Turn state                           | DB             | Per thread                         | `noteStarted`, a 5 s heartbeat, `noteFinished`                                       | Cleared on finish, abort, or error; stale after 30 s                                   | Shared                                         |
 | Abort handles                        | Process memory | Per thread                         | `/chat`                                                                              | Cleared on finish, abort, or error                                                     | A cancel elsewhere lands on the next heartbeat |
 | MCP pool and tool cache              | Process memory | Per server                         | `maintainMcpConnections` every 2 min                                                 | Until shutdown; 5 min freshness for `/capabilities`                                    | Each replica keeps its own                     |
+| Parent groups                        | Process memory | Per group                          | `/status`, `/chat`, `/preview`, `/threads` when an assistant grants by group         | 1 min; a catalog failure is not cached                                                 | Each replica keeps its own                     |
 | Per-user MCP connections             | Process memory | Per server and user                | `/chat`, `/preview`, `/capabilities` with the user's token                           | Reconnected when the token changes; closed after 10 min idle; at most 200              | Each replica keeps its own                     |
 | `mcp_tool_cache`                     | DB             | Per per-user server                | The first listing after a change, from any user's connection                         | Rebuildable; replaced by each changed listing, ignored after a server's config changes | Shared; each replica re-reads it every 2 min   |
 | `mcp_oauth_tokens`                   | DB             | Per server and `user_ref`          | The sign-in callback; each refresh                                                   | Until disconnect, or a refresh the server refuses                                      | Shared                                         |
@@ -518,6 +543,9 @@ flowchart TB
   PN --> EA
   HC -->|"composerOnly"| EA
   HC -->|"usePanelControl open(threadId)"| PN
+  CP -->|"portal__navigate: openPanel(threadId)"| PN
+  RH -->|"accepted portal__navigate result"| CP
+  RH -->|"accepted portal__navigate result"| EA
   EA --> SA
   SA --> RH
   EA --> CT
@@ -607,7 +635,7 @@ sequenceDiagram
   participant S as AssistantStore
   participant D as Database
   E->>R: GET /capabilities
-  R->>M: probe tools, 5 min cache
+  R->>M: probe tools, 5 min cache, a per-user server's cached list not checked
   R-->>E: actions, models, servers, floor
   E->>E: edit, delta-validate
   E->>R: POST or PUT /manage/assistants
