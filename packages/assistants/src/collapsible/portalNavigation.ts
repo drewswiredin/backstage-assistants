@@ -143,6 +143,23 @@ export function navigationAnswered(
   });
 }
 
+/**
+ * Moves the router, then fires `popstate` with the new URL in place. The
+ * router's own navigation fires no such event, and some pages read their
+ * URL only on it, so a second link while one of them is already open would
+ * otherwise be ignored. Backstage's `BrowserRouter` handles the event by
+ * re-reading the location it already has.
+ */
+export function navigateAndAnnounce(
+  navigate: (to: string) => void,
+  to: string,
+): void {
+  navigate(to);
+  window.dispatchEvent(
+    new PopStateEvent('popstate', { state: window.history.state }),
+  );
+}
+
 /** What a surface does for a navigation. */
 export interface NavigationPlan {
   /** Where the router goes. */

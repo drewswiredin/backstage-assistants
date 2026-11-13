@@ -1,4 +1,5 @@
 import {
+  navigateAndAnnounce,
   navigatingOnTurn,
   navigationAnswered,
   planNavigation,
@@ -206,5 +207,24 @@ describe('openPanel', () => {
     expect(open).toHaveBeenCalledWith({ threadId: 't', assistantId: 'ops' });
     unregister();
     expect(openPanel({ threadId: 't' })).toBe(false);
+  });
+});
+
+describe('navigateAndAnnounce', () => {
+  it('fires popstate after the move, so a page that reads its URL on it sees the new one', () => {
+    const seen: string[] = [];
+    const onPop = () =>
+      seen.push(window.location.pathname + window.location.search);
+    window.addEventListener('popstate', onPop);
+    const navigate = jest.fn((to: string) =>
+      window.history.pushState({ idx: 1 }, '', to),
+    );
+    try {
+      navigateAndAnnounce(navigate, '/explorer?item=two');
+    } finally {
+      window.removeEventListener('popstate', onPop);
+    }
+    expect(navigate).toHaveBeenCalledWith('/explorer?item=two');
+    expect(seen).toEqual(['/explorer?item=two']);
   });
 });

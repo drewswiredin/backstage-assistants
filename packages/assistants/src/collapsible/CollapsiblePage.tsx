@@ -60,7 +60,11 @@ import {
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { JsonObject } from '@backstage/types';
 import { makeRuntimeHook } from './useAssistantRuntime';
-import { planNavigation, type NavigationRequest } from './portalNavigation';
+import {
+  navigateAndAnnounce,
+  planNavigation,
+  type NavigationRequest,
+} from './portalNavigation';
 import { openPanel } from '../panel/panelControl';
 import { rootRouteRef, threadRouteRef } from '../routes';
 import { resolveRequestedThread } from './resolveRequestedThread';
@@ -441,7 +445,7 @@ function ChatRuntime({
       threadRoute ? threadId => threadRoute({ threadId }) : undefined,
     );
     if (plan.panel) openPanel(plan.panel);
-    navigate(plan.to);
+    navigateAndAnnounce(navigate, plan.to);
   };
 
   const adapter = useMemo(

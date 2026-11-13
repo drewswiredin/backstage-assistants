@@ -54,6 +54,7 @@ import {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef, type AssistantsApi } from '../api';
 import {
+  navigateAndAnnounce,
   planNavigation,
   type NavigationRequest,
 } from '../collapsible/portalNavigation';
@@ -501,7 +502,7 @@ function EmbeddedRuntime({
       threadRoute ? threadId => threadRoute({ threadId }) : undefined,
     );
     if (plan.closePanel) onOpenFull(request.threadId, request.assistantId);
-    else navigate(plan.to);
+    else navigateAndAnnounce(navigate, plan.to);
   };
 
   const adapter = useMemo(

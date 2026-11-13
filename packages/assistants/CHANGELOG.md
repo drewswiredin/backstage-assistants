@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- After `portal__navigate` opens a page, the browser gets a `popstate` event with the new URL in place. A page that reads its URL only on that event, rather than through the router, now follows a second link while it is already open instead of ignoring it.
+
 ## 0.25.0 - 2026-11-13
 
 ### Added
