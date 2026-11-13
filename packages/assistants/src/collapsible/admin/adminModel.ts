@@ -8,13 +8,31 @@ import {
   AssistantDefinition,
   CapabilitiesResponse,
   CLIENT_TOOL_NAME_PATTERN,
+  clientToolNamespace,
+  isBuiltinClientTool,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 
 /** Sentinel `allowedTools` source for built-in Backstage actions. */
 export const BACKSTAGE_SOURCE = 'backstage';
 
-/** Sentinel source for client tools, which run in the user's browser. */
+/**
+ * Prefix of a client tool group: `client:<namespace>`, one group per
+ * namespace, since each namespace is one plugin's set of browser tools.
+ */
 export const CLIENT_SOURCE = 'client';
+
+/** The group of a client tool: `client:<namespace>`. */
+export function clientSourceOf(name: string): string {
+  return `${CLIENT_SOURCE}:${clientToolNamespace(name) ?? name}`;
+}
+
+/** True for a `client:<namespace>` group. */
+export function isClientSource(source: string): boolean {
+  return source.startsWith(`${CLIENT_SOURCE}:`);
+}
+
+/** The group of built-in tools found in `allowedTools`, which never belong there. */
+export const BUILTIN_SOURCE = 'builtin';
 
 /** The `<serverId>__<tool>` namespace separator for MCP tools. */
 export const MCP_SEP = '__';
@@ -91,7 +109,9 @@ export type StaleReason =
   /** Source is a reachable MCP server / the action registry — definitively gone. */
   | 'gone'
   /** Source is an unreachable MCP server — can't be verified, treat as a warning. */
-  | 'unverifiable';
+  | 'unverifiable'
+  /** A built-in tool, which every assistant always has: the entry does nothing. */
+  | 'builtin';
 
 /** A tool in `allowedTools` that has no matching live capability. */
 export interface StaleTool {
@@ -142,6 +162,8 @@ export function isClientToolId(
  *    registers — the item is definitively gone.
  *  - AMBER ('unverifiable'): its source is an MCP server that is currently
  *    unreachable, so we can't confirm whether the tool still exists.
+ *  - AMBER ('builtin'): a built-in tool every assistant already has, so the
+ *    entry does nothing and should be removed.
  */
 export function partitionTools(
   allowedTools: string[],
@@ -155,11 +177,17 @@ export function partitionTools(
   const liveSet = new Set<string>();
   const stale: StaleTool[] = [];
   for (const id of allowedTools) {
+    if (isBuiltinClientTool(id)) {
+      stale.push({ id, source: BUILTIN_SOURCE, reason: 'builtin' });
+      continue;
+    }
     if (live.has(id) || (isClientToolId(id, caps) && clientToolIds.has(id))) {
       liveSet.add(id);
       continue;
     }
-    const source = isClientToolId(id, caps) ? CLIENT_SOURCE : toolSourceOf(id);
+    const source = isClientToolId(id, caps)
+      ? clientSourceOf(id)
+      : toolSourceOf(id);
     const reason: StaleReason =
       source !== BACKSTAGE_SOURCE && unreachableServers.has(source)
         ? 'unverifiable'

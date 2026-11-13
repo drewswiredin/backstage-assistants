@@ -4,9 +4,9 @@
  * `{ navigated: true, path }`; the runtime navigates once the server has
  * accepted that result (see `collapsible/portalNavigation.ts`), so the turn
  * goes on server-side and the conversation follows the user in the panel.
- * Offered only when the app has the panel, which is where the conversation
- * continues; an assistant gets it when its editor enables it under Browser
- * tools.
+ * A built-in: every assistant has it, and the platform instructions say when
+ * to use it. Offered only when the app has the panel, which is where the
+ * conversation continues.
  */
 import { Link, Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
@@ -122,7 +122,7 @@ export const portalNavigateTool: AssistantClientTool<
   name: PORTAL_NAVIGATE,
   title: 'Open a page',
   description:
-    'Open a page in this portal for the user. `path` is a path in this portal starting with `/`, with any query and hash. Paths differ between portals (the catalog may live at `/` or at `/catalog`), so take the path from describe_portal, from a link you were given, or from the current page; never guess one. Use it when the user asks to see or go to something, not for reading data (use the read tools). The page changes only after this call returns, so a read_current_page in the same step still sees the old page: read the new page in a later step if you need to. The conversation continues in the side panel next to the page.',
+    'Open a page in this portal for the user. `path` is a path in this portal starting with `/`, with any query and hash; take it from describe_portal, a link, or the current page, never guess one. Not for reading data (use the read tools). The page changes only after this call returns, so read the new page in a later step. The conversation continues in the side panel next to the page.',
   inputSchema: {
     type: 'object',
     properties: {

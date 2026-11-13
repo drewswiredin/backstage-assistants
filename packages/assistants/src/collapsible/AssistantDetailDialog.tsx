@@ -8,8 +8,10 @@ import Tooltip from '@material-ui/core/Tooltip';
 import CloseIcon from '@material-ui/icons/Close';
 import StarIcon from '@material-ui/icons/Star';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+import GavelOutlinedIcon from '@material-ui/icons/GavelOutlined';
 import { AssistantSummary } from '@drewswiredin/backstage-plugin-assistants-common';
 import { useClientTools } from '../clientTools/ClientToolsProvider';
+import { clientToolNeedsApproval } from '../clientTools/runClientTool';
 import {
   AssistantAvatar,
   resolveAssistantColor,
@@ -103,9 +105,21 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 500,
     color: theme.palette.text.primary,
   },
+  // The row's trailing icons: the approval gavel, then the description.
+  rowEnd: {
+    marginLeft: 'auto',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+  },
+  // Always shown: this tool asks the user before it runs.
+  approval: {
+    fontSize: '1rem',
+    color: theme.palette.warning?.main ?? '#b06f00',
+  },
   // Hidden until row hover; its tooltip holds the tool's description.
   infoIcon: {
-    marginLeft: 'auto',
     flexShrink: 0,
     fontSize: '1rem',
     color: theme.palette.text.hint,
@@ -167,13 +181,19 @@ const useStyles = makeStyles(theme => ({
 const BACKSTAGE_SOURCE = 'backstage';
 const CLIENT_SOURCE = 'client';
 
-/** The tool's source for grouping: explicit `source`, else the MCP namespace
+/** The namespace prefix of a tool name, if it has one. */
+const namespaceOf = (name: string): string | undefined =>
+  name.includes('__') ? name.slice(0, name.indexOf('__')) : undefined;
+
+/** The tool's source for grouping: one group per browser-tool namespace
+ * (`client:<namespace>`), else an explicit `source`, else the MCP namespace
  * prefix in the name, else Backstage. */
-const toolSource = (t: { name: string; source?: string }): string =>
-  t.source ??
-  (t.name.includes('__')
-    ? t.name.slice(0, t.name.indexOf('__'))
-    : BACKSTAGE_SOURCE);
+const toolSource = (t: { name: string; source?: string }): string => {
+  if (t.source === CLIENT_SOURCE) {
+    return `${CLIENT_SOURCE}:${namespaceOf(t.name) ?? t.name}`;
+  }
+  return t.source ?? namespaceOf(t.name) ?? BACKSTAGE_SOURCE;
+};
 
 /** Display name within a group: drop the `<source>__` namespace prefix. */
 const toolDisplayName = (name: string): string => {
@@ -200,7 +220,7 @@ export const AssistantDetailDialog: FC<{
 }> = ({ assistant, open, onClose }) => {
   const classes = useStyles();
   const theme = useTheme();
-  const { tools: clientTools } = useClientTools();
+  const { tools: clientTools, requireApproval } = useClientTools();
   if (!assistant) {
     return null;
   }
@@ -217,15 +237,23 @@ export const AssistantDetailDialog: FC<{
       if (arr) arr.push(t);
       else map.set(key, [t]);
     }
-    const ranks: Record<string, number> = {
-      [BACKSTAGE_SOURCE]: 0,
-      [CLIENT_SOURCE]: 1,
+    const rank = (s: string) => {
+      if (s === BACKSTAGE_SOURCE) return 0;
+      return s.startsWith(`${CLIENT_SOURCE}:`) ? 1 : 2;
     };
-    const rank = (s: string) => ranks[s] ?? 2;
     return [...map.entries()].sort(
       ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b),
     );
   })();
+  // Asks before it runs: named in the config's approval floor, or a browser
+  // tool that writes or is destructive (the same rule the editor's gavel and
+  // the runtime use).
+  const needsApproval = (name: string) => {
+    const client = clientTools.find(t => t.name === name);
+    return client
+      ? clientToolNeedsApproval(client, requireApproval)
+      : requireApproval.has(name);
+  };
   // Client tools are described in the browser, not by `/status`.
   const clientDescriptions = new Map(
     clientTools.map(t => [t.name, t.description]),
@@ -233,8 +261,15 @@ export const AssistantDetailDialog: FC<{
   // Each group says whose identity its tools run under, in the editor's words.
   const groupLabels: Record<string, [string, string]> = {
     [BACKSTAGE_SOURCE]: ['Backstage actions', 'runs as you'],
-    [CLIENT_SOURCE]: ['Browser tools', 'runs in your browser as you'],
   };
+  for (const [source] of toolGroups) {
+    if (source.startsWith(`${CLIENT_SOURCE}:`)) {
+      groupLabels[source] = [
+        source.slice(CLIENT_SOURCE.length + 1),
+        'Browser tools · runs in your browser as you',
+      ];
+    }
+  }
   for (const spec of assistant.userCredentials ?? []) {
     groupLabels[spec.server] = [
       spec.server,
@@ -311,11 +346,24 @@ export const AssistantDetailDialog: FC<{
                           <span className={classes.itemName}>
                             {toolDisplayName(t.name)}
                           </span>
-                          {description && (
-                            <Tooltip title={description} placement="top-end">
-                              <InfoOutlinedIcon className={classes.infoIcon} />
-                            </Tooltip>
-                          )}
+                          <span className={classes.rowEnd}>
+                            {needsApproval(t.name) && (
+                              <Tooltip title="Asks for your approval before it runs.">
+                                <GavelOutlinedIcon
+                                  role="img"
+                                  aria-label="Asks for your approval before it runs"
+                                  className={classes.approval}
+                                />
+                              </Tooltip>
+                            )}
+                            {description && (
+                              <Tooltip title={description} placement="top-end">
+                                <InfoOutlinedIcon
+                                  className={classes.infoIcon}
+                                />
+                              </Tooltip>
+                            )}
+                          </span>
                         </li>
                       );
                     })}

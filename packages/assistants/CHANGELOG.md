@@ -3,6 +3,18 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- `portal__navigate` is now a built-in like `read_current_page` and `describe_portal`: every assistant has it while the app has the panel, the platform instructions say when to use it, and it no longer appears in the editor's picker. An entry saved in an assistant's tools does nothing and is flagged in the editor ("built in — every assistant already has it") so it can be removed.
+- The editor's Tools section shows browser tools in one group per namespace (`kube-admin`, `mongo`, ...) instead of a single "Browser tools" group, with the contributing plugin named when a plugin contributes its own tools. The assistant details dialog groups them the same way.
+
+### Added
+
+- The assistant details dialog (the info icon on an assistant) marks each tool that asks for the user's approval before it runs with the gavel the editor uses: tools named in `requireApproval`, and browser tools that write or are destructive.
+- `ClientToolsApi.pluginOf(name)`: the frontend plugin that contributed a client tool.
+
 ## 0.25.1 - 2026-11-13
 
 ### Fixed

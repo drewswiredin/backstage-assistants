@@ -11,6 +11,7 @@ import { jsonSchema, tool, type Tool } from 'ai';
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import {
   CLIENT_TOOL_NAME_PATTERN,
+  isBuiltinClientTool,
   type ElicitationPrompt,
   type ElicitationStatus,
   type ToolSummary,
@@ -97,8 +98,9 @@ function sanitizeServerId(serverId: string): string {
  *
  * Returns the bare action-id list, one {@link ResolvedMcpSelection} per
  * referenced server with its per-server tool allowlist assembled from the
- * matching entries (so only the named tools on each server are exposed), and
- * the client tool names.
+ * matching entries (so only the named tools on each server are exposed), the
+ * client tool names, and any built-in client tools listed (which every
+ * assistant has anyway; the caller warns about them).
  */
 export function splitAllowedTools(
   allowedTools: string[],
@@ -107,6 +109,7 @@ export function splitAllowedTools(
   actionIds: string[];
   mcpSelections: ResolvedMcpSelection[];
   clientToolNames: string[];
+  builtinNames: string[];
 } {
   // Map a sanitized server id back to its config + raw id, for prefix matching.
   const bySanitized = new Map<string, McpServerConfig>();
@@ -116,6 +119,7 @@ export function splitAllowedTools(
 
   const actionIds: string[] = [];
   const clientToolNames: string[] = [];
+  const builtinNames: string[] = [];
   // Preserve first-seen server order; collect each server's allowlisted tools.
   const selByServerId = new Map<
     string,
@@ -123,6 +127,10 @@ export function splitAllowedTools(
   >();
 
   for (const entry of allowedTools) {
+    if (isBuiltinClientTool(entry)) {
+      builtinNames.push(entry);
+      continue;
+    }
     const sep = entry.indexOf(NAME_SEPARATOR);
     if (sep > 0) {
       const prefix = entry.slice(0, sep);
@@ -153,6 +161,7 @@ export function splitAllowedTools(
       tools,
     })),
     clientToolNames,
+    builtinNames,
   };
 }
 

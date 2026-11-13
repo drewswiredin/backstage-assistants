@@ -16,6 +16,7 @@ import type {
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import {
   assistantManagePermission,
+  isBuiltinClientTool,
   USER_CREDENTIALS_HEADER,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsConfig, McpServerConfig } from './config';
@@ -262,7 +263,7 @@ export function assertDefaultStaysOpen(
  * Throws {@link InputError} on the first dead addition. Users/groups are not
  * liveness-checked (lenient by design).
  */
-function validateDelta(
+export function validateDelta(
   next: Pick<AssistantDefinition, 'allowedTools' | 'models' | 'defaultModel'>,
   previous: AssistantDefinition | undefined,
   capabilities: CapabilitiesResponse,
@@ -278,6 +279,11 @@ function validateDelta(
   );
   const prevTools = new Set(previous?.allowedTools ?? []);
   for (const t of next.allowedTools) {
+    if (!prevTools.has(t) && isBuiltinClientTool(t)) {
+      throw new InputError(
+        `Tool '${t}' is built in: every assistant always has it, so leave it out of allowedTools`,
+      );
+    }
     if (!prevTools.has(t) && !tools.has(t) && !clientTools.has(t)) {
       throw new InputError(
         `Tool '${t}' is not currently available and cannot be added`,

@@ -14,12 +14,16 @@ never exposed over MCP.
 
 Nothing is configured in the backend. Give an assistant a client tool by adding its
 `<namespace>__<tool>` name to the assistant's tools in the editor, which
-offers every tool registered in the app; an assistant offers the built-in
-client tools plus only the contributed ones it allows, whatever the browser
-declares. The backend also drops a
-declaration whose name is not `<namespace>__<tool>`, collides with a server
-tool, or exceeds 4000 description characters or 8 KB of schema, and offers at
-most 30 per request, built-ins included. Client tool results are capped to `toolResultMaxChars`
+offers every tool registered in the app, one group per namespace; an
+assistant offers the [built-in client tools](tools.md#built-in-client-tools)
+plus only the contributed ones it allows, whatever the browser declares.
+Built-ins never go in an assistant's tools: the editor leaves them out of its
+picker, a save that adds one is refused with an error naming it, and one
+saved earlier is flagged in the editor and logged once as a warning. The
+backend also drops a declaration whose name is not `<namespace>__<tool>`,
+uses the reserved `portal` namespace, collides with a server tool, or
+exceeds 4000 description characters or 8 KB of schema, and offers at most 30
+per request, built-ins included. Client tool results are capped to `toolResultMaxChars`
 like every other tool result.
 
 A client tool that is not read-only, or is destructive, asks the user for
@@ -90,11 +94,15 @@ export const assistantToolsModule = createFrontendModule({
 });
 ```
 
-Add the module to the app's `features`, then give an assistant the tool by
-name in the editor's Tools section, under "Browser tools". The contract:
+Add the module to the app's `features`, then give an assistant the tool in
+the editor's Tools section, where it appears in a Browser tools group named
+after its namespace (`azure-devops` here). A tool contributed by its own
+plugin, rather than by a module of the assistants plugin, also names that
+plugin in the group's header. The contract:
 
 - `name` is `<namespace>__<tool>`; the namespace keeps a plugin's tools apart
-  from Backstage actions and MCP servers. `description` (at most 4000
+  from Backstage actions and MCP servers, and groups them in the editor.
+  `portal` is reserved for the plugin's own tools. `description` (at most 4000
   characters) and `inputSchema` (a JSON Schema object, at most 8 KB) are what
   the model sees.
 - `attributes.readOnly` and `destructive` mirror Backstage action attributes.

@@ -82,6 +82,16 @@ describe('selectClientTools', () => {
     expect(dropped[0]).toContain('<namespace>__<tool>');
   });
 
+  it('offers portal__navigate as a built-in and reserves its namespace', () => {
+    const { tools, dropped } = select(
+      { portal__navigate: declaration(), portal__other: declaration() },
+      ['portal__other'],
+    );
+    expect(Object.keys(tools)).toEqual(['portal__navigate']);
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]).toContain("the 'portal' namespace is reserved");
+  });
+
   it('drops a name that collides with a server tool', () => {
     const { tools, dropped } = select(
       { github__list_issues: declaration() },

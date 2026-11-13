@@ -88,16 +88,16 @@ answer, with links, from any page, and without the visualizer plugin. Turn it
 off the same way, with
 `assistant-client-tool:assistants/describe-portal: false`.
 
-An assistant can also take the user to a page with the `portal__navigate`
-browser tool: "open the orders API" opens it, and the conversation carries on
+An assistant can also take the user to a page with the built-in
+`portal__navigate` tool: "open the orders API" opens it, and the conversation carries on
 in the panel beside it, including a conversation started on the Assistants
 page. The tool takes a path in this portal (query and hash kept); it refuses
 other sites, `/api` routes, and script URLs, and it doesn't check permissions,
 so a page the user can't see shows Backstage's usual message. A path inside
-the Assistants page opens the conversation there instead. The tool needs the
-panel module, which is where the conversation continues, and an assistant
-offers it only once its editor enables it under **Browser tools**. Turn it
-off for the whole app with
+the Assistants page opens the conversation there instead. It is a built-in,
+so every assistant has it, and it is offered only when the app has the panel
+module, which is where the conversation continues. Turn it off for the whole
+app with
 `assistant-client-tool:assistants/portal-navigate: false`.
 
 ## Homepage

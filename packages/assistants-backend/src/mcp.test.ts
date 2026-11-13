@@ -26,6 +26,19 @@ describe('splitAllowedTools', () => {
     ]);
   });
 
+  it('sets built-in client tools apart from the allowlisted ones', () => {
+    const split = splitAllowedTools(
+      ['portal__navigate', 'read_current_page', 'kubernetes__get_status'],
+      servers,
+    );
+    expect(split.builtinNames).toEqual([
+      'portal__navigate',
+      'read_current_page',
+    ]);
+    expect(split.clientToolNames).toEqual(['kubernetes__get_status']);
+    expect(split.actionIds).toEqual([]);
+  });
+
   it('keeps a namespaced entry outside the client-tool shape as an action id', () => {
     const split = splitAllowedTools(['Weird__Name', 'x__'], servers);
     expect(split.actionIds).toEqual(['Weird__Name', 'x__']);

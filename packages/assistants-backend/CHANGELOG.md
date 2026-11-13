@@ -3,6 +3,14 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Saving an assistant that newly lists a built-in client tool (`read_current_page`, `describe_portal`, `portal__navigate`, ...) in `allowedTools` is refused with an error naming the tool, since every assistant already has it. One saved before still saves, and the chat route logs a warning once per assistant naming it.
+- `portal__navigate` is offered to every assistant without an `allowedTools` entry, and a client tool declared in the reserved `portal` namespace is dropped.
+- `requireApproval` can name a built-in client tool, which then asks before it runs on every assistant, for example `read_current_page`.
+
 ## 0.24.0 - 2026-11-13
 
 ### Fixed

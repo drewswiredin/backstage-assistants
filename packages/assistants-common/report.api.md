@@ -151,6 +151,9 @@ export type ClientToolErrorCode =
   | 'failed';
 
 // @public
+export function clientToolNamespace(name: string): string | undefined;
+
+// @public
 export type ElicitationField = {
   name: string;
   title: string;
@@ -246,6 +249,9 @@ export type HeldCallAnswer =
 export function heldToolCallId(toolCallId: string): string;
 
 // @public
+export function isBuiltinClientTool(name: string): boolean;
+
+// @public
 export function isClientToolName(name: string): boolean;
 
 // @public
@@ -320,6 +326,9 @@ export const REASONING_LEVELS: ReasoningLevel[];
 
 // @public
 export type ReasoningLevel = 'low' | 'medium' | 'high' | 'max';
+
+// @public
+export const RESERVED_CLIENT_TOOL_NAMESPACE = 'portal';
 
 // @public
 export function resolvePreviewField(

@@ -1,5 +1,6 @@
 import { InputError } from '@backstage/errors';
-import { assertDefaultStaysOpen } from './manage';
+import type { CapabilitiesResponse } from '@drewswiredin/backstage-plugin-assistants-common';
+import { assertDefaultStaysOpen, validateDelta } from './manage';
 
 const open = { allowAuthenticated: true, users: [], groups: [] };
 const closed = {
@@ -30,6 +31,46 @@ describe('assertDefaultStaysOpen', () => {
     ).not.toThrow();
     expect(() =>
       assertDefaultStaysOpen(undefined, { access: closed }),
+    ).not.toThrow();
+  });
+});
+
+describe('validateDelta', () => {
+  const capabilities = {
+    actions: [{ id: 'search-catalog' }],
+    models: [],
+    mcpServers: [],
+    requireApproval: [],
+  } as unknown as CapabilitiesResponse;
+  const def = (allowedTools: string[]) => ({
+    allowedTools,
+    models: [],
+    defaultModel: null,
+  });
+
+  it('refuses a newly added built-in tool, naming it', () => {
+    for (const name of ['read_current_page', 'portal__navigate']) {
+      expect(() =>
+        validateDelta(def([name]), undefined, capabilities, new Map()),
+      ).toThrow(`Tool '${name}' is built in`);
+    }
+  });
+
+  it('keeps a built-in that was saved before, so existing assistants still save', () => {
+    const previous = {
+      ...def(['portal__navigate']),
+      id: 'a',
+      title: 'A',
+      prompt: '',
+      access: { allowAuthenticated: true, users: [], groups: [] },
+    };
+    expect(() =>
+      validateDelta(
+        def(['portal__navigate', 'search-catalog']),
+        previous,
+        capabilities,
+        new Map(),
+      ),
     ).not.toThrow();
   });
 });

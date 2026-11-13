@@ -456,6 +456,9 @@ function inlineTextFileAttachments(messages: unknown[]): unknown[] {
  * @public
  */
 export async function createRouter(options: RouterOptions): Promise<Router> {
+  // Assistants whose `allowedTools` lists built-ins, already warned about once
+  // (the warning is per process, not per turn).
+  const warnedBuiltins = new Set<string>();
   const {
     logger,
     httpAuth,
@@ -1023,10 +1026,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //    each entry into bare Backstage action ids and per-server MCP tool
     //    selections (deriving which servers to connect from the namespaced
     //    prefixes; unknown entries are tolerated — see splitAllowedTools).
-    const { actionIds, mcpSelections, clientToolNames } = splitAllowedTools(
-      assistant.allowedTools,
-      assistants.mcpServers,
-    );
+    const { actionIds, mcpSelections, clientToolNames, builtinNames } =
+      splitAllowedTools(assistant.allowedTools, assistants.mcpServers);
+    const builtinKey = `${assistant.id}:${builtinNames.join(',')}`;
+    if (builtinNames.length > 0 && !warnedBuiltins.has(builtinKey)) {
+      warnedBuiltins.add(builtinKey);
+      logger.warn(
+        `allowedTools of assistant '${
+          assistant.id
+        }' lists built-in tool(s) every assistant already has; remove them: ${builtinNames.join(
+          ', ',
+        )}`,
+      );
+    }
 
     // 6a. Backstage actions. The list is scoped to what THIS user may see
     //     (gate 2, coarse); we keep only the actions named in the allowlist

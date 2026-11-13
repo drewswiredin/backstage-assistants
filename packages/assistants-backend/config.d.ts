@@ -67,9 +67,10 @@ export interface Config {
      * browser before they run. Never by prompting the model. The effective
      * approval set for an assistant is this list (∪ each MCP server's
      * per-server `requireApproval`, namespaced `<serverId>__<tool>`)
-     * intersected with that assistant's `allowedTools`. There is no
-     * per-assistant approval setting. A name not in any assistant's tools is
-     * simply never hit.
+     * intersected with that assistant's `allowedTools`, plus any built-in
+     * client tool it names (`read_current_page`, `portal__navigate`, ...),
+     * which every assistant has. There is no per-assistant approval setting.
+     * A name not in any assistant's tools is simply never hit.
      */
     requireApproval?: string[];
 

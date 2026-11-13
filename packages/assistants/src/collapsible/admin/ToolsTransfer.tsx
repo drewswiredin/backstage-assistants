@@ -1,6 +1,7 @@
 /**
  * The Tools section: the assigned tools grouped by source (Backstage actions,
- * then the browser's client tools, then one group per MCP server) over an
+ * then one group per browser-tool namespace, then one group per MCP server)
+ * over an
  * "＋ Add tool" picker drawn from the live `/capabilities` inventory plus the
  * client tools registered in this browser, grouped the same way, with a rule
  * between groups. Each group header gives the source's name (with an MCP
@@ -9,7 +10,9 @@
  * per-user server's sign-in; a person icon) or a server's shared credential (a
  * key, in amber). Each assigned row leads with that identity's icon, shows a ⚖ when the tool needs approval, and an ⓘ with
  * the tool description. STALE assignments (in `allowedTools` but not live)
- * render flagged RED (gone) / AMBER (unverifiable) with a remove ✕.
+ * render flagged RED (gone) / AMBER (unverifiable) with a remove ✕, and a
+ * built-in tool saved in `allowedTools` (which does nothing there) is flagged
+ * AMBER in its own group.
  */
 import { useMemo } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
@@ -26,6 +29,8 @@ import GavelOutlinedIcon from '@material-ui/icons/GavelOutlined';
 import {
   CapabilitiesResponse,
   CLIENT_TOOL_NAME_PATTERN,
+  clientToolNamespace,
+  isBuiltinClientTool,
   type UserCredentialSpec,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { AssignList, AssignOption, AssignRow } from './AssignList';
@@ -33,7 +38,9 @@ import type { AssistantClientTool } from '../../clientTools/types';
 import { clientToolNeedsApproval } from '../../clientTools/runClientTool';
 import {
   BACKSTAGE_SOURCE,
-  CLIENT_SOURCE,
+  BUILTIN_SOURCE,
+  clientSourceOf,
+  isClientSource,
   mcpToolId,
   bareToolName,
   partitionTools,
@@ -62,6 +69,11 @@ const useStyles = makeStyles(theme => ({
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
     color: theme.palette.text.secondary,
+  },
+  plugin: {
+    textTransform: 'none',
+    fontWeight: 400,
+    letterSpacing: 0,
   },
   groupName: {
     fontSize: '0.9rem',
@@ -120,29 +132,55 @@ const useStyles = makeStyles(theme => ({
 /** How a stale row names its source. */
 function staleSourceLabel(source: string): string {
   if (source === BACKSTAGE_SOURCE) return 'action';
-  if (source === CLIENT_SOURCE) return 'client tool';
+  if (isClientSource(source)) return 'browser tool';
   return source;
 }
 
 /** Where a group's tools come from. */
-type SourceKind = 'backstage' | 'client' | 'mcp';
+type SourceKind = 'backstage' | 'client' | 'builtin' | 'mcp';
 
 /** Per-source display + reachability metadata for the group headers. */
 interface SourceMeta {
   kind: SourceKind;
-  /** "Backstage actions", "Browser tools", or the MCP server id. */
+  /** "Backstage actions", a browser-tool namespace, or the MCP server id. */
   name: string;
   reachable: boolean;
   reachError?: string;
   /** A per-user server: its sign-in, whose token its tools run with. */
   userCredentials?: UserCredentialSpec;
+  /** Browser tools: the frontend plugin that contributed them. */
+  plugin?: string;
 }
 
 const KIND_LABEL: Record<SourceKind, string> = {
   backstage: 'Backstage',
-  client: 'Browser',
+  client: 'Browser tools',
+  builtin: 'Built in',
   mcp: 'MCP server',
 };
+
+/** The header metadata of a browser-tool group nothing registers any more. */
+function fallbackMeta(group: string): SourceMeta | undefined {
+  if (group === BUILTIN_SOURCE) {
+    return { kind: 'builtin', name: 'Built-in tools', reachable: true };
+  }
+  if (isClientSource(group)) {
+    return {
+      kind: 'client',
+      name: group.slice(group.indexOf(':') + 1),
+      reachable: true,
+    };
+  }
+  return undefined;
+}
+
+/** Group order: Backstage, built-ins, browser tools, then MCP servers. */
+function groupRank(group: string | undefined): number {
+  if (group === BACKSTAGE_SOURCE) return 0;
+  if (group === BUILTIN_SOURCE) return 1;
+  if (group && isClientSource(group)) return 2;
+  return 3;
+}
 
 /** Whose identity a source's tools run under, in words and as an icon. */
 interface Identity {
@@ -160,6 +198,14 @@ function identityOf(meta: SourceMeta): Identity {
     return {
       label: 'Runs as you',
       detail: 'your Backstage permissions apply',
+      shared: false,
+      Icon: PersonOutlineIcon,
+    };
+  }
+  if (meta.kind === 'builtin') {
+    return {
+      label: 'Always available',
+      detail: 'every assistant has these, so remove them from this list',
       shared: false,
       Icon: PersonOutlineIcon,
     };
@@ -206,6 +252,7 @@ function identityIcon(meta: SourceMeta | undefined, className: string) {
 export function ToolsTransfer({
   capabilities,
   clientTools = [],
+  pluginOf,
   allowedTools,
   onChange,
   onConnect,
@@ -215,6 +262,8 @@ export function ToolsTransfer({
   onConnect?: (spec: UserCredentialSpec) => void;
   /** The client tools registered in this browser. */
   clientTools?: ReadonlyArray<AssistantClientTool<any, any>>;
+  /** The frontend plugin that contributed a client tool, when the app says. */
+  pluginOf?: (name: string) => string | undefined;
   allowedTools: string[];
   onChange: (next: string[]) => void;
 }) {
@@ -265,28 +314,36 @@ export function ToolsTransfer({
     }
 
     // Built-ins are always offered and never assigned, so they stay out of
-    // the picker.
-    const contributed = clientTools.filter(t =>
-      CLIENT_TOOL_NAME_PATTERN.test(t.name),
-    );
-    if (contributed.length > 0) {
-      meta.set(CLIENT_SOURCE, {
-        kind: 'client',
-        name: 'Browser tools',
-        reachable: true,
-      });
-    }
+    // the picker. Every other browser tool is grouped by its namespace, one
+    // group per plugin's set, sorted by name.
+    const contributed = clientTools
+      .filter(
+        t =>
+          !isBuiltinClientTool(t.name) && CLIENT_TOOL_NAME_PATTERN.test(t.name),
+      )
+      .sort((x, y) => x.name.localeCompare(y.name));
     for (const t of contributed) {
+      const group = clientSourceOf(t.name);
+      if (!meta.has(group)) {
+        const plugin = pluginOf?.(t.name);
+        meta.set(group, {
+          kind: 'client',
+          name: clientToolNamespace(t.name) ?? t.name,
+          reachable: true,
+          // The plugin's own built-ins and a module's tools say nothing new.
+          ...(plugin && plugin !== 'assistants' ? { plugin } : {}),
+        });
+      }
       lookup.set(t.name, {
-        label: t.name,
+        label: bareToolName(t.name),
         description: t.description,
-        source: CLIENT_SOURCE,
+        source: group,
       });
       if (!selected.has(t.name)) {
         opts.push({
           id: t.name,
-          label: t.name,
-          group: CLIENT_SOURCE,
+          label: bareToolName(t.name),
+          group,
           secondary: t.description,
         });
       }
@@ -333,7 +390,7 @@ export function ToolsTransfer({
       }
     }
     return { sources: meta, byId: lookup, options: opts };
-  }, [capabilities, clientTools, selected]);
+  }, [capabilities, clientTools, pluginOf, selected]);
 
   const clientToolIds = useMemo(
     () => new Set(clientTools.map(t => t.name)),
@@ -362,13 +419,17 @@ export function ToolsTransfer({
       });
     const staleRows: AssignRow[] = stale.map(s => {
       const gone = s.reason === 'gone';
+      let secondary = `${s.source} unreachable — unverifiable`;
+      if (gone) {
+        secondary = `${staleSourceLabel(s.source)} — no longer available`;
+      } else if (s.reason === 'builtin') {
+        secondary = 'built in — every assistant already has it';
+      }
       return {
         id: s.id,
-        label: bareToolName(s.id),
+        label: s.reason === 'builtin' ? s.id : bareToolName(s.id),
         tone: gone ? 'error' : 'warning',
-        secondary: gone
-          ? `${staleSourceLabel(s.source)} — no longer available`
-          : `${s.source} unreachable — unverifiable`,
+        secondary,
         icon: gone ? (
           <ErrorIcon className={classes.staleIconGone} />
         ) : (
@@ -377,20 +438,26 @@ export function ToolsTransfer({
         group: s.source,
       };
     });
-    // Group order: Backstage first, then MCP servers by id, then any leftover
-    // (e.g. a removed server). Stable sort preserves within-group order.
-    const rank = new Map<string, number>([
-      [BACKSTAGE_SOURCE, 0],
-      [CLIENT_SOURCE, 1],
-    ]);
-    [...capabilities.mcpServers]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .forEach((s, i) => rank.set(s.id, i + 2));
-    const rankOf = (g?: string) =>
-      g && rank.has(g) ? (rank.get(g) as number) : Number.MAX_SAFE_INTEGER;
-    return [...liveRows, ...staleRows].sort(
-      (a, b) => rankOf(a.group) - rankOf(b.group),
+    // Group order: Backstage, built-ins, browser tools by namespace, MCP
+    // servers by id, then any leftover (e.g. a removed server). Stable sort
+    // preserves within-group order.
+    const servers = new Map(
+      [...capabilities.mcpServers]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((s, i) => [s.id, i]),
     );
+    const order = (g?: string): [number, number, string] => {
+      const rank = groupRank(g);
+      if (rank < 3) return [rank, 0, g ?? ''];
+      return g && servers.has(g)
+        ? [3, servers.get(g) as number, '']
+        : [4, 0, g ?? ''];
+    };
+    return [...liveRows, ...staleRows].sort((a, b) => {
+      const [ra, sa, na] = order(a.group);
+      const [rb, sb, nb] = order(b.group);
+      return ra - rb || sa - sb || na.localeCompare(nb);
+    });
   }, [
     allowedTools,
     live,
@@ -442,7 +509,7 @@ export function ToolsTransfer({
   // Three lines per source: its name (and an MCP server's reachability), its
   // kind, then whose identity its tools run under.
   const renderGroupHeader = (group: string) => {
-    const m = sources.get(group);
+    const m = sources.get(group) ?? fallbackMeta(group);
     if (!m) {
       return group;
     }
@@ -472,7 +539,15 @@ export function ToolsTransfer({
             </Button>
           )}
         </div>
-        <div className={classes.kind}>{KIND_LABEL[m.kind]}</div>
+        <div className={classes.kind}>
+          {KIND_LABEL[m.kind]}
+          {m.plugin && (
+            <span className={classes.plugin}>
+              {' '}
+              · from the {m.plugin} plugin
+            </span>
+          )}
+        </div>
         <div
           className={`${classes.identity} ${
             identity.shared ? classes.identityShared : ''

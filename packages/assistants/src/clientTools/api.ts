@@ -13,6 +13,11 @@ import type { AssistantClientTool } from './types';
 export interface ClientToolsApi {
   /** The contributed tools, in attachment order. */
   readonly tools: ReadonlyArray<AssistantClientTool<any, any>>;
+  /**
+   * The id of the frontend plugin that contributed a tool, or undefined when
+   * the app does not say. A module's tools carry the plugin it extends.
+   */
+  pluginOf?(name: string): string | undefined;
 }
 
 /** @public */

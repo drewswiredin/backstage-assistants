@@ -69,6 +69,14 @@ describe('clientToolNeedsApproval', () => {
       ),
     ).toBe(true);
   });
+
+  it('gates a built-in when the config floor names it', () => {
+    const page = { name: 'read_current_page', attributes: { readOnly: true } };
+    expect(clientToolNeedsApproval(page, new Set())).toBe(false);
+    expect(clientToolNeedsApproval(page, new Set(['read_current_page']))).toBe(
+      true,
+    );
+  });
 });
 
 describe('runClientTool', () => {

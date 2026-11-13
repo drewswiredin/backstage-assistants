@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `portal__navigate` in `BUILTIN_CLIENT_TOOLS`, with guidance on opening pages in the platform instructions.
+- `isBuiltinClientTool`, `clientToolNamespace`, and `RESERVED_CLIENT_TOOL_NAMESPACE` (`portal`); `isClientToolName` refuses other names in that namespace.
+
 ## 0.19.0 - 2026-10-26
 
 ### Added

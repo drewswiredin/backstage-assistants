@@ -56,6 +56,7 @@ import { AccessList } from './AccessList';
 import { ModelsTransfer } from './ModelsTransfer';
 import { ToolsTransfer } from './ToolsTransfer';
 import { useClientTools } from '../../clientTools/ClientToolsProvider';
+import { clientToolsApiRef } from '../../clientTools/api';
 import {
   credentialsHeader,
   getUserToken,
@@ -488,6 +489,7 @@ export function AssistantAdminDialog({
   // Client tools are registered in the browser; the picker offers them
   // from the same registry the runtime uses.
   const { tools: clientTools } = useClientTools();
+  const clientToolsRegistry = useApiHolder().get(clientToolsApiRef);
 
   // Selection + the editable draft of the selected assistant.
   // `selectedId` is the persisted id, or '' for a not-yet-saved new/dup draft.
@@ -934,6 +936,7 @@ export function AssistantAdminDialog({
             <ToolsTransfer
               capabilities={capabilities}
               clientTools={clientTools}
+              pluginOf={clientToolsRegistry?.pluginOf}
               allowedTools={draft.allowedTools}
               onChange={allowedTools => patch({ allowedTools })}
               onConnect={handleConnect}

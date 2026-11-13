@@ -167,6 +167,7 @@ export type ClientToolRenderProps<
 
 // @public
 export interface ClientToolsApi {
+  pluginOf?(name: string): string | undefined;
   readonly tools: ReadonlyArray<AssistantClientTool<any, any>>;
 }
 
@@ -235,7 +236,7 @@ export function usePanelControl(): PanelControl | undefined;
 // src/api/AssistantsApi.d.ts:26:5 - (ae-undocumented) Missing documentation for "model".
 // src/api/AssistantsApi.d.ts:29:5 - (ae-undocumented) Missing documentation for "pinned".
 // src/api/AssistantsApi.d.ts:30:5 - (ae-undocumented) Missing documentation for "archived".
-// src/clientTools/api.d.ts:16:22 - (ae-undocumented) Missing documentation for "clientToolsApiRef".
+// src/clientTools/api.d.ts:21:22 - (ae-undocumented) Missing documentation for "clientToolsApiRef".
 // src/panel/panelControl.d.ts:29:5 - (ae-undocumented) Missing documentation for "open".
 // /home/andrew/Source/Github/drewswiredin/drewswiredin/backstage-assistants/packages/assistants-common/src/clientTools.ts:1:1 - (ae-wrong-input-file-type) Incorrect file type; API Extractor expects to analyze compiler outputs with the .d.ts file extension. Troubleshooting tips: https://api-extractor.com/link/dts-error
 ```

@@ -58,17 +58,49 @@ export const BUILTIN_CLIENT_TOOLS: readonly string[] = [
   'download_file',
   'read_current_page',
   'describe_portal',
+  'portal__navigate',
 ];
 
 /**
+ * The namespace of the plugin's own namespaced built-ins
+ * (`portal__navigate`). A host's client tool may not use it.
+ *
+ * @public
+ */
+export const RESERVED_CLIENT_TOOL_NAMESPACE = 'portal';
+
+/**
+ * True for one of the client tools the plugin itself ships, which every
+ * assistant always has and never lists in `allowedTools`.
+ *
+ * @public
+ */
+export function isBuiltinClientTool(name: string): boolean {
+  return BUILTIN_CLIENT_TOOLS.includes(name);
+}
+
+/**
+ * The namespace of a client tool name: the part before `__`, or undefined
+ * for a name without one.
+ *
+ * @public
+ */
+export function clientToolNamespace(name: string): string | undefined {
+  const i = name.indexOf('__');
+  return i > 0 ? name.slice(0, i) : undefined;
+}
+
+/**
  * True for a name a client tool may use: one of the built-ins, or the
- * `<namespace>__<tool>` shape.
+ * `<namespace>__<tool>` shape outside the reserved `portal` namespace.
  *
  * @public
  */
 export function isClientToolName(name: string): boolean {
   return (
-    BUILTIN_CLIENT_TOOLS.includes(name) || CLIENT_TOOL_NAME_PATTERN.test(name)
+    isBuiltinClientTool(name) ||
+    (CLIENT_TOOL_NAME_PATTERN.test(name) &&
+      clientToolNamespace(name) !== RESERVED_CLIENT_TOOL_NAMESPACE)
   );
 }
 

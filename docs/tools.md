@@ -38,7 +38,9 @@ user may see and run.
 
 ## Built-in client tools
 
-Four built-in client tools are always available and need no config.
+Five built-in client tools are always available and need no config. They
+are never added to an assistant's tools, and the platform instructions tell
+the model when to use each.
 `render_form` renders an inline RJSF form for structured, multi-field, or
 multiple-choice input; the user fills and submits, and the values flow back as
 the tool result. Forms render Backstage scaffolder field extensions (owner,
@@ -67,12 +69,13 @@ answers "what is in Backstage" and "where do I find X" with links.
 
 `portal__navigate` opens a page in the portal for the user, and the
 conversation continues in the panel beside it (see [Panel](frontend.md#panel)).
-Unlike the four above it is not always offered: enable it for an assistant
-under **Browser tools**. It needs the panel module.
+It is offered only when the app has the panel module.
 
-An app can turn off `read_current_page` or `describe_portal` in its frontend
-config (see [Panel](frontend.md#panel)); `render_form` and `download_file` are
-always on. Nothing is configured in the backend.
+An app can turn off `read_current_page`, `describe_portal`, or
+`portal__navigate` in its frontend config (see [Panel](frontend.md#panel));
+`render_form` and `download_file` are always on. To have the user confirm
+each read of their page or each move, list the tool in
+[`requireApproval`](approvals.md). Nothing else is configured in the backend.
 
 ## Recommended starter setup
 

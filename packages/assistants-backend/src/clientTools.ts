@@ -1,9 +1,10 @@
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import { jsonSchema, tool, type Tool } from 'ai';
 import {
-  BUILTIN_CLIENT_TOOLS,
   CLIENT_TOOL_LIMITS,
-  CLIENT_TOOL_NAME_PATTERN,
+  RESERVED_CLIENT_TOOL_NAMESPACE,
+  isBuiltinClientTool,
+  isClientToolName,
   type ClientToolDeclaration,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { truncateToolResult } from './truncateToolResult';
@@ -68,11 +69,10 @@ function declarationProblem(name: string, value: unknown): string | undefined {
       return 'attributes.readOnly is not a boolean';
     }
   }
-  if (
-    !BUILTIN_CLIENT_TOOLS.includes(name) &&
-    !CLIENT_TOOL_NAME_PATTERN.test(name)
-  ) {
-    return 'name is not <namespace>__<tool>';
+  if (!isClientToolName(name)) {
+    return name.startsWith(`${RESERVED_CLIENT_TOOL_NAMESPACE}__`)
+      ? `the '${RESERVED_CLIENT_TOOL_NAMESPACE}' namespace is reserved for the plugin's own tools`
+      : 'name is not <namespace>__<tool>';
   }
   return undefined;
 }
@@ -113,7 +113,7 @@ export function selectClientTools({
       drop(problem);
       continue;
     }
-    if (!BUILTIN_CLIENT_TOOLS.includes(name) && !allowedSet.has(name)) {
+    if (!isBuiltinClientTool(name) && !allowedSet.has(name)) {
       drop('not in the assistant allowlist');
       continue;
     }

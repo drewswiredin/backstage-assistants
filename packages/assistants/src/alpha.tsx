@@ -49,11 +49,20 @@ const clientToolsApi = ApiBlueprint.makeWithOverrides({
   },
   factory(originalFactory, { inputs }) {
     const tools = inputs.tools.map(input => input.get(clientToolDataRef));
+    const plugins = new Map(
+      inputs.tools.map(input => [
+        input.get(clientToolDataRef).name,
+        input.node.spec.plugin?.id,
+      ]),
+    );
     return originalFactory(defineParams =>
       defineParams({
         api: clientToolsApiRef,
         deps: {},
-        factory: (): ClientToolsApi => ({ tools }),
+        factory: (): ClientToolsApi => ({
+          tools,
+          pluginOf: name => plugins.get(name),
+        }),
       }),
     );
   },

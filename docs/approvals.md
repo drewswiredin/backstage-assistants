@@ -16,7 +16,10 @@ assistants:
 The gate is a config floor: the effective set for an assistant is this list
 intersected with its `allowedTools`, so a gated tool an assistant is not given
 is never hit, and there is no per-assistant approval field that could weaken
-it. Names match action ids or namespaced `<server>__<tool>` MCP tools. A gated
+it. Names match action ids, namespaced `<server>__<tool>` MCP tools, or
+client tool names. The built-in client tools are on every assistant, so
+listing one gates it everywhere: `read_current_page` here asks before an
+assistant reads the user's page. A gated
 name the assistant is not given is ignored; a gated name it is given that does
 not resolve this turn (an action the caller cannot see, a server that is not
 connected) is logged.
