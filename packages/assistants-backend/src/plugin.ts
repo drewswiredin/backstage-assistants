@@ -7,6 +7,7 @@ import {
   actionsServiceRef,
 } from '@backstage/backend-plugin-api/alpha';
 import { signalsServiceRef } from '@backstage/plugin-signals-node';
+import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { assistantsPermissions } from '@drewswiredin/backstage-plugin-assistants-common';
 import { readConfig } from './config';
 import { createRouter } from './router';
@@ -24,6 +25,7 @@ import {
   setElicitationBroker,
 } from './mcp';
 import { McpOAuthService } from './mcpOAuth';
+import { GroupAncestry } from './groupAncestry';
 import { ElicitationBroker } from './mcpElicitation';
 import { MCP_OAUTH_PUBLIC_PATHS } from './mcpOAuthRouter';
 import {
@@ -87,6 +89,7 @@ export const assistantsPlugin = createBackendPlugin({
         actionsRegistry: actionsRegistryServiceRef,
         actions: actionsServiceRef,
         signals: signalsServiceRef,
+        catalog: catalogServiceRef,
         scheduler: coreServices.scheduler,
         lifecycle: coreServices.lifecycle,
       },
@@ -104,6 +107,7 @@ export const assistantsPlugin = createBackendPlugin({
         actionsRegistry,
         actions,
         signals,
+        catalog,
         scheduler,
         lifecycle,
       }) {
@@ -198,6 +202,7 @@ export const assistantsPlugin = createBackendPlugin({
           streamBuffer,
           signals,
           oauth,
+          groupAncestry: new GroupAncestry({ catalog, auth, logger }),
           elicitations,
           // Approvals and client tools held inside a provider's own tool loop.
           heldCalls: new HeldCallBroker({ db }),

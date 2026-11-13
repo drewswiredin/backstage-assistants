@@ -132,8 +132,15 @@ const assistant: AssistantDefinition = {
 
 async function startApp(
   model: ReturnType<typeof makeModel> = makeModel(),
-  extra: { assistants?: Record<string, unknown>; heldCalls?: unknown } = {},
+  extra: {
+    assistants?: Record<string, unknown>;
+    heldCalls?: unknown;
+    assistant?: AssistantDefinition;
+    ownershipEntityRefs?: string[];
+    groupAncestry?: unknown;
+  } = {},
 ) {
+  const served = extra.assistant ?? assistant;
   const config = readConfig(
     new ConfigReader({
       assistants: {
@@ -199,7 +206,7 @@ async function startApp(
     userInfo: {
       getUserInfo: jest.fn(async () => ({
         userEntityRef: 'user:default/ana',
-        ownershipEntityRefs: ['user:default/ana'],
+        ownershipEntityRefs: extra.ownershipEntityRefs ?? ['user:default/ana'],
       })),
     },
     permissions: {
@@ -208,9 +215,9 @@ async function startApp(
     actions: { list: jest.fn(async () => ({ actions: [] })) },
     assistants,
     assistantStore: {
-      getById: jest.fn(async () => assistant),
+      getById: jest.fn(async () => served),
       effectiveModels: () => ['openai:gpt-test'],
-      list: () => [assistant],
+      list: () => [served],
       getDefaultId: () => 'ops',
       summaryFor: (a: AssistantDefinition) => ({ id: a.id, title: a.title }),
     },
@@ -222,6 +229,7 @@ async function startApp(
     },
     signals: { publish: jest.fn(async () => {}) },
     ...(extra.heldCalls ? { heldCalls: extra.heldCalls } : {}),
+    ...(extra.groupAncestry ? { groupAncestry: extra.groupAncestry } : {}),
   } as never);
   // The backend's error middleware maps Backstage errors to statuses.
   const app = express()
@@ -347,6 +355,41 @@ describe('/chat with a per-user MCP server', () => {
       `hasn't connected GitHub. Ask them to click \\"Connect GitHub\\"`,
     );
     expect(opened).toHaveLength(0);
+  });
+});
+
+describe('access by group', () => {
+  const engineering = {
+    ...assistant,
+    access: {
+      allowAuthenticated: false,
+      users: [],
+      groups: ['group:default/Engineering'],
+    },
+  } as unknown as AssistantDefinition;
+  const listed = async (groupAncestry?: unknown) => {
+    const app = await startApp(undefined, {
+      assistant: engineering,
+      ownershipEntityRefs: ['user:default/ana', 'group:default/payments'],
+      groupAncestry,
+    });
+    server = app.server;
+    const body = await fetch(`${app.base}/status`).then(r => r.json());
+    server.close();
+    return body.assistants.map((a: { id: string }) => a.id);
+  };
+
+  it("grants a parent group's grant to a member of its child group", async () => {
+    const expand = jest.fn(async (refs: string[]) => [
+      ...refs,
+      'group:default/engineering',
+    ]);
+    expect(await listed({ expand })).toEqual(['ops']);
+    expect(expand).toHaveBeenCalledWith([
+      'user:default/ana',
+      'group:default/payments',
+    ]);
+    expect(await listed()).toEqual([]);
   });
 });
 

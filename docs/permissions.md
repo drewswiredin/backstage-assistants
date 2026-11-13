@@ -17,7 +17,10 @@ so they are published on
 permission UIs that discover permissions through that endpoint (the RBAC role
 editor, for one). Which assistants an `assistant.use` holder then sees is the
 per-assistant access policy stored on each definition, orthogonal to these
-permissions.
+permissions. A group in that policy covers its own members and the members of
+every group beneath it in the catalog (`childOf`, which a group's
+`spec.parent` produces), the way the RBAC plugin resolves group roles; the
+backend reads the hierarchy from the catalog and reuses it for a minute.
 
 Default-allow, like every plugin: a create-app backend ships
 `permission.enabled: true` with

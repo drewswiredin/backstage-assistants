@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- An assistant granted to a group in `access.groups` is now open to members of that group's child groups too, at any depth, the way the RBAC plugin resolves group roles: the backend walks the catalog's `childOf` relations from the user's own groups. Before, only direct members matched. Entity refs in `access.users` and `access.groups` now compare case-insensitively.
+
 ## 0.23.1 - 2026-11-13
 
 ### Changed

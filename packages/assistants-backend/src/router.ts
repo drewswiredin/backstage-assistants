@@ -87,6 +87,7 @@ import {
 } from './threads';
 import type { StreamBuffer } from './streamBuffer';
 import type { SignalsService } from '@backstage/plugin-signals-node';
+import type { GroupAncestry } from './groupAncestry';
 
 /** Signals channel for per-user conversation notifications (working / unread). */
 const NOTIFY_CHANNEL = 'assistants:threads';
@@ -125,6 +126,11 @@ export interface RouterOptions {
   signals: SignalsService;
   /** Backend-held sign-ins for servers that run their own OAuth. */
   oauth?: McpOAuthService;
+  /**
+   * Resolves parent groups through the catalog for `access.groups`. Without
+   * it a group grant matches direct members only.
+   */
+  groupAncestry?: GroupAncestry;
   /** The app's origin, which the sign-in callback page posts to. */
   appOrigin?: string;
   /** Answers MCP servers' questions (elicitation). */
@@ -246,26 +252,30 @@ function userCredentialsOf(servers: McpServerConfig[]): {
 }
 
 /**
- * Resolves an assistant's accessibility for a resolved
- * {@link @backstage/backend-plugin-api#BackstageUserInfo}. Shared by `/status`
+ * Resolves an assistant's accessibility for a caller from `accessCaller`
+ * (the router's own, which adds parent groups). Shared by `/status`
  * (filtering the assistant list) and `/chat` (enforcing per-turn access) so all
  * routes apply identical semantics. Delegates to
  * {@link isPolicyAccessible} (the same ownership-ref check, default-deny):
  *
  * - `allowAuthenticated` grants any signed-in user.
  * - `users` matches the caller's `userEntityRef`.
- * - `groups` matches any of the caller's `ownershipEntityRefs`.
+ * - `groups` matches any group the caller belongs to, directly or through a
+ *   parent group.
  * - a policy with `allowAuthenticated: false` and empty `users`/`groups` grants
  *   nobody.
  */
 function isAssistantAccessible(
   assistant: AssistantDefinition,
-  user: BackstageUserInfo,
+  caller: AccessCaller,
 ): boolean {
-  return isPolicyAccessible(assistant.access, {
-    userEntityRef: user.userEntityRef,
-    ownershipEntityRefs: user.ownershipEntityRefs,
-  });
+  return isPolicyAccessible(assistant.access, caller);
+}
+
+/** A caller's refs for access checks, parent groups included. */
+interface AccessCaller {
+  userEntityRef: string;
+  ownershipEntityRefs: string[];
 }
 
 /**
@@ -460,7 +470,26 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     oauth,
     elicitations,
     heldCalls,
+    groupAncestry,
   } = options;
+
+  /**
+   * The caller as access policies see them: their own ref and every group
+   * they belong to, parent groups included. The catalog is asked only when an
+   * assistant grants access by group.
+   */
+  async function accessCaller(user: BackstageUserInfo): Promise<AccessCaller> {
+    const byGroup = assistantStore
+      .list()
+      .some(assistant => assistant.access.groups.length > 0);
+    return {
+      userEntityRef: user.userEntityRef,
+      ownershipEntityRefs:
+        byGroup && groupAncestry
+          ? await groupAncestry.expand(user.ownershipEntityRefs)
+          : user.ownershipEntityRefs,
+    };
+  }
 
   /**
    * Enforce the `assistant.use` permission for the caller — the plugin-access
@@ -663,7 +692,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         throw new InputError('assistantId, tool, and input are required');
       }
       const assistant = await assistantStore.getById(body.assistantId);
-      if (!assistant || !isAssistantAccessible(assistant, user)) {
+      if (
+        !assistant ||
+        !isAssistantAccessible(assistant, await accessCaller(user))
+      ) {
         throw new NotFoundError(`Unknown assistantId '${body.assistantId}'`);
       }
       const selection = splitAllowedTools(
@@ -818,9 +850,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // The default assistant first (it is open to everyone, so always here),
     // the rest in snapshot order.
     const defaultAssistant = assistantStore.getDefaultId();
+    const caller = await accessCaller(user);
     const accessible = assistantStore
       .list()
-      .filter(assistant => isAssistantAccessible(assistant, user))
+      .filter(assistant => isAssistantAccessible(assistant, caller))
       .sort((a, b) => {
         if (a.id === defaultAssistant) return -1;
         if (b.id === defaultAssistant) return 1;
@@ -934,7 +967,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     // 4. Access check via userInfo + the assistant's policy; denied → 403.
     const user = await userInfo.getUserInfo(credentials);
-    if (!isAssistantAccessible(assistant, user)) {
+    if (!isAssistantAccessible(assistant, await accessCaller(user))) {
       throw new NotAllowedError(
         `User is not permitted to use assistant '${assistantId}'`,
       );
@@ -1631,9 +1664,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     await requireUse(credentials);
     const user = await userInfo.getUserInfo(credentials);
+    const caller = await accessCaller(user);
     const accessibleIds = new Set<string>();
     for (const def of assistantStore.list()) {
-      if (isAssistantAccessible(def, user)) accessibleIds.add(def.id);
+      if (isAssistantAccessible(def, caller)) accessibleIds.add(def.id);
     }
     return { userRef: user.userEntityRef, accessibleIds };
   }

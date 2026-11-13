@@ -77,7 +77,8 @@ export interface AssistantAccessPolicy {
  * refs the caller owns/belongs to (user + groups), exactly as Backstage's
  * `BackstageUserInfo` exposes them. Matching is membership in either the
  * `users` list (by `userEntityRef`) or the `groups` list (by any
- * `ownershipEntityRefs`).
+ * `ownershipEntityRefs`). Entity refs compare case-insensitively, as the
+ * catalog treats them.
  *
  * @public
  */
@@ -88,10 +89,13 @@ export function isPolicyAccessible(
   if (policy.allowAuthenticated) {
     return true;
   }
-  if (policy.users.includes(caller.userEntityRef)) {
+  const lower = (ref: string) => ref.toLocaleLowerCase('en-US');
+  const user = lower(caller.userEntityRef);
+  if (policy.users.some(u => lower(u) === user)) {
     return true;
   }
-  return policy.groups.some(g => caller.ownershipEntityRefs.includes(g));
+  const owned = new Set(caller.ownershipEntityRefs.map(lower));
+  return policy.groups.some(g => owned.has(lower(g)));
 }
 
 /**
