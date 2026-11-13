@@ -19,9 +19,9 @@ the frontend README shows the still and links it to the attachment.
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `icon.svg`           | the source of `icon.png`: Remix Icon `robot-2-line` (Apache-2.0) in Backstage teal                                                                           |
 | `icon.png`           | 256x256 render of `icon.svg`; the backstage.io directory entry's icon, copied to `microsite/static/img/assistants-logo.png` per `docs/marketplace/README.md` |
-| `explain-system.png` | frontend README: still of `explain-system.mp4`, the panel's answer with an architecture diagram                                                              |
-| `create-project.png` | frontend README: still of `create-project.mp4`, a scaffolder form with the owner picker open                                                                 |
-| `home-composer.png`  | frontend README: the homepage composer's four looks, from `ui-tour.mp4`                                                                                      |
+| `explain-system.png` | frontend README and `docs/index.md`: still of `explain-system.mp4`, the panel's answer with an architecture diagram                                          |
+| `create-project.png` | `docs/index.md`: still of `create-project.mp4`, a scaffolder form with the owner picker open                                                                 |
+| `home-composer.png`  | `docs/frontend.md`: the homepage composer's four looks, from `ui-tour.mp4`                                                                                   |
 
 | Video (`docs/media/`) | Attachment id                          | Shows                                                                                                              |
 | --------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |

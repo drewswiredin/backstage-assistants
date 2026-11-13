@@ -5,6 +5,7 @@ metadata:
   description: AI Assistants for Backstage — in-portal chat over the catalog, TechDocs, Actions, and MCP tools.
   annotations:
     github.com/project-slug: drewswiredin/backstage-assistants
+    backstage.io/techdocs-ref: dir:.
 spec:
   type: library
   owner: user:drewswiredin

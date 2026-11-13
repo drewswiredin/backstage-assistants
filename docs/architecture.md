@@ -1,6 +1,6 @@
 # Architecture
 
-`backstage-assistants` is an in-portal AI chat for Backstage. assistant-ui renders the conversation, the Vercel AI SDK runs the model and tool loop, and Backstage supplies auth, the Actions registry, and the database; the plugin is thin glue between them. This file, [PRINCIPLES.md](PRINCIPLES.md), and [CONTEXT.md](../CONTEXT.md) are the spec, and a change to the design changes them in the same commit.
+`backstage-assistants` is an in-portal AI chat for Backstage. assistant-ui renders the conversation, the Vercel AI SDK runs the model and tool loop, and Backstage supplies auth, the Actions registry, and the database; the plugin is thin glue between them. This file, [PRINCIPLES.md](PRINCIPLES.md), and [CONTEXT.md](https://github.com/drewswiredin/backstage-assistants/blob/main/CONTEXT.md) are the spec, and a change to the design changes them in the same commit.
 
 ## Stack
 
@@ -594,7 +594,7 @@ A provider's `type` is `openai`, `anthropic`, `azure`, or `openai-compatible`; i
 
 Anthropic tool-argument normalisation runs when `resolveProviderType(modelId)` is `anthropic`, never on the provider id. A string or missing `input` on an assistant tool call is coerced to an object before the provider sees it.
 
-The annotated YAML reference is in the [backend README](../packages/assistants-backend/README.md).
+The configuration reference is in [Reference](reference.md#configuration-keys).
 
 ## Assistant management
 

@@ -57,6 +57,26 @@ The design lives in `docs/architecture.md`, `docs/PRINCIPLES.md`, and
 them in the same commit as the code. Docs describe the current design in the
 present tense; they carry no change narration or migration notes.
 
+## User documentation
+
+The user docs are the pages in `docs/`, built with MkDocs (`mkdocs.yml`) and
+published to
+[drewswiredin.github.io/backstage-assistants](https://drewswiredin.github.io/backstage-assistants/)
+by the `docs` workflow. The package READMEs stay short and link there; a new
+feature is documented in `docs/`, not in a README. To preview:
+
+```bash
+pip install mkdocs-techdocs-core
+mkdocs serve
+```
+
+## Frontend dependency versions
+
+The `@assistant-ui/*` set, `assistant-cloud`, and the AI SDK (`ai`,
+`@ai-sdk/react`) are declared as caret ranges matching what upstream declares
+for itself, so a consumer resolves a single copy of each. Upstream moves the
+family in lockstep; bump them as a group.
+
 ## Releases
 
 See [docs/RELEASING.md](docs/RELEASING.md).

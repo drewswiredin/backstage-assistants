@@ -29,7 +29,7 @@ yarn dedupe --check '@backstage/*'
 Every `@backstage/*` range in the published packages must match the current
 Backstage release, or a consumer on that release installs a second copy of
 each lagging package (`^0.0.x` ranges match one version only). The bump also
-moves `backstage.json`; move the "Backstage N or later" floor in the READMEs
+moves `backstage.json`; move the "Backstage N or later" floor in the READMEs and `docs/getting-started.md`
 and add "Backstage dependency ranges track the N release line" to each
 changed package's changelog. CI runs the dedupe check.
 

@@ -1,7 +1,7 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants",
   "version": "0.24.1",
-  "description": "AI Assistants for your developer portal. Every answer comes from your catalog and docs. Every Backstage action runs as the user.",
+  "description": "Chat assistants for Backstage that answer from your catalog and TechDocs, and run Backstage actions and MCP tools as the signed-in user.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.12"
