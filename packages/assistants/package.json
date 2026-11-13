@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants",
-  "version": "0.25.1",
+  "version": "0.26.0",
   "description": "Chat assistants for Backstage that answer from your catalog and TechDocs, and run Backstage actions and MCP tools as the signed-in user.",
   "license": "Apache-2.0",
   "engines": {
@@ -73,7 +73,7 @@
     "@backstage/plugin-scaffolder-react": "^2.1.1",
     "@backstage/plugin-signals-react": "^0.0.27",
     "@backstage/types": "^1.2.2",
-    "@drewswiredin/backstage-plugin-assistants-common": "^0.19.0",
+    "@drewswiredin/backstage-plugin-assistants-common": "^0.20.0",
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "4.0.0-alpha.61",
