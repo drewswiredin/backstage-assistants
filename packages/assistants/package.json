@@ -1,6 +1,6 @@
 {
   "name": "@drewswiredin/backstage-plugin-assistants",
-  "version": "0.24.2",
+  "version": "0.25.0",
   "description": "Chat assistants for Backstage that answer from your catalog and TechDocs, and run Backstage actions and MCP tools as the signed-in user.",
   "license": "Apache-2.0",
   "engines": {
