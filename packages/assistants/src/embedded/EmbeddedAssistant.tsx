@@ -12,7 +12,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import useAsync from 'react-use/lib/useAsync';
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
 import { useApi } from '@backstage/core-plugin-api';
@@ -52,6 +53,11 @@ import {
   type StatusResponse,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import { assistantsApiRef, type AssistantsApi } from '../api';
+import {
+  planNavigation,
+  type NavigationRequest,
+} from '../collapsible/portalNavigation';
+import { rootRouteRef, threadRouteRef } from '../routes';
 import {
   ClientToolsProvider,
   useClientTools,
@@ -481,6 +487,22 @@ function EmbeddedRuntime({
   const { pathname } = useLocation();
   const pageContextRef = useRef(derivePageContext(pathname, document.title));
   pageContextRef.current = derivePageContext(pathname, document.title);
+  // `portal__navigate` moves the page beside the panel, which stays; a page
+  // inside Assistants opens the conversation there (see portalNavigation.ts).
+  const navigate = useNavigate();
+  const rootRoute = useRouteRef(rootRouteRef);
+  const threadRoute = useRouteRef(threadRouteRef);
+  const onNavigateRef = useRef<(request: NavigationRequest) => void>(() => {});
+  onNavigateRef.current = request => {
+    const plan = planNavigation(
+      request,
+      'panel',
+      rootRoute?.(),
+      threadRoute ? threadId => threadRoute({ threadId }) : undefined,
+    );
+    if (plan.closePanel) onOpenFull(request.threadId, request.assistantId);
+    else navigate(plan.to);
+  };
 
   const adapter = useMemo(
     () =>
@@ -516,6 +538,7 @@ function EmbeddedRuntime({
         getCredentialsHeader: assistantId =>
           toolGuardsRef.current.credentialsHeader(assistantId),
         getPageContext: () => pageContextRef.current,
+        onNavigate: request => onNavigateRef.current(request),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, baseUrl],

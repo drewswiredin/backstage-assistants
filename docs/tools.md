@@ -65,6 +65,11 @@ plugins, its pages with their paths, the tabs on a catalog entity's page, and
 the client tools the browser can run, read from the frontend's app tree. It
 answers "what is in Backstage" and "where do I find X" with links.
 
+`portal__navigate` opens a page in the portal for the user, and the
+conversation continues in the panel beside it (see [Panel](frontend.md#panel)).
+Unlike the four above it is not always offered: enable it for an assistant
+under **Browser tools**. It needs the panel module.
+
 An app can turn off `read_current_page` or `describe_portal` in its frontend
 config (see [Panel](frontend.md#panel)); `render_form` and `download_file` are
 always on. Nothing is configured in the backend.

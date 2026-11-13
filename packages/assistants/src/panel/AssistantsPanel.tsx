@@ -38,6 +38,7 @@ import {
 import { rootRouteRef, threadRouteRef } from '../routes';
 import {
   PanelControlProvider,
+  registerPanel,
   PanelPinProvider,
   type PanelControl,
   type PanelHandoff,
@@ -479,6 +480,9 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
     }),
     [pickAssistant, pickThread, forgetThread],
   );
+  // Registered while mounted, on the Assistants page too, so the page can
+  // hand the panel the conversation it takes to another page.
+  useEffect(() => registerPanel(control.open), [control]);
   const handoffSent = useCallback(() => setHandoff(undefined), []);
 
   const openFull = useCallback(

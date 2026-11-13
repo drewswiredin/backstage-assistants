@@ -18,6 +18,7 @@ import { renderFormTool } from './clientTools/builtin/renderForm';
 import { downloadFileTool } from './clientTools/builtin/downloadFile';
 import { readCurrentPageTool } from './clientTools/builtin/readCurrentPage';
 import { describePortalTool } from './clientTools/builtin/describePortal';
+import { portalNavigateTool } from './clientTools/builtin/portalNavigate';
 import { AssistantsPanel } from './panel/AssistantsPanel';
 
 /** Backend client (`/status`, threads, manage, base url + authed fetch). */
@@ -104,6 +105,18 @@ const describePortalClientTool = AssistantClientToolBlueprint.make({
 });
 
 /**
+ * `portal__navigate`: opens a page for the user, and the conversation
+ * continues in the panel beside it. Offered when the app has the panel
+ * module; an assistant gets it when its editor enables it under Browser
+ * tools. An app that does not want it disables
+ * `assistant-client-tool:assistants/portal-navigate`.
+ */
+const portalNavigateClientTool = AssistantClientToolBlueprint.make({
+  name: 'portal-navigate',
+  params: defineParams => defineParams(portalNavigateTool),
+});
+
+/**
  * The Backstage AI Assistants frontend plugin (new frontend system).
  *
  * @public
@@ -120,6 +133,7 @@ export default createFrontendPlugin({
     downloadFileClientTool,
     readCurrentPageClientTool,
     describePortalClientTool,
+    portalNavigateClientTool,
   ],
   routes: {
     root: rootRouteRef,

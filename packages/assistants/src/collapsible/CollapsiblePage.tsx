@@ -15,6 +15,7 @@ import {
 import useAsync from 'react-use/lib/useAsync';
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
 import { alertApiRef, useApi, useApiHolder } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Content,
   Progress,
@@ -59,6 +60,9 @@ import {
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import type { JsonObject } from '@backstage/types';
 import { makeRuntimeHook } from './useAssistantRuntime';
+import { planNavigation, type NavigationRequest } from './portalNavigation';
+import { openPanel } from '../panel/panelControl';
+import { rootRouteRef, threadRouteRef } from '../routes';
 import { resolveRequestedThread } from './resolveRequestedThread';
 import {
   ClientToolsProvider,
@@ -423,6 +427,22 @@ function ChatRuntime({
   // Same, for reasoning effort. undefined = the chosen model offers no levels,
   // so the turn carries none and the provider default applies.
   const reasoningLevelRef = useRef<ReasoningLevel | undefined>(undefined);
+  // `portal__navigate` leaves this page: the panel takes the conversation
+  // and the router moves (see portalNavigation.ts).
+  const navigate = useNavigate();
+  const rootRoute = useRouteRef(rootRouteRef);
+  const threadRoute = useRouteRef(threadRouteRef);
+  const onNavigateRef = useRef<(request: NavigationRequest) => void>(() => {});
+  onNavigateRef.current = request => {
+    const plan = planNavigation(
+      request,
+      'page',
+      rootRoute?.(),
+      threadRoute ? threadId => threadRoute({ threadId }) : undefined,
+    );
+    if (plan.panel) openPanel(plan.panel);
+    navigate(plan.to);
+  };
 
   const adapter = useMemo(
     () => createThreadListAdapter(api, () => activeAssistantIdRef.current),
@@ -453,6 +473,7 @@ function ChatRuntime({
         heldClientToolRunner,
         getCredentialsHeader: assistantId =>
           toolGuardsRef.current.credentialsHeader(assistantId),
+        onNavigate: request => onNavigateRef.current(request),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, baseUrl],

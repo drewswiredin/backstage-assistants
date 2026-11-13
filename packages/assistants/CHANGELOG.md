@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `portal__navigate`, a browser tool that opens a page in the portal for the user. The conversation carries on in the panel beside the page, including one started on the full Assistants page: the page hands the conversation to the panel, which rejoins the running turn. The tool takes a path in this portal, keeps its query and hash, and refuses other sites, `/api` routes, and script URLs; a path inside the Assistants page opens the conversation there. It is offered when the app has the panel module and an assistant enables it under Browser tools, and shows "Opened <path>" in the conversation.
+
 ## 0.24.2 - 2026-11-13
 
 ### Changed

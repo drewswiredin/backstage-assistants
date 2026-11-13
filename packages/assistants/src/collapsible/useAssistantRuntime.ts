@@ -40,6 +40,11 @@ import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
 import { createHistoryAdapter } from './threadListAdapter';
 import { refreshThreadStatus } from './useThreadStatus';
+import {
+  navigatingOnTurn,
+  navigationAnswered,
+  type NavigationRequest,
+} from './portalNavigation';
 
 /**
  * True when an assistant turn legitimately paused for the user (a client tool
@@ -94,6 +99,11 @@ interface RuntimeHookOptions {
    * holds for the browser (see heldCalls.ts).
    */
   heldClientToolRunner?: HeldClientToolRunner;
+  /**
+   * Opens a page `portal__navigate` asked for, called once the server has
+   * the tool's result (see portalNavigation.ts).
+   */
+  onNavigate?: (request: NavigationRequest) => void;
 }
 
 /**
@@ -217,6 +227,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     getPageContext,
     getCredentialsHeader,
     heldClientToolRunner,
+    onNavigate,
   } = options;
   const isClientTool = (name: string) => name in getClientToolAttributes();
 
@@ -251,7 +262,8 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
           fetch: refreshingStatusOnTurn(
             api,
             createInjectingFetch(
-              api.fetch,
+              // Innermost, so it reads the body with threadId and assistantId set.
+              onNavigate ? navigatingOnTurn(api.fetch, onNavigate) : api.fetch,
               baseUrl,
               () => assistantIdRef.current,
               modelIdRef,
@@ -351,6 +363,19 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     const runtimeChat = withHeldCalls(
       chat as unknown as HeldChatHelpers,
       (id, answer) => api.answerHeldCall(id, answer),
+      undefined,
+      (part, answer) => {
+        if (!onNavigate || !('output' in answer)) return;
+        navigationAnswered(
+          part,
+          answer.output,
+          {
+            threadId: remoteIdRef.current,
+            assistantId: assistantIdRef.current,
+          },
+          onNavigate,
+        );
+      },
     ) as unknown as typeof chat;
     useHeldClientTools(
       runtimeChat as unknown as HeldChatHelpers & { status?: string },

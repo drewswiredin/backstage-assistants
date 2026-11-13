@@ -65,6 +65,8 @@ export function withHeldCalls<T extends HeldChatHelpers>(
   chat: T,
   answer: (id: string, body: HeldCallAnswer) => Promise<void>,
   onError: (error: unknown) => void = () => {},
+  /** Called once the backend has accepted a tool call's answer. */
+  onAnswered?: (part: PartLike, body: HeldCallAnswer) => void,
 ): T {
   return {
     ...chat,
@@ -78,13 +80,15 @@ export function withHeldCalls<T extends HeldChatHelpers>(
       return chat.addToolApprovalResponse(args);
     },
     addToolOutput: args => {
-      if (findPart(chat.messages, args.toolCallId)?.providerExecuted) {
-        void answer(
-          heldToolCallId(args.toolCallId),
+      const part = findPart(chat.messages, args.toolCallId);
+      if (part?.providerExecuted) {
+        const body: HeldCallAnswer =
           args.state === 'output-error'
             ? { error: args.errorText ?? 'The tool failed.' }
-            : { output: args.output },
-        ).catch(onError);
+            : { output: args.output };
+        void answer(heldToolCallId(args.toolCallId), body)
+          .then(() => onAnswered?.(part, body))
+          .catch(onError);
       }
       return chat.addToolOutput(args);
     },

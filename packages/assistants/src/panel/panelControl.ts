@@ -41,6 +41,27 @@ const PanelControlContext = createContext<PanelControl | undefined>(undefined);
 export const PanelControlProvider = PanelControlContext.Provider;
 
 /**
+ * The mounted panel's `open`, for code outside the panel's context: on the
+ * Assistants page the wrapper renders the page alone, so the page reaches
+ * the panel through here to hand it a conversation.
+ */
+const panelOpeners = new Set<PanelControl['open']>();
+
+/** Called by the panel while mounted; returns the unregister. */
+export function registerPanel(open: PanelControl['open']): () => void {
+  panelOpeners.add(open);
+  return () => {
+    panelOpeners.delete(open);
+  };
+}
+
+/** Opens the panel from anywhere in the app; false when there is no panel. */
+export function openPanel(options: PanelOpenOptions): boolean {
+  for (const open of panelOpeners) open(options);
+  return panelOpeners.size > 0;
+}
+
+/**
  * The panel's controls, or undefined when the app has no panel.
  *
  * @public
