@@ -1,0 +1,79 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'mkdocs.yml', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/**', 'mkdocs.yml', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install mkdocs-techdocs-core
+      - run: mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  # GitHub Pages: https://drewswiredin.github.io/backstage-assistants/
+  pages:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # TechDocs for the HSD Backstage instance, which reads from the hsd-techdocs
+  # bucket (builder: external). Skipped when the bucket secrets are not set.
+  techdocs:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.TECHDOCS_S3_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TECHDOCS_S3_SECRET }}
+      AWS_REGION: us-east-005
+    steps:
+      - uses: actions/checkout@v4
+        if: env.AWS_ACCESS_KEY_ID != ''
+      - uses: actions/setup-node@v4
+        if: env.AWS_ACCESS_KEY_ID != ''
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        if: env.AWS_ACCESS_KEY_ID != ''
+        with:
+          python-version: '3.12'
+      - if: env.AWS_ACCESS_KEY_ID != ''
+        run: pip install mkdocs-techdocs-core
+      - if: env.AWS_ACCESS_KEY_ID != ''
+        run: npx --yes @techdocs/cli generate --no-docker
+      - name: Publish to B2 (S3-compatible)
+        if: env.AWS_ACCESS_KEY_ID != ''
+        run: |
+          npx --yes @techdocs/cli publish --publisher-type awsS3 \
+            --storage-name hsd-techdocs \
+            --awsEndpoint https://s3.us-east-005.backblazeb2.com \
+            --awsS3ForcePathStyle \
+            --entity "default/Component/backstage-assistants"
