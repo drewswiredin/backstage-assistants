@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A per-user MCP server's cached tool list now belongs to the config that listed it. After a server's `url`, `command`, `args`, `cwd`, or transport changes, the old server's tools are no longer shown; the editor asks for a connection to list the new one. Changing a header or environment value, such as a rotated secret, keeps the cache. Lists cached before this release have no config recorded and are dropped the same way until a user connects again.
+- The editor no longer shows a per-user MCP server as reachable when its tools only come from the cache. The server is marked not checked, with Connect, and a tool missing from that list is a warning instead of a tool to prune.
+- Every backend replica now picks up a per-user MCP server's tool list within two minutes of any replica saving it, instead of only at startup.
+
 - An assistant granted to a group in `access.groups` is now open to members of that group's child groups too, at any depth, the way the RBAC plugin resolves group roles: the backend walks the catalog's `childOf` relations from the user's own groups. Before, only direct members matched. Entity refs in `access.users` and `access.groups` now compare case-insensitively.
 
 ## 0.23.1 - 2026-11-13

@@ -6,7 +6,11 @@ import { MockLanguageModelV4 } from 'ai/test';
 import {
   buildMcpTools,
   closeMcpPool,
+  databaseToolCacheStore,
+  initMcpToolCache,
   maintainMcpConnections,
+  probeServerTools,
+  serverConfigHash,
   setElicitationBroker,
   userConnectionCount,
   type McpToolCallEvent,
@@ -653,5 +657,84 @@ describe('per-user MCP connections', () => {
       expect(prompt).toContain('in Pylon');
       expect(prompt).not.toContain('_elicitation');
     });
+  });
+});
+
+describe('the shared tool cache of per-user servers', () => {
+  const db = knexFactory({
+    client: 'better-sqlite3',
+    connection: { filename: ':memory:' },
+    useNullAsDefault: true,
+  });
+  const store = databaseToolCacheStore(db);
+  beforeAll(async () => {
+    await new ThreadService(db).runMigrations();
+  });
+  beforeEach(async () => {
+    await db('mcp_tool_cache').delete();
+  });
+  afterAll(async () => {
+    await db.destroy();
+  });
+
+  /** A restart: the pool is gone and the cache is read again. */
+  const restart = async (server: McpServerConfig) => {
+    await closeMcpPool();
+    await initMcpToolCache(store, [server], logger);
+  };
+  const names = (probe: { tools: Array<{ name: string }> }) =>
+    probe.tools.map(t => t.name);
+
+  it('keeps a listing for its config only, and never calls it checked', async () => {
+    await initMcpToolCache(store, [github], logger);
+    await buildMcpTools(
+      selection,
+      logger,
+      0,
+      asUser('user:default/ana', 'tok'),
+    );
+    // The listing is saved in the background.
+    for (let i = 0; i < 50 && !(await store.load()).has('github'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    expect((await store.load()).get('github')?.configHash).toBe(
+      serverConfigHash(github),
+    );
+
+    await restart(github);
+    const cached = await probeServerTools(github, logger);
+    expect(names(cached)).toEqual(['get_me', 'create_branch']);
+    expect(cached.reachable).toBe(false);
+    expect(cached.error).toMatch(/^Not checked: .* Connect GitHub/);
+
+    await restart({ ...github, url: 'https://other.example.com/' });
+    const moved = await probeServerTools(
+      { ...github, url: 'https://other.example.com/' },
+      logger,
+    );
+    expect(moved.tools).toEqual([]);
+    expect(moved.error).toMatch(/Connect GitHub to discover/);
+
+    // Rotating a header value is the same server.
+    expect(
+      serverConfigHash({ ...github, headers: { 'X-MCP-Toolsets': 'all' } }),
+    ).toBe(serverConfigHash(github));
+  });
+
+  it("picks up another replica's listing on the next maintenance cycle", async () => {
+    await initMcpToolCache(store, [github], logger);
+    expect((await probeServerTools(github, logger)).tools).toEqual([]);
+
+    // Another replica's user connects and saves the listing.
+    await store.save(
+      'github',
+      [{ name: 'from_replica_b', inputSchema: { type: 'object' } }],
+      serverConfigHash(github),
+    );
+    expect((await probeServerTools(github, logger)).tools).toEqual([]);
+    await maintainMcpConnections([github], logger);
+    expect(names(await probeServerTools(github, logger))).toEqual([
+      'from_replica_b',
+    ]);
   });
 });

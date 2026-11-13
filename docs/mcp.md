@@ -152,8 +152,11 @@ request, so the auth API's refresh keeps a long conversation working.
 Each user has their own connection to the server, reused while their token is
 the same, closed after 10 minutes idle, with at most 200 per backend replica.
 The tools are the same for everyone, so the first listing is kept in the
-database for the editor; before any user has connected after a change, the
-editor asks the admin to **Connect GitHub** to discover them. A per-user
+database for the editor and shared by every backend replica within two
+minutes. The editor marks that list as not checked and offers **Connect
+GitHub** to check it; before any user has connected, or after the server's
+`url`, `command`, or `args` change, it shows no tools and asks the admin to
+connect to discover them. A per-user
 `stdio` server takes the token in the variable named by
 `userCredentials.env` and runs one process per connected user; prefer an
 `http` server that takes the token in a header.

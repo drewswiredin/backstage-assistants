@@ -416,9 +416,15 @@ export async function probeServerTools(
         };
       }
     }
+    // Tools learned from another user's connection, possibly on another
+    // replica and before a server change: shown, but not checked.
     const tools = cachedServerToolsRaw(server.id);
     return tools.length > 0
-      ? { reachable: true, tools }
+      ? {
+          reachable: false,
+          error: `Not checked: these are the tools listed when a user last connected. Connect ${server.userCredentials.title} to check them.`,
+          tools,
+        }
       : {
           reachable: false,
           error: `Connect ${server.userCredentials.title} to discover this server's tools`,
@@ -484,12 +490,51 @@ function tokenHashOf(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-/** Persists the shared tool inventory of per-user servers across restarts. */
+/** A per-user server's cached listing, with the config that produced it. */
+export interface CachedToolListing {
+  tools: RawMcpTool[];
+  /** {@link serverConfigHash} of the server when listed; null on old rows. */
+  configHash: string | null;
+  /** When the listing was saved, in epoch milliseconds. */
+  updatedAt: number;
+}
+
+/**
+ * Persists the shared tool inventory of per-user servers across restarts and
+ * replicas.
+ */
 export interface McpToolCacheStore {
-  load(): Promise<Map<string, RawMcpTool[]>>;
-  save(serverId: string, tools: RawMcpTool[]): Promise<void>;
+  load(): Promise<Map<string, CachedToolListing>>;
+  save(
+    serverId: string,
+    tools: RawMcpTool[],
+    configHash: string,
+  ): Promise<void>;
 }
 let toolCacheStore: McpToolCacheStore | undefined;
+/** The per-user servers whose listings the store holds. */
+let cachedServers: McpServerConfig[] = [];
+/** Per server, the `updatedAt` of the stored listing last applied. */
+const appliedListings = new Map<string, number>();
+
+/**
+ * What identifies the server a config points at: its transport, URL,
+ * command, arguments, and working directory. Header and environment values
+ * are left out, so rotating a secret keeps the cache.
+ */
+export function serverConfigHash(server: McpServerConfig): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        server.transport,
+        server.url ?? null,
+        server.command ?? null,
+        server.args ?? [],
+        server.cwd ?? null,
+      ]),
+    )
+    .digest('hex');
+}
 
 /** {@link McpToolCacheStore} on the plugin database's `mcp_tool_cache` table. */
 export function databaseToolCacheStore(db: Knex): McpToolCacheStore {
@@ -498,16 +543,31 @@ export function databaseToolCacheStore(db: Knex): McpToolCacheStore {
       const rows = (await db('mcp_tool_cache').select(
         'server_id',
         'tools_json',
-      )) as Array<{ server_id: string; tools_json: string }>;
+        'config_hash',
+        'updated_at',
+      )) as Array<{
+        server_id: string;
+        tools_json: string;
+        config_hash: string | null;
+        updated_at: Date | string | number;
+      }>;
       return new Map(
-        rows.map(row => [row.server_id, JSON.parse(row.tools_json)]),
+        rows.map(row => [
+          row.server_id,
+          {
+            tools: JSON.parse(row.tools_json),
+            configHash: row.config_hash,
+            updatedAt: new Date(row.updated_at).getTime(),
+          },
+        ]),
       );
     },
-    async save(serverId, tools) {
+    async save(serverId, tools, configHash) {
       await db('mcp_tool_cache')
         .insert({
           server_id: serverId,
           tools_json: JSON.stringify(tools),
+          config_hash: configHash,
           updated_at: new Date(),
         })
         .onConflict('server_id')
@@ -518,7 +578,8 @@ export function databaseToolCacheStore(db: Knex): McpToolCacheStore {
 
 /**
  * Seed the per-user servers' tool inventories from `store` and keep saving
- * new listings to it. Called once at startup.
+ * new listings to it. Called once at startup; each maintenance cycle then
+ * re-reads the store, so a listing saved by another replica shows here too.
  */
 export async function initMcpToolCache(
   store: McpToolCacheStore,
@@ -526,16 +587,35 @@ export async function initMcpToolCache(
   logger: LoggerService,
 ): Promise<void> {
   toolCacheStore = store;
+  cachedServers = servers.filter(server => server.userCredentials);
+  await reloadToolCache(logger);
+}
+
+/**
+ * Apply each per-user server's stored listing when it is new since the last
+ * one applied and was made with the server's current config. A listing from
+ * an older config is ignored: the server shows no tools until a user
+ * connects again.
+ */
+async function reloadToolCache(logger: LoggerService): Promise<void> {
+  if (!toolCacheStore || cachedServers.length === 0) return;
   try {
-    const cached = await store.load();
-    for (const server of servers) {
-      const tools = server.userCredentials && cached.get(server.id);
-      if (tools) {
-        const entry = poolEntry(server.id);
-        entry.tools = tools;
-        entry.reachable = true;
-        entry.fetchedAt = Date.now();
+    const cached = await toolCacheStore.load();
+    for (const server of cachedServers) {
+      const listing = cached.get(server.id);
+      if (
+        !listing ||
+        listing.configHash !== serverConfigHash(server) ||
+        listing.updatedAt === appliedListings.get(server.id)
+      ) {
+        continue;
       }
+      appliedListings.set(server.id, listing.updatedAt);
+      const entry = poolEntry(server.id);
+      entry.tools = listing.tools;
+      entry.reachable = false;
+      entry.error = undefined;
+      entry.fetchedAt = listing.updatedAt;
     }
   } catch (error) {
     logger.warn(
@@ -561,7 +641,7 @@ function recordSharedTools(
   warnUnknownToolNames(server, tools, logger);
   if (changed && toolCacheStore) {
     toolCacheStore
-      .save(server.id, tools)
+      .save(server.id, tools, serverConfigHash(server))
       .catch(error =>
         logger.warn(
           `MCP tool cache for '${server.id}' could not be saved: ${
@@ -811,8 +891,11 @@ export async function maintainMcpConnections(
   logger: LoggerService,
 ): Promise<void> {
   // Per-user servers have no shared connection to keep: there is no token to
-  // probe them with. Their idle user connections are closed instead.
+  // probe them with. Their idle user connections are closed instead, and their
+  // shared inventory is re-read from the store another replica may have
+  // written.
   sweepUserPool();
+  await reloadToolCache(logger);
   const queue = servers.filter(server => !server.userCredentials);
   const worker = async (): Promise<void> => {
     for (let next = queue.shift(); next; next = queue.shift()) {
@@ -839,6 +922,9 @@ export async function closeMcpPool(): Promise<void> {
   pool.clear();
   userPool.clear();
   warnedServers.clear();
+  appliedListings.clear();
+  toolCacheStore = undefined;
+  cachedServers = [];
 }
 
 /**
