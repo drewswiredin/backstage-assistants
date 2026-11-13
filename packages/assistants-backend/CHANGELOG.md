@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.1 - 2026-11-13
+
+### Changed
+
+- The README is now a short description, install, and minimal configuration; the rest of the manual moved to the [docs site](https://drewswiredin.github.io/backstage-assistants/).
+
 ## 0.23.0 - 2026-10-26
 
 ### Added
