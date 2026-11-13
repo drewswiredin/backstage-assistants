@@ -122,7 +122,7 @@ export const portalNavigateTool: AssistantClientTool<
   name: PORTAL_NAVIGATE,
   title: 'Open a page',
   description:
-    'Open a page in this portal for the user. `path` is a portal path starting with `/`, e.g. `/catalog/default/component/<name>`, `/docs/default/component/<name>`, or `/create`; call describe_portal to find pages and their paths. Use it when the user asks to see or go to something, not for reading data (use the read tools). The conversation continues in the side panel next to the page.',
+    'Open a page in this portal for the user. `path` is a path in this portal starting with `/`, with any query and hash. Paths differ between portals (the catalog may live at `/` or at `/catalog`), so take the path from describe_portal, from a link you were given, or from the current page; never guess one. Use it when the user asks to see or go to something, not for reading data (use the read tools). The page changes only after this call returns, so a read_current_page in the same step still sees the old page: read the new page in a later step if you need to. The conversation continues in the side panel next to the page.',
   inputSchema: {
     type: 'object',
     properties: {

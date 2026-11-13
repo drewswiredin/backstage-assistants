@@ -8,7 +8,14 @@ import { openPanel, registerPanel } from '../panel/panelControl';
 
 let nextId = 0;
 /** A `/chat` body whose last step settled a `portal__navigate` call. */
-function chatBody(path: string, toolCallId = `call-${++nextId}`) {
+function chatBody(
+  path: string,
+  toolCallId = `call-${++nextId}`,
+): {
+  threadId: string;
+  assistantId: string;
+  messages: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+} {
   return {
     threadId: 'thread-1',
     assistantId: 'ops',
@@ -87,12 +94,15 @@ describe('navigatingOnTurn', () => {
     await fetch('/chat', post(later));
     // A later step of the same message settled another tool.
     const stepped = chatBody('/docs', 'call-earlier-step');
-    stepped.messages[1].parts.push({ type: 'step-start' }, {
-      type: 'tool-read_current_page',
-      toolCallId: 'r1',
-      state: 'output-available',
-      output: {},
-    } as never);
+    stepped.messages[1].parts.push(
+      { type: 'step-start' },
+      {
+        type: 'tool-read_current_page',
+        toolCallId: 'r1',
+        state: 'output-available',
+        output: {},
+      },
+    );
     await fetch('/chat', post(stepped));
     expect(onNavigate).toHaveBeenCalledTimes(1);
   });
@@ -104,7 +114,7 @@ describe('navigatingOnTurn', () => {
       onNavigate,
     )('/chat', post(chatBody('/docs')));
     const failed = chatBody('/docs');
-    (failed.messages[1].parts[1] as { output: unknown }).output = {
+    failed.messages[1].parts[1].output = {
       navigated: false,
       error: 'path must stay in this portal',
     };
