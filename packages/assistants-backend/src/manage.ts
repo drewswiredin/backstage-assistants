@@ -8,7 +8,12 @@ import {
   BackstageCredentials,
 } from '@backstage/backend-plugin-api';
 import { ActionsService } from '@backstage/backend-plugin-api/alpha';
-import { InputError, NotAllowedError, NotFoundError } from '@backstage/errors';
+import {
+  ConflictError,
+  InputError,
+  NotAllowedError,
+  NotFoundError,
+} from '@backstage/errors';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import type {
   AssistantDefinition,
@@ -20,7 +25,7 @@ import {
   USER_CREDENTIALS_HEADER,
 } from '@drewswiredin/backstage-plugin-assistants-common';
 import type { AssistantsConfig, McpServerConfig } from './config';
-import type { AssistantStore } from './assistants';
+import { AssistantOrderError, type AssistantStore } from './assistants';
 import {
   mcpToolName,
   probeServerTools,
@@ -378,6 +383,31 @@ export function createManageRouter(
         assistants,
         defaultAssistant: assistants.find(a => a.isDefault)?.id,
       });
+    })().catch(next);
+  });
+
+  // PUT /manage/assistants/order — set the list order. `ids` names every
+  // assistant exactly once; the default assistant is listed first wherever
+  // it sits. Registered before `/:id` so `order` is never read as an id.
+  router.put('/manage/assistants/order', (req, res, next) => {
+    (async () => {
+      const { user } = await requireAdmin(req);
+      const ids = (req.body as { ids?: unknown } | undefined)?.ids;
+      if (
+        !Array.isArray(ids) ||
+        !ids.every((id): id is string => typeof id === 'string')
+      ) {
+        throw new InputError('Body must be { ids: string[] }');
+      }
+      try {
+        await assistantStore.reorder(ids);
+      } catch (e) {
+        if (e instanceof AssistantOrderError)
+          throw new ConflictError(e.message);
+        throw e;
+      }
+      logger.info('assistants reordered', { by: user.userEntityRef });
+      res.json({ assistants: await assistantStore.listAll() });
     })().catch(next);
   });
 

@@ -39,6 +39,8 @@ import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditIcon from '@material-ui/icons/Edit';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
+import ArrowDropUpIcon from '@material-ui/icons/ArrowDropUp';
+import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
 import Chip from '@material-ui/core/Chip';
 import {
   AssistantDefinition,
@@ -64,6 +66,7 @@ import {
 } from '../../api/userCredentials';
 import { isOAuthSpec, signInWithPopup } from '../../api/mcpOAuth';
 import { SuggestionsEditor } from './SuggestionsEditor';
+import { notifyAssistantsChanged } from './assistantsChanged';
 import { PlatformInstructions } from './PlatformInstructions';
 import {
   blankDraft,
@@ -132,6 +135,19 @@ const useStyles = makeStyles(theme => ({
   },
   railItem: {
     borderRadius: theme.shape.borderRadius,
+    // The move arrows show on hover, on keyboard focus, and on the selected row.
+    '&:hover $railMove, &:focus-within $railMove, &.Mui-selected $railMove': {
+      visibility: 'visible',
+    },
+  },
+  railMove: {
+    visibility: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    marginLeft: theme.spacing(0.5),
+    '& button': {
+      padding: 0,
+    },
   },
   railItemDirty: {
     fontStyle: 'italic',
@@ -526,12 +542,6 @@ export function AssistantAdminDialog({
     [capabilities, status.models],
   );
 
-  /** Sort a list by title (case-insensitive), stable on ties. */
-  const sortByTitle = (defs: AssistantDefinition[]) =>
-    [...defs].sort((a, b) =>
-      a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }),
-    );
-
   // Select an assistant row into the editable draft (no dirty-check here; the
   // caller gates that). selectedId '' selects an unsaved draft (src provided).
   const selectInto = useCallback(
@@ -589,11 +599,11 @@ export function AssistantAdminDialog({
         if (!active) {
           return;
         }
-        const sorted = sortByTitle(defs);
-        setList(sorted);
+        // The server's list order: the default first, then the admin's order.
+        setList(defs);
         setCapabilities(caps);
         // Initial selection = first (per design); empty list → empty state.
-        const first = sorted[0];
+        const first = defs[0];
         selectInto(first?.id, first);
       })
       .catch(err => {
@@ -714,10 +724,12 @@ export function AssistantAdminDialog({
         ? await api.updateAssistant(selectedId, draft)
         : await api.createAssistant(draft);
       // Refresh the list from the persisted row, keep the saved row selected.
-      setList(prev => {
-        const without = prev.filter(a => a.id !== saved.id);
-        return sortByTitle([...without, saved]);
-      });
+      // A new assistant goes to the end, as the server lists it.
+      setList(prev =>
+        prev.some(a => a.id === saved.id)
+          ? prev.map(a => (a.id === saved.id ? saved : a))
+          : [...prev, saved],
+      );
       selectInto(saved.id, saved);
       alertApi.post({
         message: `Saved “${saved.title}”.`,
@@ -725,6 +737,7 @@ export function AssistantAdminDialog({
         display: 'transient',
       });
       onChanged?.();
+      notifyAssistantsChanged();
     } catch (err) {
       // Surface server 400 delta-validation messages inline; the api client
       // throws the server's message verbatim for 400s.
@@ -743,7 +756,7 @@ export function AssistantAdminDialog({
     setPendingDelete(null);
     try {
       await api.deleteAssistant(target.id);
-      const remaining = sortByTitle(list.filter(a => a.id !== target.id));
+      const remaining = list.filter(a => a.id !== target.id);
       setList(remaining);
       // Move selection to the first remaining (or empty state).
       const next = remaining[0];
@@ -754,6 +767,7 @@ export function AssistantAdminDialog({
         display: 'transient',
       });
       onChanged?.();
+      notifyAssistantsChanged();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to delete the assistant.';
@@ -769,13 +783,13 @@ export function AssistantAdminDialog({
     setPendingDefault(null);
     try {
       const saved = await api.setDefaultAssistant(target.id);
-      setList(prev =>
-        sortByTitle(
-          prev.map(a =>
-            a.id === saved.id ? saved : { ...a, isDefault: undefined },
-          ),
-        ),
-      );
+      // The default is listed first; the rest keep their order.
+      setList(prev => [
+        saved,
+        ...prev
+          .filter(a => a.id !== saved.id)
+          .map(a => ({ ...a, isDefault: undefined })),
+      ]);
       if (selectedId === saved.id) {
         selectInto(saved.id, saved);
       }
@@ -785,11 +799,41 @@ export function AssistantAdminDialog({
         display: 'transient',
       });
       onChanged?.();
+      notifyAssistantsChanged();
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
           : 'Failed to set the default assistant.';
+      alertApi.post({ message, severity: 'error', display: 'transient' });
+    }
+  };
+
+  // ---- Reorder ----
+
+  // Move a row one place up or down. The default assistant stays first, so
+  // nothing moves above it. Applied at once (not part of the draft); on an
+  // error the list goes back and the reason shows.
+  const handleMove = async (id: string, by: -1 | 1) => {
+    const from = list.findIndex(a => a.id === id);
+    const to = from + by;
+    const floor = list[0]?.isDefault ? 1 : 0;
+    if (from < floor || to < floor || to >= list.length) return;
+    const previous = list;
+    const next = [...list];
+    [next[from], next[to]] = [next[to], next[from]];
+    setList(next);
+    try {
+      const ordered = await api.reorderAssistants(next.map(a => a.id));
+      // Keep the server's rows only for order; the open editor isn't touched.
+      const byId = new Map(next.map(a => [a.id, a]));
+      setList(ordered.map(a => byId.get(a.id) ?? a));
+      onChanged?.();
+      notifyAssistantsChanged();
+    } catch (err) {
+      setList(previous);
+      const message =
+        err instanceof Error ? err.message : 'Failed to reorder assistants.';
       alertApi.post({ message, severity: 'error', display: 'transient' });
     }
   };
@@ -1082,8 +1126,11 @@ export function AssistantAdminDialog({
                 />
               </ListItem>
             )}
-            {list.map(a => {
+            {list.map((a, index) => {
               const isSelected = a.id === selectedId;
+              const movable = !a.isDefault;
+              const canUp = movable && index > 0 && !list[index - 1].isDefault;
+              const canDown = movable && index < list.length - 1;
               return (
                 <ListItem
                   button
@@ -1102,12 +1149,40 @@ export function AssistantAdminDialog({
                     primaryTypographyProps={{ noWrap: true }}
                   />
                   {a.isDefault && (
-                    <Chip
-                      size="small"
-                      label="Default"
-                      icon={<StarIcon />}
-                      variant="outlined"
-                    />
+                    <Tooltip title="The default assistant is always listed first">
+                      <Chip
+                        size="small"
+                        label="Default"
+                        icon={<StarIcon />}
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  )}
+                  {movable && (
+                    <span className={classes.railMove}>
+                      <IconButton
+                        size="small"
+                        aria-label={`Move ${a.title} up`}
+                        disabled={!canUp}
+                        onClick={e => {
+                          e.stopPropagation();
+                          void handleMove(a.id, -1);
+                        }}
+                      >
+                        <ArrowDropUpIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        aria-label={`Move ${a.title} down`}
+                        disabled={!canDown}
+                        onClick={e => {
+                          e.stopPropagation();
+                          void handleMove(a.id, 1);
+                        }}
+                      >
+                        <ArrowDropDownIcon fontSize="small" />
+                      </IconButton>
+                    </span>
                   )}
                 </ListItem>
               );

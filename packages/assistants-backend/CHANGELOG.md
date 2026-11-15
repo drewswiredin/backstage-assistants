@@ -3,6 +3,17 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `PUT /manage/assistants/order` sets the order assistants are listed in. The body names every assistant exactly once, or the request answers 409.
+- Migration adding `assistants.sort_order`; existing assistants are numbered in title order, the order the editor showed before.
+
+### Changed
+
+- `/status` and `GET /manage/assistants` list assistants in that order, the default first. A new assistant goes to the end.
+
 ## 0.25.0 - 2026-11-13
 
 ### Changed

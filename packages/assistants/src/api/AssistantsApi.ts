@@ -189,6 +189,14 @@ export interface AssistantsApi {
    * Opens it to every signed-in user; returns the persisted definition.
    */
   setDefaultAssistant(id: AssistantId): Promise<AssistantDefinition>;
+
+  /**
+   * Set the order assistants are listed in (`PUT /manage/assistants/order`).
+   * `ids` names every assistant exactly once; the default assistant is listed
+   * first wherever it sits. Returns the full list in its new order. Rejects
+   * when the list changed since it was loaded.
+   */
+  reorderAssistants(ids: AssistantId[]): Promise<AssistantDefinition[]>;
 }
 
 /**
@@ -400,6 +408,14 @@ export class AssistantsClient implements AssistantsApi {
       `/manage/assistants/${encodeURIComponent(id)}/default`,
       { method: 'PUT' },
     );
+  }
+
+  async reorderAssistants(ids: AssistantId[]): Promise<AssistantDefinition[]> {
+    const body = await this.requestJson<{ assistants?: AssistantDefinition[] }>(
+      '/manage/assistants/order',
+      { method: 'PUT', body: JSON.stringify({ ids }) },
+    );
+    return body.assistants ?? [];
   }
 
   private async toError(response: Response): Promise<Error> {

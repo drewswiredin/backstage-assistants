@@ -850,18 +850,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // The accessible definitions for this caller (snapshot read; sync). Each
     // assistant's unified `allowedTools` is split into bare action ids + per-
     // server MCP tool selections so the tool projection below mirrors `/chat`.
-    // The default assistant first (it is open to everyone, so always here),
-    // the rest in snapshot order.
+    // In list order: the default assistant first (it is open to everyone, so
+    // always here), the rest in the order an admin set.
     const defaultAssistant = assistantStore.getDefaultId();
     const caller = await accessCaller(user);
     const accessible = assistantStore
       .list()
       .filter(assistant => isAssistantAccessible(assistant, caller))
-      .sort((a, b) => {
-        if (a.id === defaultAssistant) return -1;
-        if (b.id === defaultAssistant) return 1;
-        return 0;
-      })
       .map(assistant => ({
         assistant,
         split: splitAllowedTools(assistant.allowedTools, assistants.mcpServers),

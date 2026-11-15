@@ -109,6 +109,7 @@ every conversation route is scoped to the owning user.
 | `PUT /manage/assistants/:id`               | `assistant.manage`                 | Replace an assistant definition.                                                                              |
 | `DELETE /manage/assistants/:id`            | `assistant.manage`                 | Delete an assistant (not the default).                                                                        |
 | `PUT /manage/assistants/:id/default`       | `assistant.manage`                 | Make an assistant the default; opens it to every signed-in user.                                              |
+| `PUT /manage/assistants/order`             | `assistant.manage`                 | Set the list order: `{ ids }` naming every assistant once (409 otherwise). The default is always first.       |
 
 ## Admin API
 

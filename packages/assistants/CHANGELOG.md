@@ -3,6 +3,22 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Admins set the order assistants are listed in: up and down arrows on a row in the editor move it, saved at once. Users see the assistants they can use in that order on the page, in the panel, and in the composer pickers; the default assistant is always first.
+- `AssistantsApi.reorderAssistants(ids)`.
+
+### Changed
+
+- The Assistants page opens on the assistant last used there instead of the first listed, landing on its most recent conversation. `?assistant=<id>` still wins.
+- The editor lists assistants in list order instead of by title; a new assistant goes to the end.
+
+### Fixed
+
+- The panel's edge and its working and unread glow now take the colour of an assistant created or recoloured after the app loaded. The panel loaded the assistant list once per app load, so it fell back to the default colour until a full reload; it now reloads the list after each change in the editor, and when the picked assistant isn't in it.
+
 ## 0.26.0 - 2026-11-13
 
 ### Changed

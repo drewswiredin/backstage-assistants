@@ -62,6 +62,11 @@ const DEFAULT_ALLOWED_TOOLS = [
  */
 export type AuditRef = string;
 
+/** A reorder that doesn't name every assistant exactly once. */
+export class AssistantOrderError extends Error {
+  name = 'AssistantOrderError';
+}
+
 export class AssistantStore {
   /** RAW definitions by id — the synchronously-read snapshot. */
   private snapshot = new Map<string, AssistantDefinition>();
@@ -108,8 +113,8 @@ export class AssistantStore {
   }
 
   /**
-   * All raw definitions. SYNCHRONOUS (snapshot read) + lazy stale refresh, like
-   * {@link get}.
+   * All raw definitions in list order (see {@link listAll}). SYNCHRONOUS
+   * (snapshot read) + lazy stale refresh, like {@link get}.
    */
   list(): AssistantDefinition[] {
     this.maybeRefresh();
@@ -192,16 +197,55 @@ export class AssistantStore {
   // ---- Async CRUD (admin /manage) ------------------------------------------
 
   /**
-   * All full definitions (with audit columns), title-sorted — for the admin
+   * All full definitions (with audit columns) in list order — for the admin
    * editor. Reads the DB directly (authoritative), not the snapshot.
+   *
+   * List order: the default assistant first, then the order an admin set
+   * ({@link reorder}), title breaking ties.
    */
   async listAll(): Promise<AssistantDefinition[]> {
-    const rows = await this.db('assistants').orderBy('title', 'asc');
+    const rows = await this.orderedRows(this.db);
     const defaultId = await this.readDefaultId();
-    return rows
-      .map(toDefinition)
-      .filter((d): d is AssistantDefinition => d !== null)
-      .map(d => (d.id === defaultId ? { ...d, isDefault: true } : d));
+    return withDefaultFirst(
+      rows
+        .map(toDefinition)
+        .filter((d): d is AssistantDefinition => d !== null),
+      defaultId,
+    ).map(d => (d.id === defaultId ? { ...d, isDefault: true } : d));
+  }
+
+  /**
+   * Set the list order. `ids` must name every assistant exactly once, so an
+   * editor working from a stale list gets an error rather than an order it
+   * did not choose. The default assistant is listed first wherever it sits.
+   */
+  async reorder(ids: string[]): Promise<void> {
+    await this.db.transaction(async trx => {
+      const existing: string[] = (await trx('assistants').select('id')).map(
+        (r: { id: string }) => r.id,
+      );
+      const given = new Set(ids);
+      if (
+        given.size !== ids.length ||
+        given.size !== existing.length ||
+        existing.some(id => !given.has(id))
+      ) {
+        throw new AssistantOrderError(
+          'The order must list every assistant exactly once. The list may have changed; reload it and try again.',
+        );
+      }
+      for (const [index, id] of ids.entries()) {
+        await trx('assistants').where({ id }).update({ sort_order: index });
+      }
+    });
+    await this.refresh();
+  }
+
+  /** Rows ordered by position (unpositioned last), then title. */
+  private orderedRows(db: Knex) {
+    return db('assistants').orderByRaw(
+      'CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END, sort_order ASC, title ASC',
+    );
   }
 
   /** A single full definition by id (authoritative DB read), or null. */
@@ -302,7 +346,14 @@ export class AssistantStore {
       updated_by: by,
       updated_at: now,
     };
-    await this.db('assistants').insert(toRow(full));
+    // A new assistant goes to the end of the list.
+    const last = await this.db('assistants').max({ max: 'sort_order' }).first();
+    const position =
+      last?.max === null || last?.max === undefined ? 0 : Number(last.max) + 1;
+    await this.db('assistants').insert({
+      ...toRow(full),
+      sort_order: position,
+    });
     await this.refresh();
     return full;
   }
@@ -390,7 +441,7 @@ export class AssistantStore {
     // race or partial failure never double-seeds. The seeded assistant is the
     // default from day one. All writes share a txn.
     await this.db.transaction(async trx => {
-      await trx('assistants').insert(toRow(def));
+      await trx('assistants').insert({ ...toRow(def), sort_order: 0 });
       await trx('assistants_meta').insert({
         key: SEED_MARKER_KEY,
         value: now,
@@ -411,22 +462,26 @@ export class AssistantStore {
    * fail to parse are skipped, never throwing.
    */
   async refresh(): Promise<void> {
-    const rows = await this.db('assistants').select(
+    const rows = await this.orderedRows(this.db).select(
       'id',
+      'title',
       'definition_json',
       'created_by',
       'created_at',
       'updated_by',
       'updated_at',
     );
-    const next = new Map<string, AssistantDefinition>();
-    for (const row of rows) {
-      const def = toDefinition(row);
-      if (def) {
-        next.set(def.id, def);
-      }
-    }
     const defaultId = await this.readDefaultId();
+    // The snapshot keeps list order (a Map iterates in insertion order).
+    const next = new Map<string, AssistantDefinition>();
+    for (const def of withDefaultFirst(
+      rows
+        .map(toDefinition)
+        .filter((d): d is AssistantDefinition => d !== null),
+      defaultId,
+    )) {
+      next.set(def.id, def);
+    }
     this.snapshot = next;
     // A dangling designation (row gone) counts as none.
     this.defaultId = defaultId && next.has(defaultId) ? defaultId : undefined;
@@ -462,6 +517,15 @@ export class AssistantStore {
         this.refreshing = null;
       });
   }
+}
+
+/** Moves the default assistant to the front, keeping the rest in order. */
+function withDefaultFirst(
+  defs: AssistantDefinition[],
+  defaultId: string | undefined,
+): AssistantDefinition[] {
+  const first = defs.find(d => d.id === defaultId);
+  return first ? [first, ...defs.filter(d => d !== first)] : defs;
 }
 
 // ---------------------------------------------------------------------------

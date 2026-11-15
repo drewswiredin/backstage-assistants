@@ -94,6 +94,7 @@ export interface AssistantsApi {
     request: ApprovalPreviewRequest,
     headers?: Record<string, string>,
   ): Promise<ApprovalPreviewResponse>;
+  reorderAssistants(ids: AssistantId[]): Promise<AssistantDefinition[]>;
   requestJson<T = void>(path: string, init?: RequestInit): Promise<T>;
   respondElicitation(
     id: string,

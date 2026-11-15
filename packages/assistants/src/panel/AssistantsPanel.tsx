@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import useAsync from 'react-use/lib/useAsync';
+import useAsyncRetry from 'react-use/lib/useAsyncRetry';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usePermission } from '@backstage/plugin-permission-react';
@@ -56,6 +56,7 @@ import {
   savePanelThread,
   savePanelWidth,
 } from './panelStorage';
+import { onAssistantsChanged } from '../collapsible/admin/assistantsChanged';
 
 // The conversation surface and the vendored assistant-ui CSS load on first
 // open, not with the app.
@@ -297,8 +298,9 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   const threadRoute = useRouteRef(threadRouteRef);
 
   const canUse = usePermission({ permission: assistantUsePermission });
-  // One `/status` per app load, only to know whether to show the button.
-  const status = useAsync(
+  // `/status` once per app load, to know whether to show the button and to
+  // colour the strip; again after the editor changes the assistants.
+  const status = useAsyncRetry(
     async () => (canUse.allowed ? api.getStatus() : undefined),
     [api, canUse.allowed],
   );
@@ -329,7 +331,24 @@ export function AssistantsPanel({ children }: { children: ReactNode }) {
   // A first message (with its model and effort) handed in by a page
   // component, the homepage composer, sent once the fresh surface is ready.
   const [handoff, setHandoff] = useState<PanelHandoff | undefined>();
+  const retryStatus = status.retry;
+  useEffect(() => onAssistantsChanged(retryStatus), [retryStatus]);
   const glowAssistant = pickedAssistant ?? status.value?.defaultAssistant;
+  // A pick the loaded list doesn't have (made in another tab, or created
+  // since) means the list is out of date: load it again, once per pick.
+  const refetchedFor = useRef<string | undefined>();
+  useEffect(() => {
+    if (
+      !status.loading &&
+      status.value &&
+      glowAssistant &&
+      refetchedFor.current !== glowAssistant &&
+      !status.value.assistants.some(a => a.id === glowAssistant)
+    ) {
+      refetchedFor.current = glowAssistant;
+      retryStatus();
+    }
+  }, [status.loading, status.value, glowAssistant, retryStatus]);
   const glowColor = resolveAssistantColor(
     status.value?.assistants.find(a => a.id === glowAssistant)?.color,
     theme.palette.type,

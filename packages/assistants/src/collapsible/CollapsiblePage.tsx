@@ -91,6 +91,12 @@ import {
  */
 const ignoreSaveError = () => {};
 
+import {
+  initialPageAssistant,
+  loadPageAssistant,
+  savePageAssistant,
+} from './pageAssistant';
+
 const SIDEPANE_COLLAPSED_KEY = 'ai-chat-sidepane-collapsed';
 
 function loadSidePaneCollapsed() {
@@ -327,10 +333,13 @@ export function CollapsiblePage() {
     );
   }
   // The active assistant is UI state, NOT a remount key: one runtime carries
-  // every conversation across all assistants (see ChatRuntime). `?assistant=`
-  // only seeds the initially-focused assistant.
-  const initialAssistantId =
-    assistants.find(a => a.id === requestedAssistant)?.id ?? assistants[0].id;
+  // every conversation across all assistants (see ChatRuntime). `?assistant=`,
+  // else the one last open here, only seeds the initially-focused assistant.
+  const initialAssistantId = initialPageAssistant(
+    assistants,
+    requestedAssistant,
+    loadPageAssistant(),
+  );
   return (
     <ClientToolsProvider
       tools={clientTools}
@@ -557,6 +566,7 @@ function ChatChrome({
     (id: string) => {
       activeAssistantIdRef.current = id;
       setActiveAssistantIdState(id);
+      savePageAssistant(id);
     },
     [activeAssistantIdRef],
   );

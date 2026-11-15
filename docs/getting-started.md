@@ -52,8 +52,8 @@ export default createApp({
 });
 ```
 
-The page mounts at `/assistants`; `?assistant=<id>` opens it on a given
-assistant, and `/assistants/threads/<id>` opens one conversation. In an app
+The page mounts at `/assistants` and opens on the assistant last used there;
+`?assistant=<id>` opens it on a given assistant, and `/assistants/threads/<id>` opens one conversation. In an app
 with `app.packages: all`, the plugin is discovered without the `features`
 entry.
 
