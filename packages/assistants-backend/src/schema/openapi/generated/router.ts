@@ -267,6 +267,10 @@ export const spec = {
             "type": "boolean",
             "description": "True when the browser renders an MCP server's questions as forms (MCP elicitation). Without it a server's question is cancelled."
           },
+          "credentialRefresh": {
+            "type": "boolean",
+            "description": "True when the browser answers requests for a new token: a per-user MCP server that refuses the token sent with the turn then gets a new one mid-call instead of failing."
+          },
           "page": {
             "type": "object",
             "description": "The portal page the user is viewing, sent by a surface beside the page (the panel). Added to this turn's instructions; never persisted.",

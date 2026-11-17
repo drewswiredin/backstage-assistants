@@ -144,10 +144,22 @@ or an OAuth app's tokens, as the server documents.
 
 What users see: a **Connect GitHub** chip next to the model picker until they
 have signed in; it opens the provider's sign-in. Until then the server's tools
-are not offered, and the model is told to ask the user to connect. A token
-the server rejects (an expired sign-in, no access) reaches the model with the
-server's message, so it can say why. Tokens are asked for silently on every
-request, so the auth API's refresh keeps a long conversation working.
+are not offered, and the model is told to ask the user to connect. Tokens are
+asked for silently on every request, so the auth API's refresh keeps a long
+conversation working. A call the server refuses for lack of access reaches
+the model with the server's message, so it can say why.
+
+A provider can revoke a token before it expires. GitHub revokes a GitHub
+App's user token whenever the sign-in is refreshed, and Backstage refreshes
+it on every page load, so loading the portal in a second tab revokes the
+token the first tab holds. When the server answers 401, the call asks the
+browser for a new token, the browser gets one from the sign-in's refresh
+endpoint, and the call runs once more with it; the user sees the call take a
+moment longer. The new token is used for the rest of that tab's turns. When
+there is no new token, or the server refuses that too, the call's result says
+the sign-in expired and its row offers **Reconnect GitHub**, which signs out
+of the provider and opens its sign-in. The refresh revokes the token other
+tabs hold, as a page load does; each recovers the same way on its next call.
 
 Each user has their own connection to the server, reused while their token is
 the same, closed after 10 minutes idle, with at most 200 per backend replica.

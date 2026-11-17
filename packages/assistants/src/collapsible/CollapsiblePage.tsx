@@ -486,6 +486,8 @@ function ChatRuntime({
         heldClientToolRunner,
         getCredentialsHeader: assistantId =>
           toolGuardsRef.current.credentialsHeader(assistantId),
+        answerCredentialsRequest: request =>
+          toolGuardsRef.current.answerCredentialsRequest(request),
         onNavigate: request => onNavigateRef.current(request),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

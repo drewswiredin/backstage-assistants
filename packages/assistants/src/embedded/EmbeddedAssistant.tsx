@@ -538,6 +538,8 @@ function EmbeddedRuntime({
         heldClientToolRunner,
         getCredentialsHeader: assistantId =>
           toolGuardsRef.current.credentialsHeader(assistantId),
+        answerCredentialsRequest: request =>
+          toolGuardsRef.current.answerCredentialsRequest(request),
         getPageContext: () => pageContextRef.current,
         onNavigate: request => onNavigateRef.current(request),
       }),

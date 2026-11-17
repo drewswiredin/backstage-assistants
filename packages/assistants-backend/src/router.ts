@@ -41,6 +41,7 @@ import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import {
   AssistantsConfig,
   effectiveApprovalSet,
+  isOAuthServer,
   isPolicyAccessible,
   type McpServerConfig,
 } from './config';
@@ -54,6 +55,7 @@ import {
   buildMcpTools,
   cachedServerToolsRaw,
   callServerTool,
+  CredentialsRejectedError,
   mcpToolName,
   splitAllowedTools,
   summarizeMcpTools,
@@ -62,6 +64,7 @@ import {
 } from './mcp';
 import type { McpOAuthService } from './mcpOAuth';
 import type { ElicitationBroker } from './mcpElicitation';
+import type { CredentialRequestBroker } from './credentialRequests';
 import {
   buildLoopTools,
   ToolCallCorrelator,
@@ -69,7 +72,11 @@ import {
   type HeldCallBroker,
 } from './heldCalls';
 import { createMcpOAuthRouter } from './mcpOAuthRouter';
-import { mcpCallerFor, userCredentialSpec } from './userCredentials';
+import {
+  mcpCallerFor,
+  readUserCredentials,
+  userCredentialSpec,
+} from './userCredentials';
 import {
   argumentRuleViolation,
   auditTarget,
@@ -141,6 +148,8 @@ export interface RouterOptions {
    * tools that need the user.
    */
   heldCalls?: HeldCallBroker;
+  /** Asks the browser for a new token when a per-user server refuses one. */
+  credentialRequests?: CredentialRequestBroker;
 }
 
 /**
@@ -473,6 +482,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     oauth,
     elicitations,
     heldCalls,
+    credentialRequests,
     groupAncestry,
   } = options;
 
@@ -725,6 +735,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         assistants.mcpServers,
         oauth,
       );
+      // A per-user server that refuses the browser's token: the response
+      // says so, and the browser asks again with a new one.
+      let credentialsRejected = false;
+      const refused = (message: string) => {
+        if (
+          server.userCredentials &&
+          !isOAuthServer(server) &&
+          /\b401\b/.test(message)
+        ) {
+          credentialsRejected = true;
+        }
+      };
       const files = await Promise.all(
         calls.map(
           async ({
@@ -742,6 +764,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
               const text = toolResultText(result.content);
               if (result.isError) {
                 const message = text ?? 'the read tool returned an error';
+                refused(message);
                 return isNotFoundError(message)
                   ? { path, exists: false }
                   : { path, exists: true, error: message.slice(0, 500) };
@@ -752,6 +775,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
+              if (error instanceof CredentialsRejectedError && error.serverId) {
+                credentialsRejected = true;
+              }
               return isNotFoundError(message)
                 ? { path, exists: false }
                 : { path, exists: true, error: message.slice(0, 500) };
@@ -759,7 +785,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           },
         ),
       );
-      const response: ApprovalPreviewResponse = { files };
+      const response: ApprovalPreviewResponse = {
+        files,
+        ...(credentialsRejected ? { credentialsRejected: server.id } : {}),
+      };
       res.json(response);
     })().catch(next);
   });
@@ -794,6 +823,68 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       });
     })().catch(next);
   });
+
+  // The browser's answer to a request for a new token, for the call waiting
+  // on it on whichever replica runs the turn: first the claim (one tab
+  // answers), then the token, in the credentials header like every token.
+  const credentialRequestErrors: Record<number, string> = {
+    403: 'This request belongs to another user',
+    404: 'No such request',
+    410: 'This request was already answered or has expired',
+  };
+  const answerCredentialRequest = (
+    answer: (
+      broker: CredentialRequestBroker,
+      userEntityRef: string,
+      req: express.Request,
+    ) => Promise<{ status: number }>,
+  ): express.RequestHandler => {
+    return (req, res, next) => {
+      (async () => {
+        const credentials = await httpAuth.credentials(req, {
+          allow: ['user'],
+        });
+        await requireUse(credentials);
+        if (!credentialRequests) throw new NotFoundError('No request is open');
+        const user = await userInfo.getUserInfo(credentials);
+        const { status } = await answer(
+          credentialRequests,
+          user.userEntityRef,
+          req,
+        );
+        if (status === 204) {
+          res.status(204).end();
+          return;
+        }
+        res.status(status).json({
+          error: {
+            name: 'CredentialRequestError',
+            message: credentialRequestErrors[status],
+          },
+        });
+      })().catch(next);
+    };
+  };
+  streamRouter.post(
+    '/credential-requests/:id/claim',
+    answerCredentialRequest((broker, userEntityRef, req) =>
+      broker.claim(req.params.id, userEntityRef),
+    ),
+  );
+  streamRouter.post(
+    '/credential-requests/:id',
+    answerCredentialRequest((broker, userEntityRef, req) => {
+      const sent = readUserCredentials(
+        req.headers[USER_CREDENTIALS_HEADER],
+        assistants.mcpServers,
+      );
+      return broker.respond(
+        req.params.id,
+        userEntityRef,
+        serverId => sent[serverId],
+      );
+    }),
+  );
 
   // The browser's answer to a call held inside a provider's own tool loop:
   // an approval decision, or a client tool's result.
@@ -945,6 +1036,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       reasoningLevel,
       page,
       elicitation,
+      credentialRefresh,
     } = req.body as {
       assistantId: string;
       modelId: string;
@@ -952,6 +1044,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       reasoningLevel?: ReasoningLevel;
       page?: PageContext;
       elicitation?: boolean;
+      credentialRefresh?: boolean;
     };
     let messages = req.body.messages as unknown[];
 
@@ -1077,6 +1170,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       assistantId,
       ...(threadId ? { threadId } : {}),
       renders: elicitation === true,
+      refreshesCredentials: credentialRefresh === true,
       elicitations: {},
     };
     const { tools: mcpTools, unavailable: unavailableServers } =

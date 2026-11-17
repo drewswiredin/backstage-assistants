@@ -12,6 +12,7 @@ import type {
   ApprovalPreview,
   ApprovalPreviewResponse,
   AssistantId,
+  CredentialsRequest,
   ElicitationResponseRequest,
   McpOAuthConnection,
   StatusResponse,
@@ -21,8 +22,10 @@ import type { AssistantsApi } from '../api/AssistantsApi';
 import { isOAuthSpec, signInWithPopup } from '../api/mcpOAuth';
 import {
   credentialsHeader,
+  forceUserToken,
   getUserToken,
   getUserTokens,
+  reconnectUserToken,
 } from '../api/userCredentials';
 
 /**
@@ -66,6 +69,15 @@ export interface ToolGuardsValue {
     id: string,
     answer: ElicitationResponseRequest,
   ) => Promise<void>;
+  /**
+   * Answer the backend's request for a new token for a per-user server that
+   * refused the one sent with the turn.
+   */
+  answerCredentialsRequest: (request: CredentialsRequest) => Promise<void>;
+  /** The sign-in of a per-user server, by server id. */
+  credentialSpec: (server: string) => UserCredentialSpec | undefined;
+  /** Sign in again to a server whose sign-in a new token didn't mend. */
+  reconnect: (spec: UserCredentialSpec) => Promise<void>;
 }
 
 const EMPTY: ToolGuardsValue = {
@@ -82,6 +94,9 @@ const EMPTY: ToolGuardsValue = {
   respondElicitation: async () => {
     throw new Error('Answers are not available here');
   },
+  answerCredentialsRequest: async () => {},
+  credentialSpec: () => undefined,
+  reconnect: async () => {},
 };
 
 const ToolGuardsContext = createContext<ToolGuardsValue>(EMPTY);
@@ -123,16 +138,27 @@ export function ToolGuardsProvider({
       status.assistants.find(a => a.id === assistantId)?.userCredentials ?? [];
     const headerFor = async (assistantId: AssistantId) =>
       credentialsHeader(await getUserTokens(apis, specsFor(assistantId)));
+    const specOf = (server: string) =>
+      status.assistants
+        .flatMap(a => a.userCredentials ?? [])
+        .find(spec => spec.server === server);
     return {
       approveEachCall: new Set(status.approveEachCall ?? []),
       approvalPreviews: status.approvalPreviews ?? {},
       credentialSpecs: specsFor,
       credentialsHeader: headerFor,
-      previewApproval: async (assistantId, tool, input) =>
-        api.previewApproval(
-          { assistantId, tool, input },
-          await headerFor(assistantId),
-        ),
+      previewApproval: async (assistantId, tool, input) => {
+        const read = async () =>
+          api.previewApproval(
+            { assistantId, tool, input },
+            await headerFor(assistantId),
+          );
+        const preview = await read();
+        // The server refused the token: read once more with a new one.
+        const spec =
+          preview.credentialsRejected && specOf(preview.credentialsRejected);
+        return spec && (await forceUserToken(apis, spec)) ? read() : preview;
+      },
       assistantForTool: toolName =>
         status.assistants.find(a => a.tools?.some(t => t.name === toolName))
           ?.id,
@@ -156,6 +182,22 @@ export function ToolGuardsProvider({
       },
       oauthConnections,
       respondElicitation: (id, answer) => api.respondElicitation(id, answer),
+      answerCredentialsRequest: async request => {
+        // Getting a token revokes the last one, so only the tab whose claim
+        // the backend takes gets one.
+        if (!(await api.claimCredentialRequest(request.id))) return;
+        const spec = specOf(request.server);
+        const token = spec && (await forceUserToken(apis, spec));
+        await api.answerCredentialRequest(
+          request.id,
+          token ? credentialsHeader({ [request.server]: token }) : {},
+        );
+      },
+      credentialSpec: specOf,
+      reconnect: async spec => {
+        await reconnectUserToken(apis, spec);
+        setConnectedVersion(v => v + 1);
+      },
       disconnect: async spec => {
         await api.disconnectMcpOAuth(spec.server).catch(error =>
           apis.get(alertApiRef)?.post({

@@ -149,6 +149,11 @@ export interface ApprovalPreviewResponse {
     /** Why the current content couldn't be read, when it couldn't. */
     error?: string;
   }>;
+  /**
+   * Set when the per-user server refused the user's token (401): its id. The
+   * browser gets a new token and asks once more.
+   */
+  credentialsRejected?: string;
 }
 
 /**
@@ -173,3 +178,31 @@ export function resolvePreviewField(
       : '';
   });
 }
+
+/**
+ * The backend asking the browser for a new token for a per-user server whose
+ * token the provider refused (401), as a preliminary output of the tool call
+ * that hit it: `{ _credentialsRequest: CredentialsRequest }`. The browser
+ * claims the request (`POST /credential-requests/:id/claim`, so one tab
+ * answers), gets a new token from the sign-in, and posts it in the
+ * {@link USER_CREDENTIALS_HEADER} to `POST /credential-requests/:id`.
+ *
+ * @public
+ */
+export interface CredentialsRequest {
+  /** Claim and answer it under `/credential-requests/:id`. */
+  id: string;
+  /** The MCP server id whose token was refused. */
+  server: string;
+  /** `open` waits for the browser; `settled` no longer does. */
+  status: 'open' | 'settled';
+}
+
+/**
+ * The field on a tool's error result that names the per-user server to
+ * reconnect, set when the server refused the user's token and a new one
+ * didn't help.
+ *
+ * @public
+ */
+export const CREDENTIALS_REJECTED_FIELD = 'credentialsRejected';

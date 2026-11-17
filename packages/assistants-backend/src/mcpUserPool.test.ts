@@ -11,10 +11,12 @@ import {
   maintainMcpConnections,
   probeServerTools,
   serverConfigHash,
+  setCredentialRequestBroker,
   setElicitationBroker,
   userConnectionCount,
   type McpToolCallEvent,
 } from './mcp';
+import { CredentialRequestBroker } from './credentialRequests';
 import { ElicitationBroker } from './mcpElicitation';
 import { ThreadService } from './threads';
 
@@ -26,6 +28,9 @@ const opened: Array<{
   close: jest.Mock;
   onElicitationRequest: jest.Mock;
 }> = [];
+
+/** Tokens (as sent) the mocked server accepts at connect and refuses on a call. */
+const mockRefusedOnCall = new Set<string>();
 
 jest.mock('@ai-sdk/mcp', () => ({
   ElicitationRequestSchema: { name: 'ElicitationRequestSchema' },
@@ -50,9 +55,12 @@ jest.mock('@ai-sdk/mcp', () => ({
             { name: 'create_branch', inputSchema: { type: 'object' } },
           ],
         })),
-        callTool: jest.fn(async () => ({
-          content: [{ type: 'text', text: 'ok' }],
-        })),
+        callTool: jest.fn(async () => {
+          if (mockRefusedOnCall.has(transport.headers?.Authorization ?? '')) {
+            throw new Error('HTTP 401');
+          }
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }),
         close: jest.fn(async () => {}),
       };
       opened.push(client);
@@ -104,6 +112,7 @@ const run = (tool: unknown, input: unknown) =>
 afterEach(async () => {
   await closeMcpPool();
   opened.length = 0;
+  mockRefusedOnCall.clear();
   jest.useRealTimers();
 });
 
@@ -179,7 +188,7 @@ describe('per-user MCP connections', () => {
     expect(userConnectionCount()).toBe(1);
   });
 
-  it("reports the server's message when it rejects the token", async () => {
+  it('says the sign-in expired when the server rejects the token', async () => {
     const { tools, unavailable } = await buildMcpTools(
       selection,
       logger,
@@ -187,7 +196,9 @@ describe('per-user MCP connections', () => {
       asUser('user:default/ana', 'revoked'),
     );
     expect(tools).toEqual({});
-    expect(unavailable[0].error).toBe('HTTP 401: Bad credentials');
+    expect(unavailable[0].error).toBe(
+      'The GitHub sign-in expired; reconnect GitHub',
+    );
   });
 
   it('closes connections idle for ten minutes', async () => {
@@ -361,6 +372,192 @@ describe('per-user MCP connections', () => {
         _error: true,
         message: 'The Tracker sign-in expired; reconnect Tracker',
       });
+    });
+  });
+
+  describe("a server that refuses the browser's token", () => {
+    const db = knexFactory({
+      client: 'better-sqlite3',
+      connection: { filename: ':memory:' },
+      useNullAsDefault: true,
+    });
+    const broker = new CredentialRequestBroker({
+      db,
+      timeoutMs: 60_000,
+      pollMs: 10,
+    });
+    const request = jest.spyOn(broker, 'request');
+
+    beforeAll(async () => {
+      await new ThreadService(db).runMigrations();
+    });
+    beforeEach(() => {
+      request.mockClear();
+      setCredentialRequestBroker(broker);
+    });
+    afterEach(() => setCredentialRequestBroker(undefined));
+    afterAll(async () => {
+      await db.destroy();
+    });
+
+    const ANA = 'user:default/ana';
+    const turn = {
+      assistantId: 'ops',
+      renders: true,
+      refreshesCredentials: true,
+    };
+    const ana = (token: string) => ({ ...asUser(ANA, token), turn });
+    const expired = {
+      _error: true,
+      message: 'The GitHub sign-in expired; reconnect GitHub',
+      credentialsRejected: 'github',
+    };
+
+    /**
+     * Runs a call as the turn does, with a browser that answers each request
+     * for a new token with the next of `tokens` (undefined: it has none).
+     * Returns every output: the requests, then the result.
+     */
+    const runWithBrowser = async (
+      tool: unknown,
+      tokens: Array<string | undefined>,
+    ) => {
+      const outputs: unknown[] = [];
+      const iterable = run(tool, {}) as unknown as AsyncIterable<unknown>;
+      for await (const output of iterable) {
+        outputs.push(output);
+        const asked = (
+          output as { _credentialsRequest?: { id: string; status: string } }
+        )?._credentialsRequest;
+        if (asked?.status === 'open') {
+          expect(await broker.claim(asked.id, ANA)).toEqual({ status: 204 });
+          const token = tokens.shift();
+          await broker.respond(asked.id, ANA, () => token);
+        }
+      }
+      return outputs;
+    };
+    const ok = [{ type: 'text', text: 'ok' }];
+
+    it('asks the browser for a new token mid-call and retries the call once', async () => {
+      const { tools } = await buildMcpTools(selection, logger, 0, ana('ghu_1'));
+      opened[0].callTool.mockRejectedValueOnce(new Error('HTTP 401'));
+      const outputs = await runWithBrowser(tools.github__get_me, ['ghu_2']);
+      expect(outputs).toEqual([
+        { _credentialsRequest: expect.objectContaining({ status: 'open' }) },
+        { _credentialsRequest: expect.objectContaining({ status: 'settled' }) },
+        ok,
+      ]);
+      expect(opened[1].headers?.Authorization).toBe('Bearer ghu_2');
+      expect(opened[1].callTool).toHaveBeenCalledTimes(1);
+    });
+
+    it('recognises a 401 the server reports as an error result', async () => {
+      const { tools } = await buildMcpTools(selection, logger, 0, ana('ghu_1'));
+      opened[0].callTool.mockResolvedValueOnce({
+        isError: true,
+        content: [{ type: 'text', text: '401 Bad credentials' }],
+      });
+      const outputs = await runWithBrowser(tools.github__get_me, ['ghu_2']);
+      expect(outputs.at(-1)).toEqual(ok);
+    });
+
+    it('says the sign-in expired, naming the server, when the new token is refused too', async () => {
+      const { tools } = await buildMcpTools(selection, logger, 0, ana('ghu_1'));
+      opened[0].callTool.mockRejectedValueOnce(new Error('HTTP 401'));
+      mockRefusedOnCall.add('Bearer ghu_2');
+      const outputs = await runWithBrowser(tools.github__get_me, ['ghu_2']);
+      expect(outputs.at(-1)).toEqual(expired);
+      // One request, one retry.
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(opened[1].callTool).toHaveBeenCalledTimes(1);
+      expect(opened).toHaveLength(2);
+    });
+
+    it('says the sign-in expired when the new token is refused at connect', async () => {
+      const { tools } = await buildMcpTools(selection, logger, 0, ana('ghu_1'));
+      opened[0].callTool.mockRejectedValueOnce(new Error('HTTP 401'));
+      const outputs = await runWithBrowser(tools.github__get_me, ['revoked']);
+      expect(outputs.at(-1)).toEqual(expired);
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the sign-in expired when the browser has no new token', async () => {
+      const { tools } = await buildMcpTools(selection, logger, 0, ana('ghu_1'));
+      opened[0].callTool.mockRejectedValueOnce(new Error('HTTP 401'));
+      const outputs = await runWithBrowser(tools.github__get_me, [undefined]);
+      expect(outputs.at(-1)).toEqual(expired);
+      expect(opened).toHaveLength(1);
+    });
+
+    it('asks once for calls refused together, and later calls use the new token', async () => {
+      const options = ana('ghu_1');
+      const { tools } = await buildMcpTools(selection, logger, 0, options);
+      opened[0].callTool
+        .mockRejectedValueOnce(new Error('HTTP 401'))
+        .mockRejectedValueOnce(new Error('HTTP 401'));
+      const tokens = ['ghu_2'];
+      const [first, second] = await Promise.all([
+        runWithBrowser(tools.github__get_me, tokens),
+        runWithBrowser(tools.github__get_me, tokens),
+      ]);
+      expect(first.at(-1)).toEqual(ok);
+      expect(second.at(-1)).toEqual(ok);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(await runWithBrowser(tools.github__get_me, [])).toEqual([ok]);
+      expect(options.caller.credentials.github).toBe('ghu_2');
+    });
+
+    it("offers the server's shared tools when the token is refused as the turn starts, and the first call gets a new one", async () => {
+      // Another user's connection lists the server's tools.
+      await buildMcpTools(selection, logger, 0, asUser('user:default/bo', 't'));
+      const { tools, unavailable } = await buildMcpTools(
+        selection,
+        logger,
+        0,
+        ana('revoked'),
+      );
+      expect(unavailable).toEqual([]);
+      const outputs = await runWithBrowser(tools.github__get_me, ['ghu_2']);
+      expect(outputs.at(-1)).toEqual(ok);
+      expect(opened.at(-1)?.headers?.Authorization).toBe('Bearer ghu_2');
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the sign-in expired when a token refused as the turn starts is not replaced', async () => {
+      await buildMcpTools(selection, logger, 0, asUser('user:default/bo', 't'));
+      const { tools } = await buildMcpTools(
+        selection,
+        logger,
+        0,
+        ana('revoked'),
+      );
+      const outputs = await runWithBrowser(tools.github__get_me, ['revoked']);
+      expect(outputs.at(-1)).toEqual(expired);
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the sign-in expired, without asking, for a browser that does not answer requests', async () => {
+      const { tools, unavailable } = await buildMcpTools(
+        selection,
+        logger,
+        0,
+        asUser(ANA, 'revoked'),
+      );
+      expect(tools).toEqual({});
+      expect(unavailable[0].error).toBe(
+        'The GitHub sign-in expired; reconnect GitHub',
+      );
+
+      const connected = await buildMcpTools(
+        selection,
+        logger,
+        0,
+        asUser(ANA, 'ghu_1'),
+      );
+      opened.at(-1)!.callTool.mockRejectedValueOnce(new Error('HTTP 401'));
+      expect(await run(connected.tools.github__get_me, {})).toEqual(expired);
+      expect(request).not.toHaveBeenCalled();
     });
   });
 

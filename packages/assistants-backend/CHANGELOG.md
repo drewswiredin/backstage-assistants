@@ -3,6 +3,22 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.0 - 2026-11-17
+
+### Fixed
+
+- Per-user tokens from the Backstage sign-in (`userCredentials`) that the provider revoked early (e.g. GitHub App tokens rotated by a refresh in another tab) are replaced and the call retried, instead of failing with 401. The call asks the browser for a new token (a `{ _credentialsRequest }` preliminary output, answered through `POST /credential-requests/:id/claim` and `POST /credential-requests/:id`) and runs once more with it. A token refused as the turn starts no longer takes the server's tools out of the turn when its tool list is cached.
+
+### Added
+
+- `credentialRefresh` on the `/chat` body: the browser answers requests for a new token.
+- Migration adding `credential_requests`. The new token is stored there encrypted to a key held only in the memory of the replica running the call.
+- `/preview` answers `credentialsRejected` with the server id when the server refuses the user's token.
+
+### Changed
+
+- A per-user server's 401 that a new token doesn't mend, or that the browser can't answer, reads `The <title> sign-in expired; reconnect <title>` in place of the server's 401 text, with `credentialsRejected: '<serverId>'` on the tool result.
+
 ## 0.26.0 - 2026-11-15
 
 ### Added

@@ -28,6 +28,7 @@ export interface ApprovalPreviewRequest {
 
 // @public
 export interface ApprovalPreviewResponse {
+  credentialsRejected?: string;
   // (undocumented)
   files: Array<{
     path: string;
@@ -152,6 +153,16 @@ export type ClientToolErrorCode =
 
 // @public
 export function clientToolNamespace(name: string): string | undefined;
+
+// @public
+export const CREDENTIALS_REJECTED_FIELD = 'credentialsRejected';
+
+// @public
+export interface CredentialsRequest {
+  id: string;
+  server: string;
+  status: 'open' | 'settled';
+}
 
 // @public
 export type ElicitationField = {

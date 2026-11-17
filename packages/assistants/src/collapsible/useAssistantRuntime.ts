@@ -24,6 +24,7 @@ import { useAui, useAuiState } from '@assistant-ui/react';
 import type {
   AssistantId,
   ClientToolAttributes,
+  CredentialsRequest,
   ModelId,
   PageContext,
   ReasoningLevel,
@@ -36,6 +37,7 @@ import {
   type HeldChatHelpers,
   type HeldClientToolRunner,
 } from './heldCalls';
+import { useCredentialsRequests } from './credentialRequests';
 import { markTurnEnded } from './interruptedTurns';
 import { createAttachmentAdapter } from './attachmentAdapters';
 import { createHistoryAdapter } from './threadListAdapter';
@@ -95,6 +97,11 @@ interface RuntimeHookOptions {
     assistantId: AssistantId,
   ) => Promise<Record<string, string>>;
   /**
+   * Answers the backend's request for a new token when a per-user server
+   * refuses the one sent with the turn (see credentialRequests.ts).
+   */
+  answerCredentialsRequest?: (request: CredentialsRequest) => Promise<void>;
+  /**
    * Runs a client tool's call that a provider executing its own tool loop
    * holds for the browser (see heldCalls.ts).
    */
@@ -140,6 +147,7 @@ function createInjectingFetch(
   getClientToolAttributes: () => Record<string, ClientToolAttributes>,
   getPageContext?: () => PageContext | undefined,
   getCredentialsHeader?: RuntimeHookOptions['getCredentialsHeader'],
+  refreshesCredentials = false,
 ): typeof fetch {
   return async (input, init) => {
     let nextInit = init;
@@ -160,6 +168,8 @@ function createInjectingFetch(
       }
       // The tool call renders an MCP server's questions as a form.
       body.elicitation = true;
+      // A per-user server that refuses a token gets a new one mid-call.
+      if (refreshesCredentials) body.credentialRefresh = true;
       if (typeof body.id === 'string' && body.threadId === undefined) {
         body.threadId = body.id;
       }
@@ -226,6 +236,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
     getClientToolAttributes,
     getPageContext,
     getCredentialsHeader,
+    answerCredentialsRequest,
     heldClientToolRunner,
     onNavigate,
   } = options;
@@ -271,6 +282,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
               getClientToolAttributes,
               getPageContext,
               getCredentialsHeader,
+              !!answerCredentialsRequest,
             ),
           ),
           resumable: {
@@ -381,6 +393,7 @@ export function makeRuntimeHook(options: RuntimeHookOptions) {
       runtimeChat as unknown as HeldChatHelpers & { status?: string },
       heldClientToolRunner,
     );
+    useCredentialsRequests(chat, answerCredentialsRequest);
     const runtime = useAISDKRuntime(runtimeChat, { adapters });
 
     // Wire the transport to the runtime + this thread's list item so it can

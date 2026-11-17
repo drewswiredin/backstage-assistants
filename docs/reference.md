@@ -98,6 +98,8 @@ every conversation route is scoped to the owning user.
 | `POST /preview`                            | `assistant.use`                    | The current content behind a pending write, for the approval card's diff.                                     |
 | `POST /elicitations/:id`                   | `assistant.use`                    | Answer an MCP server's question; only the user whose call it interrupts.                                      |
 | `POST /held-calls/:id`                     | `assistant.use`                    | Answer a call held inside a provider's own tool loop (an approval, or a client tool's result); only its user. |
+| `POST /credential-requests/:id/claim`      | `assistant.use`                    | Take a request for a new per-user token, so one tab answers it; only its user.                                |
+| `POST /credential-requests/:id`            | `assistant.use`                    | Answer the request with the new token in the credentials header, or with none.                                |
 | `GET /mcp/oauth/status`                    | `assistant.use`                    | The caller's connection to each server that runs its own OAuth.                                               |
 | `POST /mcp/:serverId/oauth/start`          | `assistant.use`                    | Start a sign-in; returns the authorization URL.                                                               |
 | `DELETE /mcp/:serverId/oauth`              | `assistant.use`                    | Disconnect: revoke, and delete the stored tokens.                                                             |

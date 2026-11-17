@@ -22,6 +22,7 @@ import {
   databaseToolCacheStore,
   initMcpToolCache,
   closeUserConnection,
+  setCredentialRequestBroker,
   setElicitationBroker,
 } from './mcp';
 import { McpOAuthService } from './mcpOAuth';
@@ -32,8 +33,9 @@ import {
   assistantsModelProvidersExtensionPoint,
   type AssistantsModelProviderFactory,
 } from './modelProviders';
-import { isBuiltinProviderType } from './config';
+import { isBuiltinProviderType, isOAuthServer } from './config';
 import { HeldCallBroker } from './heldCalls';
+import { CredentialRequestBroker } from './credentialRequests';
 
 /**
  * The Backstage AI Assistants backend plugin.
@@ -190,6 +192,15 @@ export const assistantsPlugin = createBackendPlugin({
           : undefined;
         setElicitationBroker(elicitations);
 
+        // A per-user server may refuse the token a browser sent (revoked
+        // early by its provider); the broker asks the browser for a new one.
+        const credentialRequests = [...assistants.mcpServers.values()].some(
+          server => server.userCredentials && !isOAuthServer(server),
+        )
+          ? new CredentialRequestBroker({ db })
+          : undefined;
+        setCredentialRequestBroker(credentialRequests);
+
         const router = await createRouter({
           logger,
           httpAuth,
@@ -206,6 +217,7 @@ export const assistantsPlugin = createBackendPlugin({
           elicitations,
           // Approvals and client tools held inside a provider's own tool loop.
           heldCalls: new HeldCallBroker({ db }),
+          credentialRequests,
           appOrigin: new URL(config.getString('app.baseUrl')).origin,
         });
 

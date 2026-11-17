@@ -22,6 +22,7 @@ import { useTurnEndReason } from '../interruptedTurns';
 import { useToolGuards } from '../toolGuards';
 import { WritePreview } from './WritePreview';
 import { ElicitationCard } from './ElicitationCard';
+import { credentialsRequestOf } from '../credentialRequests';
 import type {
   ElicitationPrompt,
   ElicitationStatus,
@@ -269,7 +270,7 @@ export function ToolFallback({
   toolCallId,
   toolName,
   args,
-  result,
+  result: output,
   status,
   approval,
   respondToApproval,
@@ -283,6 +284,9 @@ export function ToolFallback({
   useEffect(() => {
     setOpen(false);
   }, [toolCallId]);
+  // A request for a new token is the backend talking to the browser while
+  // the call waits: not a result.
+  const result = credentialsRequestOf(output) ? undefined : output;
   const { icon } = getToolStatus(status, theme, result);
   const hasArgs = args !== undefined && args !== null;
   const hasResult = result !== undefined && result !== null;
@@ -302,8 +306,22 @@ export function ToolFallback({
   const awaitingApproval = !!approval && approval.approved === undefined;
   // Gated writes can show a preview instead of JSON, and some tools take no
   // standing grant (each call is approved on its own).
-  const { approveEachCall, approvalPreviews, assistantForTool } =
-    useToolGuards();
+  const {
+    approveEachCall,
+    approvalPreviews,
+    assistantForTool,
+    credentialSpec,
+    reconnect,
+  } = useToolGuards();
+  // The server refused the user's token and a new one didn't help: the row
+  // offers the sign-in.
+  const rejectedServer = (
+    result as { credentialsRejected?: unknown } | null | undefined
+  )?.credentialsRejected;
+  const reconnectSpec =
+    typeof rejectedServer === 'string'
+      ? credentialSpec(rejectedServer)
+      : undefined;
   const preview = approvalPreviews[toolName];
   const allowStanding = !approveEachCall.has(toolName);
   const threadAssistantId = useAuiState(
@@ -582,6 +600,15 @@ export function ToolFallback({
           <ExpandMoreIcon style={{ fontSize: 14 }} />
         )}
       </button>
+      {reconnectSpec && (
+        <Button
+          size="small"
+          color="primary"
+          onClick={() => void reconnect(reconnectSpec)}
+        >
+          Reconnect {reconnectSpec.title}
+        </Button>
+      )}
 
       <Collapse in={open} unmountOnExit>
         <div className={classes.toolBody}>

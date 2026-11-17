@@ -73,7 +73,12 @@ export const AssistantClientToolBlueprint: ExtensionBlueprint<{
 
 // @public
 export interface AssistantsApi {
+  answerCredentialRequest(
+    id: string,
+    headers: Record<string, string>,
+  ): Promise<void>;
   answerHeldCall(id: string, answer: HeldCallAnswer): Promise<void>;
+  claimCredentialRequest(id: string): Promise<boolean>;
   createAssistant(
     definition: AssistantDefinition,
   ): Promise<AssistantDefinition>;

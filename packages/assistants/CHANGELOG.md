@@ -3,6 +3,17 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.28.0 - 2026-11-17
+
+### Fixed
+
+- Per-user tokens from the Backstage sign-in (`userCredentials`) that the provider revoked early (e.g. GitHub App tokens rotated by a refresh in another tab) are replaced and the call retried, instead of failing with 401. The tab answers the backend's request with a token from the sign-in's refresh endpoint and sends that token on its later turns. The approval card's diff is read again with a new token the same way.
+
+### Added
+
+- **Reconnect <provider>** on a tool call whose server still refuses the sign-in: signs out of the provider and opens its sign-in.
+- `AssistantsApi.claimCredentialRequest(id)` and `answerCredentialRequest(id, headers)`.
+
 ## 0.27.0 - 2026-11-15
 
 ### Added

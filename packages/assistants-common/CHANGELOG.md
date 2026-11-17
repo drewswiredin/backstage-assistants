@@ -3,6 +3,14 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.21.0 - 2026-11-17
+
+### Added
+
+- `CredentialsRequest`, the preliminary tool output (`{ _credentialsRequest }`) with which the backend asks the browser for a new token for a per-user MCP server.
+- `CREDENTIALS_REJECTED_FIELD` (`credentialsRejected`), the marker on a tool's error result naming the server to reconnect.
+- `ApprovalPreviewResponse.credentialsRejected`.
+
 ## 0.20.0 - 2026-11-13
 
 ### Added

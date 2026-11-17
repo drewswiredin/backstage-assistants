@@ -153,6 +153,22 @@ export interface AssistantsApi {
   answerHeldCall(id: string, answer: HeldCallAnswer): Promise<void>;
 
   /**
+   * Take the backend's request for a new token for a per-user server, so
+   * this tab is the one that answers. False when another tab took it, or
+   * it was already answered or has expired.
+   */
+  claimCredentialRequest(id: string): Promise<boolean>;
+
+  /**
+   * Answer a claimed request with the new token in `headers` (the
+   * credentials header), or with none when there is no new token.
+   */
+  answerCredentialRequest(
+    id: string,
+    headers: Record<string, string>,
+  ): Promise<void>;
+
+  /**
    * List the full assistant definitions for the editor
    * (`GET /manage/assistants`). Includes prompt/access/audit fields excluded
    * from the browser-safe `/status` projection. Admin-gated server-side (403
@@ -367,6 +383,26 @@ export class AssistantsClient implements AssistantsApi {
           `The answer was not accepted (${response.status})`,
       );
     }
+  }
+
+  async claimCredentialRequest(id: string): Promise<boolean> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/credential-requests/${encodeURIComponent(id)}/claim`,
+      { method: 'POST' },
+    );
+    return response.ok;
+  }
+
+  async answerCredentialRequest(
+    id: string,
+    headers: Record<string, string>,
+  ): Promise<void> {
+    const baseUrl = await this.getBaseUrl();
+    await this.fetchApi.fetch(
+      `${baseUrl}/credential-requests/${encodeURIComponent(id)}`,
+      { method: 'POST', headers },
+    );
   }
 
   async listManagedAssistants(): Promise<AssistantDefinition[]> {

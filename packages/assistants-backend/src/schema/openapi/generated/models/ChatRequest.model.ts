@@ -34,6 +34,10 @@ export interface ChatRequest {
    * True when the browser renders an MCP server\'s questions as forms (MCP elicitation). Without it a server\'s question is cancelled.
    */
   elicitation?: boolean;
+  /**
+   * True when the browser answers requests for a new token: a per-user MCP server that refuses the token sent with the turn then gets a new one mid-call instead of failing.
+   */
+  credentialRefresh?: boolean;
   page?: ChatRequestPage;
   /**
    * Client tool declarations keyed by tool name, as assistant-ui\'s transport sends every registered frontend tool: `description`, JSON Schema `parameters`, and the plugin\'s `attributes`. Offered to the model without `execute` when the name is a built-in or in the assistant\'s allowlist; the browser runs the tool.

@@ -8,6 +8,7 @@ import type { AssistantDefinition } from '@drewswiredin/backstage-plugin-assista
 import knexFactory, { type Knex } from 'knex';
 import { readConfig } from './config';
 import { HeldCallBroker } from './heldCalls';
+import { CredentialRequestBroker } from './credentialRequests';
 import { ThreadService } from './threads';
 import { closeMcpPool } from './mcp';
 import {
@@ -135,6 +136,7 @@ async function startApp(
   extra: {
     assistants?: Record<string, unknown>;
     heldCalls?: unknown;
+    credentialRequests?: unknown;
     assistant?: AssistantDefinition;
     ownershipEntityRefs?: string[];
     groupAncestry?: unknown;
@@ -229,6 +231,9 @@ async function startApp(
     },
     signals: { publish: jest.fn(async () => {}) },
     ...(extra.heldCalls ? { heldCalls: extra.heldCalls } : {}),
+    ...(extra.credentialRequests
+      ? { credentialRequests: extra.credentialRequests }
+      : {}),
     ...(extra.groupAncestry ? { groupAncestry: extra.groupAncestry } : {}),
   } as never);
   // The backend's error middleware maps Backstage errors to statuses.
@@ -424,6 +429,32 @@ describe('/preview', () => {
     );
   });
 
+  it("names the server when it refuses the user's token, so the browser asks again with a new one", async () => {
+    const app = await startApp();
+    server = app.server;
+    const preview = () =>
+      fetch(`${app.base}/preview`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...credentialsHeader },
+        body: JSON.stringify({
+          assistantId: 'ops',
+          tool: 'github__create_or_update_file',
+          input: { owner: 'acme', repo: 'pylon', path: 'deploy.yaml' },
+        }),
+      }).then(r => r.json());
+    await preview();
+    opened[0].callTool.mockResolvedValueOnce({
+      isError: true,
+      content: [{ type: 'text', text: '401 Bad credentials' }],
+    });
+    expect(await preview()).toEqual({
+      files: [
+        { path: 'deploy.yaml', exists: true, error: '401 Bad credentials' },
+      ],
+      credentialsRejected: 'github',
+    });
+  });
+
   it('refuses a tool the assistant has no preview for', async () => {
     const app = await startApp();
     server = app.server;
@@ -437,6 +468,47 @@ describe('/preview', () => {
       }),
     });
     expect(response.status).toBe(400);
+  });
+});
+
+describe('/credential-requests', () => {
+  const db = knexFactory({
+    client: 'better-sqlite3',
+    connection: { filename: ':memory:' },
+    useNullAsDefault: true,
+  });
+  beforeAll(async () => {
+    await new ThreadService(db).runMigrations();
+  });
+  afterAll(async () => {
+    await db.destroy();
+  });
+
+  it('takes one claim, then the new token from the credentials header', async () => {
+    const broker = new CredentialRequestBroker({ db, pollMs: 10 });
+    const app = await startApp(undefined, { credentialRequests: broker });
+    server = app.server;
+    let id = '';
+    const token = broker.request({
+      userEntityRef: 'user:default/ana',
+      serverId: 'github',
+      show: request => {
+        id = request.id;
+      },
+    });
+    await waitFor(() => id !== '');
+    const post = (path: string, headers?: Record<string, string>) =>
+      fetch(`${app.base}/credential-requests/${path}`, {
+        method: 'POST',
+        headers,
+      }).then(r => r.status);
+
+    expect(await post(`${id}/claim`)).toBe(204);
+    expect(await post(`${id}/claim`)).toBe(410);
+    expect(await post(id, credentialsHeader)).toBe(204);
+    expect(await token).toBe(TOKEN);
+    expect(await post(id, credentialsHeader)).toBe(410);
+    expect(await post('unknown')).toBe(404);
   });
 });
 
