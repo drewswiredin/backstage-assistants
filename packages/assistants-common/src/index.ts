@@ -216,8 +216,8 @@ export interface StatusResponse {
   requireApproval: string[];
   /**
    * Approval-floor tools that take no standing "Always allow" grant: every
-   * call is approved on its own. Gated tools of per-user MCP servers, unless
-   * the server allows standing approval.
+   * call is approved on its own. Gated tools of per-user MCP servers that set
+   * `allowStandingApproval: false`.
    */
   approveEachCall?: string[];
   /**

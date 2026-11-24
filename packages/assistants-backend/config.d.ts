@@ -230,8 +230,8 @@ export interface Config {
           elicitation?: boolean;
           /**
            * A per-user server's gated tools take the "Always allow" grant
-           * only when true; otherwise every call is approved on its own.
-           * Defaults to false.
+           * unless this is false; then every call is approved on its own.
+           * Defaults to true.
            */
           allowStandingApproval?: boolean;
           /**

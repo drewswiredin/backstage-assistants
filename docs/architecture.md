@@ -226,7 +226,7 @@ sequenceDiagram
 
 **Always allow** records an approved response with `reason: always:<tool>`. The `toolApproval` predicate reads it back from the message history, so that tool runs unprompted for the rest of the conversation. The grant is per tool and survives reloads because it lives in the persisted messages. Several gated calls of one tool in a single step collapse into one card with a count; the lowest-index call leads and the rest mirror its decision.
 
-The gated tools of a per-user server take no standing grant unless the server sets `allowStandingApproval`: they are listed in `/status` as `approveEachCall`, the card offers only Allow and Deny, and the predicate ignores an `always:` response for them.
+The gated tools of a per-user server that sets `allowStandingApproval: false` take no standing grant: they are listed in `/status` as `approveEachCall`, the card offers only Allow and Deny, and the predicate ignores an `always:` response for them.
 
 **Argument rules** (`mcp.servers.*.argumentRules`: a `pattern` or an `equals` per argument, compiled at config load) are checked twice. The `toolApproval` predicate checks them first and returns `denied` with the reason, so the SDK answers the request itself (`isAutomatic`) and the user never approves a call that would be refused; the card shows the reason under "Denied". The tool's `execute` checks them again before calling the server, so a tool outside the floor is guarded too. A missing argument fails its rule.
 
@@ -625,7 +625,7 @@ The surface seam is `surface/index.ts`, which exports `ConversationSurface: FC<C
 | `mcp.servers.*.elicitation`, `mcp.elicitationTimeoutMs`                            | config | Whether a server may ask the user, and for how long            | no; a question reaches the browser on the tool call               |
 | `mcp.servers.*.argumentRules`                                                      | config | Safety floor on tool arguments                                 | no; the reason reaches the card on a denial                       |
 | `mcp.servers.*.approvalPreview`                                                    | config | How the card shows a write                                     | type and field templates via `/status`                            |
-| `mcp.servers.*.allowStandingApproval`                                              | config | Opt-in standing grant for a per-user server's gated tools      | as `approveEachCall`                                              |
+| `mcp.servers.*.allowStandingApproval`                                              | config | Opt-out standing grant for a per-user server's gated tools     | as `approveEachCall`                                              |
 | `mcp.servers.*` connection, `connectTimeoutMs`                                     | config | Platform wiring                                                | no                                                                |
 | `mcp.connectTimeoutMs`                                                             | config | Platform default for every server                              | no                                                                |
 | `requireApproval`, `mcp.servers.*.requireApproval`                                 | config | Safety floor; not weakenable at runtime                        | names via `/status`; badge via `/capabilities`                    |

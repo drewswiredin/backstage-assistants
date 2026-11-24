@@ -212,8 +212,8 @@ export interface McpServerConfig {
   /** The server's approval floor, un-namespaced (also folded into the global set). */
   requireApproval?: string[];
   /**
-   * A per-user server's gated tools take a standing "Always allow" grant only
-   * when this is true; otherwise every call is approved on its own.
+   * A per-user server's gated tools take a standing "Always allow" grant
+   * unless this is false; then every call is approved on its own.
    */
   allowStandingApproval?: boolean;
   /** The server may ask the user for input mid-call (MCP elicitation). */
@@ -267,7 +267,7 @@ export interface AssistantsConfig {
   requireApproval: Set<string>;
   /**
    * The approval-floor tools that take no standing "Always allow" grant: the
-   * gated tools of per-user servers without `allowStandingApproval`.
+   * gated tools of per-user servers with `allowStandingApproval: false`.
    */
   approveEachCall: Set<string>;
   /**
@@ -785,7 +785,7 @@ export function readConfig(
       const serverRequireApproval =
         sc.getOptionalStringArray('requireApproval') ?? [];
       const allowStandingApproval =
-        sc.getOptionalBoolean('allowStandingApproval') ?? false;
+        sc.getOptionalBoolean('allowStandingApproval') ?? true;
       const guards = {
         ...(userCredentials ? { userCredentials } : {}),
         argumentRules: readArgumentRules(sc, path),
@@ -846,7 +846,8 @@ export function readConfig(
       }
 
       // Per-server approval floor, namespaced into the global set. A per-user
-      // server's gated tools are approved call by call unless it opts in.
+      // server's gated tools are approved call by call when it opts out of the
+      // standing grant.
       for (const tool of serverRequireApproval) {
         requireApproval.add(mcpToolName(serverId, tool));
         if (userCredentials && !allowStandingApproval) {

@@ -28,8 +28,8 @@ What the user sees: the reply stops at the tool call and shows an approval
 card. Allow runs the tool as it would run ungated: a Backstage action with the
 user's credentials, an MCP tool with its server's configured credential or the
 user's own token. Always allow also skips the prompt for that tool for the rest
-of the conversation (not offered for a per-user server's tools unless it sets
-`allowStandingApproval`); Deny
+of the conversation (not offered for the tools of a per-user server that sets
+`allowStandingApproval: false`); Deny
 returns an `execution-denied` result to the model. Several gated calls of the
 same tool in one step collapse into one card. The pause is enforced in code,
 not requested of the model. A turn waiting on the user survives navigation and

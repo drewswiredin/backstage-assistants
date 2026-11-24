@@ -177,9 +177,9 @@ connect to discover them. A per-user
 entry for the token's header, or an `env` entry for its variable, fails at
 startup.
 
-**Approval, call by call.** A per-user server's gated tools have no **Always
-allow**: every call is approved on its own. Set `allowStandingApproval: true`
-on the server to offer it.
+**Approval, call by call.** A per-user server's gated tools offer **Always
+allow** like any other gated tool. Set `allowStandingApproval: false` on the
+server to remove it: every call is then approved on its own.
 
 **Argument rules (optional).** A per-user server already limits every call
 to what the user may do, and approval puts each write in front of them, so

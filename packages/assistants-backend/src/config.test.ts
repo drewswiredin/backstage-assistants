@@ -234,22 +234,22 @@ describe('per-user MCP servers and guards', () => {
     ).toThrow(/env\.GITHUB_TOKEN is the per-user token/);
   });
 
-  it("approves a per-user server's gated tools call by call unless it opts in", () => {
-    const perCall = withServer({
-      url: 'https://mcp.example.com/',
-      userCredentials: { provider: 'github' },
-      requireApproval: ['create_branch'],
-    });
-    expect([...perCall.requireApproval]).toEqual(['github__create_branch']);
-    expect([...perCall.approveEachCall]).toEqual(['github__create_branch']);
-
+  it("approves a per-user server's gated tools call by call only when it opts out of the standing grant", () => {
     const standing = withServer({
       url: 'https://mcp.example.com/',
       userCredentials: { provider: 'github' },
-      allowStandingApproval: true,
       requireApproval: ['create_branch'],
     });
+    expect([...standing.requireApproval]).toEqual(['github__create_branch']);
     expect(standing.approveEachCall.size).toBe(0);
+
+    const perCall = withServer({
+      url: 'https://mcp.example.com/',
+      userCredentials: { provider: 'github' },
+      allowStandingApproval: false,
+      requireApproval: ['create_branch'],
+    });
+    expect([...perCall.approveEachCall]).toEqual(['github__create_branch']);
 
     const shared = withServer({
       url: 'https://mcp.example.com/',
