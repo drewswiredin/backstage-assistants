@@ -268,6 +268,9 @@ export class ToolCallCorrelator {
 export function withInjectedParts(
   source: ReadableStream<TextStreamPart<ToolSet>>,
   observe: (part: TextStreamPart<ToolSet>) => void,
+  /** Replaces a part of the source before it is passed on. */
+  replace: (part: TextStreamPart<ToolSet>) => TextStreamPart<ToolSet> = part =>
+    part,
 ): {
   stream: ReadableStream<TextStreamPart<ToolSet>>;
   inject: (part: TextStreamPart<ToolSet>) => void;
@@ -284,7 +287,7 @@ export function withInjectedParts(
             const { done, value } = await reader.read();
             if (done) break;
             observe(value);
-            controller.enqueue(value);
+            controller.enqueue(replace(value));
           }
           closed = true;
           controller.close();
@@ -329,6 +332,11 @@ export interface LoopToolsOptions {
   signal: AbortSignal;
   /** Audit a decision on a gated call. */
   onDecision?: (name: string, approved: boolean, input: unknown) => void;
+  /**
+   * The result as the provider's model should read it (between
+   * untrusted-content markers). The conversation keeps `result`.
+   */
+  forModel?: (name: string, toolCallId: string, result: unknown) => unknown;
 }
 
 /** Thrown into the provider's loop; its message is the result the model sees. */
@@ -365,6 +373,8 @@ async function runLoopTool(
   input: unknown,
   executeOptions?: { abortSignal?: AbortSignal },
 ): Promise<unknown> {
+  const forModel = (toolCallId: string, result: unknown) =>
+    options.forModel ? options.forModel(name, toolCallId, result) : result;
   const signal = executeOptions?.abortSignal ?? options.signal;
   const isClientTool = options.clientToolNames.has(name);
   // A call an argument rule refuses needs nothing from the stream.
@@ -397,7 +407,10 @@ async function runLoopTool(
     }
     if ('error' in answer) throw new HeldCallError(answer.error);
     if ('output' in answer) {
-      return truncateToolResult(answer.output, options.toolResultMaxChars);
+      return forModel(
+        toolCallId,
+        truncateToolResult(answer.output, options.toolResultMaxChars),
+      );
     }
     throw new HeldCallError(`${name} returned no result.`);
   }
@@ -462,9 +475,9 @@ async function runLoopTool(
         } as TextStreamPart<ToolSet>);
       }
     }
-    return last;
+    return forModel(toolCallId, last);
   }
-  return result;
+  return forModel(toolCallId, result);
 }
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {

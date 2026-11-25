@@ -235,6 +235,12 @@ export interface Config {
            */
           allowStandingApproval?: boolean;
           /**
+           * The model reads every tool result between markers that name it
+           * as untrusted content. Set false for a server that marks its own
+           * results, so they aren't marked twice. Defaults to true.
+           */
+          untrustedResults?: boolean;
+          /**
            * Checks on tool arguments, enforced server-side before a call is
            * offered for approval and again before it runs. Keyed by tool,
            * then argument. A missing argument fails.

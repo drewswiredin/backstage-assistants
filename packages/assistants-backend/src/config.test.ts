@@ -258,6 +258,20 @@ describe('per-user MCP servers and guards', () => {
     expect(shared.approveEachCall.size).toBe(0);
   });
 
+  it("leaves a server's results unmarked only when it sets untrustedResults: false", () => {
+    const marked = withServer({ url: 'https://mcp.example.com/' });
+    expect(marked.mcpServers.get('github')?.untrustedResults).toBe(true);
+    expect(marked.resultsUnmarked('github__list_issues')).toBe(false);
+
+    const own = withServer({
+      url: 'https://mcp.example.com/',
+      untrustedResults: false,
+    });
+    expect(own.resultsUnmarked('github__list_issues')).toBe(true);
+    expect(own.resultsUnmarked('github_enterprise__list_issues')).toBe(false);
+    expect(own.resultsUnmarked('query-catalog-entities')).toBe(false);
+  });
+
   it('compiles argument rules once and rejects bad ones', () => {
     const cfg = withServer({
       url: 'https://mcp.example.com/',

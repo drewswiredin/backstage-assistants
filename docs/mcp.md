@@ -67,6 +67,10 @@ individual tools before they run, list them in
 `mcp.servers.<id>.requireApproval`; see
 [Require approval before a tool runs](approvals.md).
 
+The model reads each tool result between markers that name it as untrusted
+content (see [Security](security.md)). A server that marks its own results
+sets `untrustedResults: false`, so they aren't marked twice.
+
 Connections are opened in the background, never on the request path: a task
 runs every 2 minutes to connect servers that are not connected yet, refresh
 each server's tool inventory, and reconnect dropped connections, each step

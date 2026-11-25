@@ -43,7 +43,15 @@ and `messages`; they no longer appear in the UI. Provider API keys and MCP secre
 
 Untrusted content and prompt injection: everything a tool returns (TechDocs
 pages, catalog entity fields, MCP results, client tool results) is untrusted input to the model,
-and a page an assistant reads can carry instructions the model may follow. The
+and a page an assistant reads can carry instructions the model may follow.
+The model reads every tool result between a pair of markers that name the tool
+and say the content is data, not instructions; each call's markers carry an id
+the content can't know, so a result can't close its own wrapper. The markers
+exist only in the prompt: the conversation shows and stores the result as the
+tool returned it. A form's answers are the user's own words and are not
+marked; a server that marks its own results sets
+`mcp.servers.<id>.untrustedResults: false`. Markers lower the odds that a
+model follows injected text; they don't enforce anything. The
 approval gate (`requireApproval` and `mcp.servers.<id>.requireApproval`) is
 the enforced checkpoint: a listed tool never runs without an explicit Allow in
 the conversation, whatever the model was told. The gate defaults to empty, so

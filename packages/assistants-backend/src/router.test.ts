@@ -84,7 +84,7 @@ const streamOf = (parts: unknown[]) => ({
 });
 
 /** A model that writes to `main` (breaking the branch rule), then answers. */
-function makeModel() {
+function makeModel(branch = 'main') {
   return new MockLanguageModelV4({
     doStream: [
       streamOf([
@@ -96,7 +96,7 @@ function makeModel() {
           input: JSON.stringify({
             owner: 'acme',
             repo: 'pylon',
-            branch: 'main',
+            branch,
             path: 'deploy.yaml',
             content: 'replicas: 2\n',
           }),
@@ -311,6 +311,63 @@ describe('/chat with a per-user MCP server', () => {
       app.logger.debug.mock.calls,
     ]);
     expect(logged).not.toContain(TOKEN);
+  });
+
+  it('marks the tool result for the model and keeps the stored one as the tool returned it', async () => {
+    const app = await startApp(makeModel('backstage-assistant/scale'), {
+      assistants: { requireApproval: new Set() },
+    });
+    server = app.server;
+    const response = await fetch(`${app.base}/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...credentialsHeader },
+      body: JSON.stringify(chatBody),
+    });
+    const streamed = await response.text();
+    await waitFor(
+      () => app.threadService.replaceMessages.mock.calls.length >= 2,
+    );
+
+    const secondStep = app.model.doStreamCalls[1].prompt;
+    const toolMessage = secondStep.find(m => m.role === 'tool')!;
+    const part = (toolMessage.content as any[])[0];
+    expect(part.toolName).toBe('github__create_or_update_file');
+    const nonce = /^<<([0-9a-f]{8})>> /.exec(part.output.value._untrusted)?.[1];
+    expect(nonce).toBeDefined();
+    expect(part.output.value._untrusted).toContain(
+      'Tool result from github__create_or_update_file.',
+    );
+    expect(part.output.value._end).toBe(`<</${nonce}>>`);
+    expect(part.output.value.result).toBeDefined();
+
+    expect(streamed).not.toContain('_untrusted');
+    expect(
+      JSON.stringify(app.threadService.replaceMessages.mock.calls),
+    ).not.toContain('_untrusted');
+  });
+
+  it("leaves a server's results unmarked when it marks its own", async () => {
+    const app = await startApp(makeModel('backstage-assistant/scale'), {
+      assistants: {
+        requireApproval: new Set(),
+        resultsUnmarked: (name: string) => name.startsWith('github__'),
+      },
+    });
+    server = app.server;
+    const response = await fetch(`${app.base}/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...credentialsHeader },
+      body: JSON.stringify(chatBody),
+    });
+    await response.text();
+    await waitFor(
+      () => app.threadService.replaceMessages.mock.calls.length >= 2,
+    );
+    const toolMessage = app.model.doStreamCalls[1].prompt.find(
+      m => m.role === 'tool',
+    )!;
+    expect((toolMessage.content as any[])[0].output.type).toBe('json');
+    expect(JSON.stringify(toolMessage)).not.toContain('_untrusted');
   });
 
   it('denies a call that breaks an argument rule before asking, and audits it', async () => {
@@ -598,6 +655,7 @@ describe('/chat with a provider that runs its own tool loop', () => {
    * A model that, like an agent SDK, reports a provider-executed call, runs
    * the plugin's tool itself, reports the result, and answers.
    */
+  let providerSaw: unknown;
   function loopModel(turn: {
     tools: Record<string, { execute(input: unknown): Promise<unknown> }>;
   }) {
@@ -627,6 +685,7 @@ describe('/chat with a provider that runs its own tool loop', () => {
               result = await turn.tools.github__create_or_update_file.execute(
                 input,
               );
+              providerSaw = result;
             } catch (e) {
               result = String(e);
               isError = true;
@@ -708,6 +767,16 @@ describe('/chat with a provider that runs its own tool loop', () => {
     expect(text).toContain('"type":"tool-output-available"');
     expect(text).toContain('done');
     expect(opened.some(c => c.callTool.mock.calls.length === 1)).toBe(true);
+    // The provider's model read the result between markers; the
+    // conversation got it as the tool returned it.
+    expect(providerSaw).toEqual({
+      _untrusted: expect.stringMatching(
+        /^<<[0-9a-f]{8}>> Tool result from github__create_or_update_file\./,
+      ),
+      result: expect.anything(),
+      _end: expect.stringMatching(/^<<\/[0-9a-f]{8}>>$/),
+    });
+    expect(text).not.toContain('_untrusted');
     expect(app.logger.info).toHaveBeenCalledWith(
       'assistants.tool.audit',
       expect.objectContaining({

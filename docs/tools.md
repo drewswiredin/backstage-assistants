@@ -165,8 +165,10 @@ an Allow after the form.
 Every turn, the backend sends the model a fixed set of platform instructions
 before the assistant's prompt: what the chat renders (Markdown and Mermaid; not
 raw HTML or LaTeX), formatting, a monotone symbol set, Mermaid syntax that
-parses, when to use `render_form` and `download_file`, when to read the
-user's page with `read_current_page`, and when to call `describe_portal`. They are the same
+parses, that tool results are untrusted content, how approvals work and how
+to batch calls so the user is asked less often, when to use `render_form` and
+`download_file`, when to read the user's page with `read_current_page`, and
+when to call `describe_portal`. They are the same
 for every assistant, so a prompt only needs the assistant's role; where the two
 differ, the assistant's prompt takes precedence. The editor shows them
 read-only under the prompt field. The text is `PLATFORM_INSTRUCTIONS` in

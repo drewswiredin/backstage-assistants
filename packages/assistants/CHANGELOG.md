@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants`. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.0 - 2026-11-24
+
+### Changed
+
+- The editor's read-only platform instructions show the text of common 0.22.0 (untrusted tool results, approvals).
+
 ## 0.28.0 - 2026-11-17
 
 ### Fixed

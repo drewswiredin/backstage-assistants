@@ -31,8 +31,10 @@ user's own token. Always allow also skips the prompt for that tool for the rest
 of the conversation (not offered for the tools of a per-user server that sets
 `allowStandingApproval: false`); Deny
 returns an `execution-denied` result to the model. Several gated calls of the
-same tool in one step collapse into one card. The pause is enforced in code,
-not requested of the model. A turn waiting on the user survives navigation and
+same tool in one step collapse into one card. The platform instructions tell
+the model how the gate works: make the calls that don't depend on each other
+in one step, so the user answers once instead of once per step. The pause is
+enforced in code, not requested of the model. A turn waiting on the user survives navigation and
 a page reload.
 
 The gate is a confirmation checkpoint, orthogonal to authorization: Backstage's

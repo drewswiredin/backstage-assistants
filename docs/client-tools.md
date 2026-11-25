@@ -129,7 +129,8 @@ plugin in the group's header. The contract:
 
 Keep results small and explicit: return the fields the model needs, never a
 raw object dump, and never a secret. Everything a tool returns is untrusted
-input to the model.
+input to the model, which reads it between untrusted-content markers (see
+[Security](security.md)).
 
 With a model whose provider runs its own tool loop (an agent SDK or CLI a
 backend module adds; see

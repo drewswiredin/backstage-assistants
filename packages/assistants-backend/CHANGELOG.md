@@ -3,6 +3,13 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-backend`.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.0 - 2026-11-24
+
+### Added
+
+- The model reads every tool result (MCP tools, Backstage actions, client tools; this turn's and replayed ones) between untrusted-content markers: `{ _untrusted, result, _end }`, naming the tool, with a per-call nonce a result can't forge. The markers are added to the outgoing prompt only; streamed and stored results are as the tool returned them. `render_form` results are not marked.
+- `mcp.servers.<id>.untrustedResults` (default `true`): set `false` for a server that marks its own results.
+
 ## 0.28.0 - 2026-11-24
 
 ### Changed

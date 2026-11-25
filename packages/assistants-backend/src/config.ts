@@ -218,6 +218,11 @@ export interface McpServerConfig {
   allowStandingApproval?: boolean;
   /** The server may ask the user for input mid-call (MCP elicitation). */
   elicitation?: boolean;
+  /**
+   * False for a server that marks its own results as untrusted content: the
+   * model reads them as the server returned them.
+   */
+  untrustedResults?: boolean;
 }
 
 /**
@@ -270,6 +275,11 @@ export interface AssistantsConfig {
    * gated tools of per-user servers with `allowStandingApproval: false`.
    */
   approveEachCall: Set<string>;
+  /**
+   * True for a tool whose results the model reads without untrusted-content
+   * markers: the tools of servers with `untrustedResults: false`.
+   */
+  resultsUnmarked: (toolName: string) => boolean;
   /**
    * Resolve a `provider:model` id to an AI SDK {@link LanguageModel}. A
    * provider a module contributed builds it for `turn`; without one it gets
@@ -794,6 +804,7 @@ export function readConfig(
         allowStandingApproval,
         elicitation:
           sc.getOptionalBoolean('elicitation') ?? userCredentials !== undefined,
+        untrustedResults: sc.getOptionalBoolean('untrustedResults') ?? true,
       };
 
       if (transport === 'stdio') {
@@ -882,6 +893,10 @@ export function readConfig(
   const requestBodyLimit = root.getOptionalString('requestBodyLimit') ?? '10mb';
   const builtinActions = root.getOptionalBoolean('builtinActions') ?? false;
 
+  const unmarkedPrefixes = [...mcpServers.values()]
+    .filter(server => server.untrustedResults === false)
+    .map(server => mcpToolName(server.id, ''));
+
   return {
     builtinActions,
     mcpServers,
@@ -894,6 +909,8 @@ export function readConfig(
     requestBodyLimit,
     requireApproval,
     approveEachCall,
+    resultsUnmarked: toolName =>
+      unmarkedPrefixes.some(prefix => toolName.startsWith(prefix)),
     resolveModel: (modelId: string, turn?: AssistantsModelTurn) => {
       const contributed = contributedByModelId.get(modelId);
       if (!contributed) {

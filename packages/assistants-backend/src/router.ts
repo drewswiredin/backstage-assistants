@@ -71,6 +71,11 @@ import {
   withInjectedParts,
   type HeldCallBroker,
 } from './heldCalls';
+import {
+  markUntrusted,
+  untrustedNonce,
+  withUntrustedResults,
+} from './untrustedResults';
 import { createMcpOAuthRouter } from './mcpOAuthRouter';
 import {
   mcpCallerFor,
@@ -1391,6 +1396,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     //     held calls' parts (approval cards, preliminary results) injected.
     const correlator = new ToolCallCorrelator();
     let inject: Parameters<typeof buildLoopTools>[0]['inject'] = () => {};
+    // 9b. The model reads every tool result between untrusted-content
+    //     markers (see untrustedResults.ts), except a form's answers, which
+    //     are the user's own words, and the results of a server that marks
+    //     its own. The conversation keeps each result as the tool returned
+    //     it. A provider's own loop gets the marked result from `execute`;
+    //     the result it then reports is put back as the tool returned it.
+    const resultsExempt = (toolName: string) =>
+      toolName === 'render_form' || assistants.resultsUnmarked(toolName);
+    const loopResults = new Map<string, unknown>();
     if (runsOwnToolLoop) {
       const standing = new Set<string>();
       const needsUser = new Set([
@@ -1429,6 +1443,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             messages: modelMessages,
             toolResultMaxChars: assistants.toolResultMaxChars,
             signal: turnAbort.signal,
+            forModel: (name, toolCallId, value) => {
+              if (resultsExempt(name)) return value;
+              loopResults.set(toolCallId, value);
+              return markUntrusted(
+                value,
+                name,
+                untrustedNonce(toolCallId, threadId),
+              );
+            },
             onDecision: (name, approved, input) => {
               if (assistants.requireApproval.has(name)) {
                 const [server, tool] = splitToolName(name);
@@ -1445,7 +1468,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
 
     const result = streamText({
-      model,
+      model: withUntrustedResults(model, {
+        ...(threadId ? { threadId } : {}),
+        isExempt: resultsExempt,
+      }),
       // The page note comes last: it describes this turn only.
       instructions: [
         PLATFORM_INSTRUCTIONS,
@@ -1574,8 +1600,16 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     let sawStepUsage = false;
     let turnStream = result.stream;
     if (runsOwnToolLoop) {
-      const injected = withInjectedParts(result.stream, part =>
-        correlator.observe(part),
+      const injected = withInjectedParts(
+        result.stream,
+        part => correlator.observe(part),
+        part =>
+          part.type === 'tool-result' && loopResults.has(part.toolCallId)
+            ? ({
+                ...part,
+                output: loopResults.get(part.toolCallId),
+              } as typeof part)
+            : part,
       );
       inject = injected.inject;
       turnStream = injected.stream;

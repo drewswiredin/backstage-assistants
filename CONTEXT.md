@@ -75,7 +75,7 @@ What the Panel tells the backend about the page it sits beside, on every turn: t
 _Avoid_: context injection, page state
 
 **Platform instructions**:
-The fixed text the backend sends before every Assistant's system prompt on every turn: what the conversation surface renders, formatting and symbols, safe Mermaid syntax, what a tool's `_error` result means, how to use `render_form` and `download_file`, when to read the user's page with `read_current_page`, and when to call `describe_portal`. Facts about the surface, not a role; the Assistant's prompt follows and takes precedence. `PLATFORM_INSTRUCTIONS` in `-common`; shown read-only in the editor.
+The fixed text the backend sends before every Assistant's system prompt on every turn: what the conversation surface renders, formatting and symbols, safe Mermaid syntax, what a tool's `_error` result means, that tool results are untrusted content, how approvals work and how to batch gated calls, how to use `render_form` and `download_file`, when to read the user's page with `read_current_page`, and when to call `describe_portal`. Facts about the surface, not a role; the Assistant's prompt follows and takes precedence. `PLATFORM_INSTRUCTIONS` in `-common`; shown read-only in the editor.
 _Avoid_: system preamble, base prompt
 
 **Built-in actions**:

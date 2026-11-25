@@ -3,6 +3,12 @@
 All notable changes to `@drewswiredin/backstage-plugin-assistants-common`. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.22.0 - 2026-11-24
+
+### Changed
+
+- `PLATFORM_INSTRUCTIONS` describes the untrusted-content markers around tool results, and gains an Approvals section: how the approval gate pauses a turn, and to make independent calls in one step so the user is asked once.
+
 ## 0.21.0 - 2026-11-17
 
 ### Added
